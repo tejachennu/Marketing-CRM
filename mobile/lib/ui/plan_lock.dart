@@ -25,7 +25,10 @@ class _PlanEndedScreenState extends State<PlanEndedScreen> {
     await app.load('me', '/api/mobile/me', force: true);
     if (!mounted) return;
     setState(() => _checking = false);
-    if (app.paused) {
+    // Could not ask (no internet): say so, not that the payment has not arrived
+    if (!app.online) {
+      toast(context, 'No internet. Connect, then check again.');
+    } else if (app.paused) {
       toast(
         context,
         'Still waiting for a plan. If you just paid, give it a minute and check again.',
@@ -59,17 +62,25 @@ class _PlanEndedScreenState extends State<PlanEndedScreen> {
 
   Future<void> _signOut() async {
     final app = AppScope.read(context);
+    // Bills or bookings made just before the plan ended wait here until a plan is chosen: signing out drops them
+    final waiting = app.waitingCount;
     final ok = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Sign out?'),
+        content: Text(
+          waiting > 0
+              ? '$waiting change${waiting == 1 ? ' has' : 's have'} not synced yet and will be lost. They sync once a plan is chosen.'
+              : 'The copy of your data on this phone is removed.',
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
             child: const Text('Cancel'),
           ),
-          FilledButton(
+          TextButton(
             onPressed: () => Navigator.pop(context, true),
+            style: TextButton.styleFrom(foregroundColor: Brand.red),
             child: const Text('Sign out'),
           ),
         ],
@@ -219,11 +230,8 @@ class TrialBar extends StatelessWidget {
     final app = AppScope.of(context);
     final left = app.trialDaysLeft;
     if (left == null || left > fromDays) return const SizedBox.shrink();
-    final words = left <= 0
-        ? 'Your free trial ends today'
-        : left == 1
-        ? '1 day left in your free trial'
-        : '$left days left in your free trial';
+    // Same words as Billing and More: the server rounds up, so 1 means less than a day left
+    final words = left <= 1 ? 'Last day of your free trial' : '$left days left in your free trial';
     final canPay = app.can('billing');
     return Material(
       color: const Color(0xFFFFF3CD),

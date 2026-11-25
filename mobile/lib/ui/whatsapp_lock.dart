@@ -18,11 +18,18 @@ class WhatsAppLocked extends StatelessWidget {
   /// What is locked, in plain words ("Chats", "Campaigns"…)
   final String feature;
 
+  /// The feature inside a sentence: "Chats" → "chats", but brand words keep their capitals ("WhatsApp templates")
+  String get _phrase => feature.isEmpty || feature.startsWith('WhatsApp') || feature.startsWith('Instagram') ? feature : feature[0].toLowerCase() + feature.substring(1);
+
   @override
   Widget build(BuildContext context) {
     final app = AppScope.of(context);
-    // Starter (₹999) has no own WhatsApp: it needs Growth or Pro first, then we connect the number
+    // Starter has no own WhatsApp: it needs Growth or Pro first, then we connect the number
     final starter = app.sharedWhatsApp;
+    // Starter covers one connector at a time: say what this shop's plan does
+    final covers = app.storeOn ? 'your online store, orders, GST invoices and reports' : 'bookings, bills, GST invoices and reports';
+    // "Booking flow on WhatsApp" reads twice in "... on your own WhatsApp number"
+    final starterPhrase = _phrase.replaceFirst(RegExp(r' on WhatsApp$'), '');
     final text = Uri.encodeComponent(starter ? 'Hi, I want to move ${app.orgName} to Growth and connect our own WhatsApp.' : 'Hi, please connect WhatsApp for ${app.orgName} on WAMA CRM.');
     Future<void> open(String url) async {
       final ok = await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication).catchError((_) => false);
@@ -56,14 +63,14 @@ class WhatsAppLocked extends StatelessWidget {
         ),
         const SizedBox(height: 20),
         Text(
-          starter ? 'Your own WhatsApp comes with Growth' : feature == 'WhatsApp' ? 'Connect your WhatsApp' : 'Connect WhatsApp to use ${feature.toLowerCase()}',
+          starter ? 'Your own WhatsApp comes with Growth' : feature == 'WhatsApp' ? 'Connect your WhatsApp' : 'Connect WhatsApp to use $_phrase',
           textAlign: TextAlign.center,
           style: const TextStyle(fontSize: 21, fontWeight: FontWeight.w700),
         ),
         const SizedBox(height: 8),
         Text(
           starter
-              ? 'Your Starter plan covers bookings, bills, GST invoices and reports. To use ${feature == 'WhatsApp' ? 'chats, AI replies and campaigns' : feature.toLowerCase()} on your own WhatsApp number, move to Growth or Pro. We connect the number for you.'
+              ? 'Your Starter plan covers $covers. To use ${feature == 'WhatsApp' ? 'chats, AI replies and campaigns' : starterPhrase} on your own WhatsApp number, move to Growth or Pro. We connect the number for you.'
               : 'Your WhatsApp Business number is not connected yet. Our team connects it for you, usually the same day. Message or call us and we will set it up.',
           textAlign: TextAlign.center,
           style: TextStyle(color: Brand.textSoft, height: 1.45, fontSize: 15),
@@ -108,7 +115,11 @@ class WhatsAppLocked extends StatelessWidget {
           label: const Text('Call us · +91 83676 29608'),
         ),
         const SizedBox(height: 14),
-        const Text('Your bills, bookings and contacts keep working meanwhile.', textAlign: TextAlign.center, style: TextStyle(fontSize: 12.5, color: Brand.muted)),
+        Text(
+          app.storeOn ? 'Your orders, products and contacts keep working meanwhile.' : 'Your bills, bookings and contacts keep working meanwhile.',
+          textAlign: TextAlign.center,
+          style: const TextStyle(fontSize: 12.5, color: Brand.muted),
+        ),
       ],
     );
   }

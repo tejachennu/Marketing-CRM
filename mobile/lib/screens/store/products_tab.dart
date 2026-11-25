@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
 import '../../data/app_state.dart';
@@ -547,6 +548,47 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
   bool _writing = false;
   bool _saving = false;
 
+  /// 'main' or 'more' while a photo from the phone is being sent.
+  String? _uploading;
+
+  /// A photo from the phone: made small enough to send, uploaded, and its link put in "Photo link" (main)
+  /// or added as a new line of "More photos".
+  Future<void> _uploadPhoto({required bool main}) async {
+    List<String> more() => _photos.text.split(RegExp(r'\s+')).where((u) => u.isNotEmpty).toList();
+    if (!main && more().length >= 8) return toast(context, 'Up to 8 more photos.');
+    final file = await FilePicker.pickFile(type: FileType.custom, allowedExtensions: ['jpg', 'jpeg', 'png', 'webp']);
+    if (file == null || !mounted) return;
+    setState(() => _uploading = main ? 'main' : 'more');
+    try {
+      final (bytes, name) = await fitPhoto(await file.readAsBytes(), file.name);
+      if (!mounted) return;
+      final data = await AppScope.read(context).uploadFile(bytes, name);
+      final url = '${data['url'] ?? ''}';
+      if (!url.startsWith('https://')) throw Exception('The photo could not be uploaded. Try a smaller JPG or PNG.');
+      if (!mounted) return;
+      setState(() {
+        if (main) {
+          _image.text = url;
+        } else {
+          _photos.text = [...more(), url].join('\n');
+        }
+      });
+    } catch (e) {
+      if (mounted) toast(context, plain(e));
+    } finally {
+      if (mounted) setState(() => _uploading = null);
+    }
+  }
+
+  Widget _uploadButton(String label, {required bool main}) => Align(
+    alignment: Alignment.centerLeft,
+    child: TextButton.icon(
+      onPressed: _uploading != null ? null : () => _uploadPhoto(main: main),
+      icon: _uploading == (main ? 'main' : 'more') ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.add_photo_alternate_outlined, size: 18),
+      label: Text(_uploading == (main ? 'main' : 'more') ? 'Uploading…' : label),
+    ),
+  );
+
   /// "Write with AI": the description (and the name / category when empty) from the product photo
   Future<void> _writeWithAi() async {
     setState(() => _writing = true);
@@ -764,11 +806,12 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
             keyboardType: TextInputType.url,
             decoration: InputDecoration(
               labelText: 'Photo link${widget.catalogLinked ? '' : ' (optional)'}',
-              hintText: 'https://…',
+              hintText: 'Upload one below, or paste a link',
               helperText: 'A JPEG or PNG of at least 500 × 500 pixels. WhatsApp needs one for every catalog item.',
               helperMaxLines: 3,
             ),
           ),
+          _uploadButton('Upload photo from the phone', main: true),
           gap(),
           TextField(
             controller: _photos,
@@ -777,6 +820,7 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
             maxLines: 4,
             decoration: const InputDecoration(labelText: 'More photos (optional)', hintText: 'One link per line, up to 8', helperText: 'Shown in the gallery on your store page.'),
           ),
+          _uploadButton('Add a photo from the phone', main: false),
           gap(),
           TextField(
             controller: _video,

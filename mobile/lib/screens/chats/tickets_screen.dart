@@ -175,8 +175,10 @@ class _TicketsScreenState extends State<TicketsScreen> {
     await showModalBottomSheet<void>(
       context: context,
       showDragHandle: true,
+      // Taller than the usual sheet allows on small phones (managers see four buttons): it scrolls instead
+      isScrollControlled: true,
       builder: (sheet) => SafeArea(
-        child: Padding(
+        child: SingleChildScrollView(
           padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
           child: Column(
             mainAxisSize: MainAxisSize.min,

@@ -47,6 +47,8 @@ class _AssistantScreenState extends State<AssistantScreen> {
         ],
       });
       _session = '${data['sessionId'] ?? _session}';
+      // Closed while the AI was answering: nothing left to show it on
+      if (!mounted) return;
       setState(
         () => _chat.add({
           'role': 'assistant',
@@ -56,7 +58,7 @@ class _AssistantScreenState extends State<AssistantScreen> {
         }),
       );
     } catch (e) {
-      setState(() => _chat.add({'role': 'error', 'content': '$e'.replaceFirst('Exception: ', '')}));
+      if (mounted) setState(() => _chat.add({'role': 'error', 'content': '$e'.replaceFirst('Exception: ', '')}));
     } finally {
       if (mounted) setState(() => _busy = false);
     }

@@ -41,6 +41,9 @@ class _WebsiteScreenState extends State<WebsiteScreen> {
   Map<String, dynamic>? _suggested;
   bool _prefilled = false;
 
+  /// Counts "Fill blanks", so the phone boxes are built again with the numbers it filled in.
+  int _fills = 0;
+
   @override
   void initState() {
     super.initState();
@@ -68,6 +71,7 @@ class _WebsiteScreenState extends State<WebsiteScreen> {
     final s = _s;
     if (g == null || s == null) return;
     setState(() {
+      _fills++;
       for (final key in const ['title', 'tagline', 'logo', 'announcement', 'delivery_note', 'whatsapp', 'phone', 'address', 'about']) {
         final typed = (_text[key]?.text ?? '${s[key] ?? ''}').trim();
         if (typed.isEmpty && '${g[key] ?? ''}'.isNotEmpty) {
@@ -131,6 +135,19 @@ class _WebsiteScreenState extends State<WebsiteScreen> {
     }
   }
 
+  /// Read the payment accounts again (after the Online payment screen), leaving the rest as typed.
+  Future<void> _loadPay() async {
+    final app = AppScope.read(context);
+    try {
+      final pay = await app.backend.get('/api/commerce/storefront/payments', {'organizationId': app.orgId});
+      if (!mounted) return;
+      setState(() {
+        _pay = pay['error'] == null ? pay : null;
+        _keyId.text = '${pay['keyId'] ?? ''}';
+      });
+    } catch (_) {}
+  }
+
   Future<void> _connect() async {
     setState(() => _payBusy = true);
     try {
@@ -156,6 +173,14 @@ class _WebsiteScreenState extends State<WebsiteScreen> {
 
   Future<void> _disconnect() async {
     final app = AppScope.read(context);
+    final ok = await confirmAction(
+      context,
+      title: 'Disconnect Razorpay?',
+      message: 'Customers cannot pay online with Razorpay until you connect it again, and you will need your Key Secret again.',
+      yes: 'Disconnect',
+      destructive: true,
+    );
+    if (!ok || !mounted) return;
     setState(() => _payBusy = true);
     try {
       final data = await app.backend.send('DELETE', '/api/commerce/storefront/payments?organizationId=${app.orgId}', const {});
@@ -178,9 +203,10 @@ class _WebsiteScreenState extends State<WebsiteScreen> {
     if (file == null || !mounted) return null;
     setState(() => _uploading = key);
     try {
-      final bytes = await file.readAsBytes();
+      // Phone camera photos are often over the 4 MB an upload can carry: made smaller first
+      final (bytes, name) = await fitPhoto(await file.readAsBytes(), file.name);
       if (!mounted) return null;
-      final data = await AppScope.read(context).uploadFile(bytes, file.name);
+      final data = await AppScope.read(context).uploadFile(bytes, name);
       final url = '${data['url'] ?? ''}';
       if (!url.startsWith('https://')) throw Exception('The picture could not be uploaded. Try a smaller JPG or PNG.');
       return url;
@@ -466,6 +492,8 @@ class _WebsiteScreenState extends State<WebsiteScreen> {
           _section('Banners (slide at the top)', subtitle: 'Wide photos work best. A tap can open a category.', [
             for (var i = 0; i < banners.length; i++)
               Container(
+                // Keyed by the banner itself, so its words move with it when one is removed or moved up
+                key: ObjectKey(banners[i]),
                 margin: const EdgeInsets.only(bottom: 10),
                 padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
@@ -660,7 +688,8 @@ class _WebsiteScreenState extends State<WebsiteScreen> {
                 TextButton.icon(
                   onPressed: () async {
                     await Navigator.of(context).push(MaterialPageRoute(builder: (_) => const OnlinePaymentsScreen()));
-                    _load();
+                    // Only the payment accounts can change there: unsaved website edits stay
+                    _loadPay();
                   },
                   icon: const Icon(Icons.credit_card),
                   label: const Text('Stripe too, and which one customers pay with'),
@@ -701,9 +730,9 @@ class _WebsiteScreenState extends State<WebsiteScreen> {
               ],
             ),
           _section('Contact and about', [
-            PhoneField(value: '${s['whatsapp'] ?? ''}', onChanged: (v) => s['whatsapp'] = v, label: 'WhatsApp number'),
+            PhoneField(key: ValueKey('wa$_fills'), value: '${s['whatsapp'] ?? ''}', onChanged: (v) => s['whatsapp'] = v, label: 'WhatsApp number'),
             gap(),
-            PhoneField(value: '${s['phone'] ?? ''}', onChanged: (v) => s['phone'] = v, label: 'Phone to call'),
+            PhoneField(key: ValueKey('ph$_fills'), value: '${s['phone'] ?? ''}', onChanged: (v) => s['phone'] = v, label: 'Phone to call'),
             gap(),
             TextField(
               controller: _field('address'),

@@ -1,11 +1,15 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../data/app_state.dart';
+import '../../data/backend.dart';
 import '../../data/format.dart';
 import '../../ui/skeleton.dart';
 import '../../ui/theme.dart';
 import '../../ui/whatsapp_lock.dart';
 import '../../ui/widgets.dart';
+import 'chat_parts.dart';
 import 'chat_screen.dart';
 import 'tickets_screen.dart';
 
@@ -60,6 +64,92 @@ class _ChatListState extends State<ChatList> {
   String _query = '';
   ChatFilter _filter = ChatFilter.all;
 
+  /// The phone keeps the newest 50 chats. Older ones come with Load more, and a search also asks the server.
+  List<Map<String, dynamic>> _more = const [];
+  int _page = 1;
+  bool? _moreLeft;
+  bool _loadingMore = false;
+  List<Map<String, dynamic>> _found = const [];
+  bool _searching = false;
+  Timer? _wait;
+
+  @override
+  void dispose() {
+    _wait?.cancel();
+    super.dispose();
+  }
+
+  String get _key => AppState.chatLists[widget.channel]!;
+
+  /// The server has chats the phone does not.
+  bool _serverHasMore(AppState app) => _moreLeft ?? (app.cached(_key)?['hasMore'] == true);
+
+  /// Chats from the server for the screen only: a customer's file in the last message is cut to its type (it can be MB).
+  static List<Map<String, dynamic>> _chatsFrom(Map<String, dynamic> data) {
+    final out = <Map<String, dynamic>>[];
+    for (final c in (data['conversations'] as List? ?? const [])) {
+      if (c is! Map) continue;
+      final chat = Map<String, dynamic>.from(c);
+      final last = chat['last_message'];
+      final media = last is Map ? last['media_url'] : null;
+      if (media is String && media.startsWith('data:')) {
+        final comma = media.indexOf(',');
+        chat['last_message'] = {...last as Map, 'media_url': comma < 0 ? 'data:' : media.substring(0, comma + 1)};
+      }
+      out.add(chat);
+    }
+    return out;
+  }
+
+  Future<void> _loadMore(AppState app) async {
+    if (_loadingMore) return;
+    setState(() => _loadingMore = true);
+    try {
+      final next = _page + 1;
+      final data = await app.backend.get('/api/conversations', {'organizationId': app.orgId, 'limit': '50', 'channel': widget.channel, 'page': '$next'});
+      if (!mounted) return;
+      final got = _chatsFrom(data);
+      setState(() {
+        _more = [..._more, ...got];
+        _page = next;
+        _moreLeft = data['hasMore'] == true && got.isNotEmpty;
+      });
+    } catch (e) {
+      if (mounted) toast(context, e is ApiException || e is OfflineException ? '$e' : 'More chats could not be loaded. Please try again.');
+    } finally {
+      if (mounted) setState(() => _loadingMore = false);
+    }
+  }
+
+  void _search(AppState app, String value) {
+    final q = value.trim();
+    setState(() {
+      _query = q;
+      _found = const [];
+    });
+    _wait?.cancel();
+    // Everything is on the phone already: the search there is enough
+    if (q.length < 2 || !_serverHasMore(app)) return;
+    _wait = Timer(const Duration(milliseconds: 400), () => _searchServer(app, q));
+  }
+
+  Widget _moreButton(AppState app) => _loadingMore
+      ? const Padding(padding: EdgeInsets.all(10), child: SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2)))
+      : OutlinedButton(onPressed: () => _loadMore(app), child: const Text('Load more chats'));
+
+  Future<void> _searchServer(AppState app, String q) async {
+    if (!app.online || !mounted) return;
+    setState(() => _searching = true);
+    try {
+      final data = await app.backend.get('/api/conversations', {'organizationId': app.orgId, 'limit': '50', 'channel': widget.channel, 'search': q});
+      if (mounted && q == _query) setState(() => _found = _chatsFrom(data));
+    } catch (_) {
+      // The chats on the phone are still searched
+    } finally {
+      if (mounted) setState(() => _searching = false);
+    }
+  }
+
   bool _matches(ChatFilter f, Map<String, dynamic> c, String me) => switch (f) {
         ChatFilter.all => true,
         ChatFilter.unread => ((c['unread_count'] as num?) ?? 0) > 0,
@@ -72,8 +162,11 @@ class _ChatListState extends State<ChatList> {
   Widget build(BuildContext context) {
     final app = AppScope.of(context);
     final ig = widget.channel == 'instagram';
-    final key = AppState.chatLists[widget.channel]!;
-    final all = app.chatsOf(widget.channel);
+    final key = _key;
+    final saved = app.chatsOf(widget.channel);
+    final savedIds = {for (final c in saved) c['id']};
+    // The newest chats kept on the phone, then older ones brought with Load more
+    final all = [...saved, ..._more.where((c) => !savedIds.contains(c['id']) && AppState.isInstagramChat(c) == ig)];
     final me = '${app.me?['user']?['id'] ?? ''}';
     final q = _query.toLowerCase();
     final digits = q.replaceAll(RegExp(r'\D'), '');
@@ -83,8 +176,16 @@ class _ChatListState extends State<ChatList> {
       final contact = c['contact'] as Map?;
       return contactName(contact).toLowerCase().contains(q) ||
           (digits.isNotEmpty && '${contact?['phone_number'] ?? ''}'.replaceAll(RegExp(r'\D'), '').contains(digits)) ||
-          '${(c['last_message'] as Map?)?['body'] ?? ''}'.toLowerCase().contains(q);
+          messageText((c['last_message'] as Map?)?['body']).toLowerCase().contains(q);
     }).toList();
+    // Chats the server found for the search that the phone does not have
+    if (q.isNotEmpty) {
+      final shownIds = {for (final c in shown) c['id']};
+      shown.addAll(_found.where((c) => !shownIds.contains(c['id']) && AppState.isInstagramChat(c) == ig && _matches(_filter, c, me)));
+    }
+    final canLoadMore = q.isEmpty && _serverHasMore(app);
+    // Nothing on the phone yet and the first fetch did not work
+    final notLoaded = all.isEmpty && app.savedAt(key) == null && !app.isLoading(key);
     int count(ChatFilter f) => all.where((c) => _matches(f, c, me)).length;
     String label(String name, ChatFilter f) {
       final n = count(f);
@@ -102,7 +203,8 @@ class _ChatListState extends State<ChatList> {
       children: [
         SyncBanner(cacheKey: key),
         ?widget.banner,
-        SearchField(hint: ig ? 'Search name, username or message' : 'Search name, number or message', onChanged: (v) => setState(() => _query = v.trim())),
+        SearchField(hint: ig ? 'Search name, username or message' : 'Search name, number or message', onChanged: (v) => _search(app, v)),
+        if (_searching) const LinearProgressIndicator(minHeight: 2),
         FilterChips(
           children: [
             for (final (f, text) in chips) ChoiceChip(label: Text(text), selected: _filter == f, onSelected: (_) => setState(() => _filter = f)),
@@ -117,6 +219,23 @@ class _ChatListState extends State<ChatList> {
             },
             child: app.isLoading(key)
                 ? const SkeletonList()
+                : notLoaded
+                ? ListView(
+                    children: [
+                      EmptyState(
+                        icon: Icons.cloud_off,
+                        title: app.online ? 'Could not load your chats' : 'Connect to the internet to see your chats',
+                        text: app.online ? 'Check the internet and try again.' : 'Your chats are not saved on the phone yet.',
+                        action: FilledButton(
+                          onPressed: () async {
+                            if (widget.onRefresh != null) return widget.onRefresh!();
+                            await app.loadChats(widget.channel);
+                          },
+                          child: const Text('Try again'),
+                        ),
+                      ),
+                    ],
+                  )
                 : shown.isEmpty
                 ? ListView(
                     children: [
@@ -127,12 +246,15 @@ class _ChatListState extends State<ChatList> {
                             ? (ig ? 'Instagram messages to your business show up here.' : 'Customer messages on WhatsApp show up here.')
                             : 'No chat matches this filter or search.',
                       ),
+                      if (canLoadMore) Center(child: _moreButton(app)),
                     ],
                   )
                 : ListView.separated(
-                    itemCount: shown.length,
+                    itemCount: shown.length + (canLoadMore ? 1 : 0),
                     separatorBuilder: (_, _) => const Divider(indent: 78, height: 1),
-                    itemBuilder: (context, index) => ChatRow(conversation: shown[index], instagram: ig),
+                    itemBuilder: (context, index) => index == shown.length
+                        ? Padding(padding: const EdgeInsets.fromLTRB(16, 8, 16, 24), child: Center(child: _moreButton(app)))
+                        : ChatRow(conversation: shown[index], instagram: ig),
                   ),
           ),
         ),
@@ -155,7 +277,7 @@ class ChatRow extends StatelessWidget {
     final unread = (c['unread_count'] as num?)?.toInt() ?? 0;
     final last = c['last_message'] as Map? ?? const {};
     final mine = last['sender_type'] != null && last['sender_type'] != 'contact';
-    final body = '${last['body'] ?? ''}'.trim();
+    final body = messageText(last['body']).trim();
     final media = '${last['media_url'] ?? ''}'.isNotEmpty || body == '[Media Attachment]';
     final preview = body.isEmpty || body == '[Media Attachment]'
         ? (media ? '📎 Photo or file' : '')

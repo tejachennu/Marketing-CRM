@@ -22,6 +22,13 @@ Widget _hint(String text) => Padding(
 );
 Widget _loading() => const Center(child: Padding(padding: EdgeInsets.all(24), child: CircularProgressIndicator()));
 
+/// Could not load: what went wrong, and Try again (in a list, so it scrolls with large text).
+Widget _failed(String error, VoidCallback retry) => ListView(
+  children: [
+    EmptyState(icon: Icons.cloud_off, title: 'Could not load', text: error, action: FilledButton(onPressed: retry, child: const Text('Try again'))),
+  ],
+);
+
 // ── Order page: GST invoice ──────────────────────────────────────────────────
 
 class OrderInvoiceBox extends StatefulWidget {
@@ -136,18 +143,32 @@ class _OrderReturnsBoxState extends State<OrderReturnsBox> {
     } catch (_) {}
   }
 
-  Future<void> _post(Map<String, dynamic> body, String done) async {
+  /// Returns the server's answer, or null when it did not work (already told in a toast).
+  Future<Map<String, dynamic>?> _post(Map<String, dynamic> body, [String? done]) async {
     setState(() => _busy = '${body['action']}');
     try {
-      await AppScope.read(context).ask('/api/commerce/returns', {'orderId': widget.order['id'], ...body});
-      if (mounted) toast(context, done);
+      final d = await AppScope.read(context).ask('/api/commerce/returns', {'orderId': widget.order['id'], ...body});
+      if (mounted && done != null) toast(context, done);
       await _load();
       widget.onChanged();
+      return d;
     } catch (e) {
       if (mounted) toast(context, plain(e));
+      return null;
     } finally {
       if (mounted) setState(() => _busy = null);
     }
+  }
+
+  /// How a refund goes: 'razorpay' or 'stripe' (the money goes back by itself), or 'manual' (the owner pays it back).
+  /// Same checks as the server's refundOrder.
+  String _via(Map s) {
+    final via = '${s['via'] ?? ''}';
+    if (const ['razorpay', 'stripe', 'manual'].contains(via)) return via;
+    if (s['viaRazorpay'] == true) return 'razorpay';
+    final payment = ((widget.order['shipping_address'] as Map?)?['payment'] as Map?) ?? const {};
+    if (widget.order['payment_method'] == 'stripe' && '${payment['payment_intent'] ?? ''}'.isNotEmpty) return 'stripe';
+    return 'manual';
   }
 
   Future<void> _refund() async {
@@ -156,7 +177,8 @@ class _OrderReturnsBoxState extends State<OrderReturnsBox> {
     final amount = TextEditingController(text: '$left');
     final reason = TextEditingController(text: '${(s['return'] as Map?)?['reason'] ?? ''}');
     var restock = s['return'] != null;
-    final viaRazorpay = s['viaRazorpay'] == true;
+    final via = _via(s);
+    final gateway = via == 'stripe' ? 'Stripe' : 'Razorpay';
     final go = await showDialog<bool>(
       context: context,
       builder: (dialog) => StatefulBuilder(
@@ -167,9 +189,11 @@ class _OrderReturnsBoxState extends State<OrderReturnsBox> {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(viaRazorpay
-                    ? 'The customer paid online, so the money goes back through your Razorpay to the same card, UPI or bank account (5–7 working days).'
-                    : 'This order was not paid through your Razorpay. Pay the customer back yourself (UPI, cash, bank), then record it here.'),
+                Text(switch (via) {
+                  'razorpay' => 'The customer paid online, so the money goes back through your Razorpay to the same card, UPI or bank account (5–7 working days).',
+                  'stripe' => 'The customer paid online, so the money goes back through your Stripe to the same card (5–10 working days). Do not pay them back yourself.',
+                  _ => 'The money does not go back by itself for this order. Pay the customer back yourself (UPI, cash, bank), then record it here.',
+                }),
                 const SizedBox(height: 12),
                 TextField(controller: amount, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: InputDecoration(labelText: 'Amount (at most ${formatMoney(left, widget.order['currency'])})')),
                 const SizedBox(height: 14),
@@ -185,13 +209,20 @@ class _OrderReturnsBoxState extends State<OrderReturnsBox> {
           ),
           actions: [
             TextButton(onPressed: () => Navigator.pop(dialog, false), child: const Text('Cancel')),
-            FilledButton(onPressed: () => Navigator.pop(dialog, true), child: Text(viaRazorpay ? 'Refund through Razorpay' : 'Record refund')),
+            FilledButton(onPressed: () => Navigator.pop(dialog, true), child: Text(via == 'manual' ? 'Record refund' : 'Refund through $gateway')),
           ],
         ),
       ),
     );
     if (go != true) return;
-    await _post({'action': 'refund', 'amount': num.tryParse(amount.text.trim()) ?? 0, 'reason': reason.text.trim(), 'restock': restock}, viaRazorpay ? 'Refund sent through Razorpay.' : 'Refund recorded.');
+    final d = await _post({'action': 'refund', 'amount': num.tryParse(amount.text.trim()) ?? 0, 'reason': reason.text.trim(), 'restock': restock});
+    if (d == null || !mounted) return;
+    // The server says how it really went (a payment account may have been disconnected since)
+    toast(context, switch ('${d['method'] ?? via}') {
+      'razorpay' => 'Refund sent through Razorpay.',
+      'stripe' => 'Refund sent through Stripe.',
+      _ => via == 'manual' ? 'Refund recorded.' : 'Refund recorded, but $gateway is not connected, so no money was sent. Pay the customer back yourself.',
+    });
   }
 
   @override
@@ -201,7 +232,9 @@ class _OrderReturnsBoxState extends State<OrderReturnsBox> {
     final ask = s['return'] as Map?;
     final refunds = (s['refunds'] as List? ?? const []);
     final paid = (s['paid'] as num?) ?? 0;
-    final left = (s['left'] as num?) ?? 0;
+    // Marked as refunded before refunds were recorded here: nothing is left to refund
+    final markedRefunded = widget.order['payment_status'] == 'refunded' && refunds.isEmpty;
+    final left = markedRefunded ? 0 : (s['left'] as num?) ?? 0;
     if (ask == null && paid <= 0 && refunds.isEmpty) return const SizedBox.shrink();
     final canEdit = AppScope.of(context).can('write');
     final currency = widget.order['currency'];
@@ -225,10 +258,20 @@ class _OrderReturnsBoxState extends State<OrderReturnsBox> {
               Padding(
                 padding: const EdgeInsets.only(bottom: 2),
                 child: Row(children: [
-                  Expanded(child: Text('${r['method'] == 'razorpay' ? 'Through Razorpay${r['status'] == 'pending' ? ' (on its way)' : ''}' : 'Paid back by hand'}${'${r['reason'] ?? ''}'.isNotEmpty ? ' · ${r['reason']}' : ''}', style: const TextStyle(color: Brand.textSoft, fontSize: 13))),
+                  Expanded(
+                    child: Text(
+                      '${switch (r['method']) {
+                        'razorpay' => 'Through Razorpay',
+                        'stripe' => 'Through Stripe',
+                        _ => 'Paid back by hand',
+                      }}${r['method'] != 'manual' && r['status'] == 'pending' ? ' (on its way)' : ''}${'${r['reason'] ?? ''}'.isNotEmpty ? ' · ${r['reason']}' : ''}',
+                      style: const TextStyle(color: Brand.textSoft, fontSize: 13),
+                    ),
+                  ),
                   Text('− ${formatMoney(r['amount'], currency)}', style: const TextStyle(fontWeight: FontWeight.w700)),
                 ]),
               ),
+            if (markedRefunded) const Text('Marked as refunded.', style: TextStyle(color: Brand.textSoft, fontSize: 13)),
             if (left > 0 && canEdit)
               Row(children: [
                 Expanded(child: Text(((s['refunded'] as num?) ?? 0) > 0 ? '${formatMoney(left, currency)} of ${formatMoney(paid, currency)} can still be refunded.' : 'Paid ${formatMoney(paid, currency)}.', style: const TextStyle(color: Brand.muted, fontSize: 13))),
@@ -263,6 +306,8 @@ class _ShopReportsScreenState extends State<ShopReportsScreen> {
   int? _picked;
   Map? _report;
   String _error = '';
+  /// Only the latest chip's answer is shown (an older, slower one is dropped).
+  int _ask = 0;
 
   @override
   void initState() {
@@ -272,6 +317,7 @@ class _ShopReportsScreenState extends State<ShopReportsScreen> {
 
   Future<void> _load() async {
     final app = AppScope.read(context);
+    final ask = ++_ask;
     setState(() {
       _report = null;
       _error = '';
@@ -284,9 +330,9 @@ class _ShopReportsScreenState extends State<ShopReportsScreen> {
         if (range == null) 'days': '$_days' else ...{'from': _ymd(range.start), 'to': _ymd(range.end)},
         if (_channel.isNotEmpty) 'channel': _channel,
       });
-      if (mounted) setState(() => _report = d['report'] as Map?);
+      if (mounted && ask == _ask) setState(() => _report = d['report'] as Map?);
     } catch (e) {
-      if (mounted) setState(() => _error = plain(e));
+      if (mounted && ask == _ask) setState(() => _error = plain(e));
     }
   }
 
@@ -741,6 +787,7 @@ class ShopReviewsScreen extends StatefulWidget {
 
 class _ShopReviewsScreenState extends State<ShopReviewsScreen> {
   List<Map>? _reviews;
+  String _error = '';
 
   @override
   void initState() {
@@ -752,10 +799,21 @@ class _ShopReviewsScreenState extends State<ShopReviewsScreen> {
     final app = AppScope.read(context);
     try {
       final d = await app.backend.get('/api/commerce/reviews', {'organizationId': app.orgId});
-      if (mounted) setState(() => _reviews = (d['reviews'] as List? ?? const []).cast<Map>());
+      if (mounted) setState(() { _reviews = (d['reviews'] as List? ?? const []).cast<Map>(); _error = ''; });
     } catch (e) {
-      if (mounted) { setState(() => _reviews = const []); toast(context, plain(e)); }
+      if (!mounted) return;
+      // Nothing shown yet: say so (not "No reviews yet"); a failed refresh keeps the list
+      if (_reviews == null) {
+        setState(() => _error = plain(e));
+      } else {
+        toast(context, plain(e));
+      }
     }
+  }
+
+  void _retry() {
+    setState(() => _error = '');
+    _load();
   }
 
   Future<void> _toggle(Map r) async {
@@ -774,7 +832,7 @@ class _ShopReviewsScreenState extends State<ShopReviewsScreen> {
     return Scaffold(
       appBar: AppBar(title: const Text('Customer reviews')),
       body: list == null
-          ? _loading()
+          ? (_error.isNotEmpty ? _failed(_error, _retry) : _loading())
           : list.isEmpty
           ? const EmptyState(icon: Icons.star_outline, title: 'No reviews yet', text: 'Customers are asked "How was it?" on WhatsApp when an order is delivered.')
           : RefreshIndicator(
@@ -825,6 +883,7 @@ class ShopOffersScreen extends StatefulWidget {
 class _ShopOffersScreenState extends State<ShopOffersScreen> {
   List<Map>? _offers;
   Map? _loyalty;
+  String _error = '';
 
   @override
   void initState() {
@@ -839,10 +898,21 @@ class _ShopOffersScreenState extends State<ShopOffersScreen> {
         app.backend.get('/api/commerce/discounts', {'organizationId': app.orgId}),
         app.backend.get('/api/commerce/loyalty', {'organizationId': app.orgId}).catchError((_) => <String, dynamic>{}),
       ]);
-      if (mounted) setState(() { _offers = (results[0]['discounts'] as List? ?? const []).cast<Map>(); _loyalty = results[1]['settings'] as Map?; });
+      if (mounted) setState(() { _offers = (results[0]['discounts'] as List? ?? const []).cast<Map>(); _loyalty = results[1]['settings'] as Map?; _error = ''; });
     } catch (e) {
-      if (mounted) { setState(() => _offers = const []); toast(context, plain(e)); }
+      if (!mounted) return;
+      // Nothing shown yet: say so (not "No offers yet"); a failed refresh keeps the list
+      if (_offers == null) {
+        setState(() => _error = plain(e));
+      } else {
+        toast(context, plain(e));
+      }
     }
+  }
+
+  void _retry() {
+    setState(() => _error = '');
+    _load();
   }
 
   Future<void> _edit([Map? offer]) async {
@@ -878,9 +948,9 @@ class _ShopOffersScreenState extends State<ShopOffersScreen> {
     final l = _loyalty;
     return Scaffold(
       appBar: AppBar(title: const Text('Offers and points')),
-      floatingActionButton: FloatingActionButton.extended(onPressed: () => _edit(), icon: const Icon(Icons.add), label: const Text('New offer')),
+      floatingActionButton: list == null ? null : FloatingActionButton.extended(onPressed: () => _edit(), icon: const Icon(Icons.add), label: const Text('New offer')),
       body: list == null
-          ? _loading()
+          ? (_error.isNotEmpty ? _failed(_error, _retry) : _loading())
           : RefreshIndicator(
               onRefresh: _load,
               child: ListView(
@@ -1030,16 +1100,27 @@ class _SettingsScreen extends StatefulWidget {
 class _SettingsScreenState extends State<_SettingsScreen> {
   Map? _values;
   bool _saving = false;
+  String _error = '';
 
   @override
   void initState() {
     super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
     final app = AppScope.read(context);
-    app.backend.get(widget.path, {'organizationId': app.orgId}).then((d) {
+    try {
+      final d = await app.backend.get(widget.path, {'organizationId': app.orgId});
       if (mounted) setState(() => _values = Map.from((d[widget.key_] as Map?) ?? const {}));
-    }).catchError((e) {
-      if (mounted) toast(context, plain(e));
-    });
+    } catch (e) {
+      if (mounted) setState(() => _error = plain(e));
+    }
+  }
+
+  void _retry() {
+    setState(() => _error = '');
+    _load();
   }
 
   Future<void> _save() async {
@@ -1061,7 +1142,7 @@ class _SettingsScreenState extends State<_SettingsScreen> {
     return Scaffold(
       appBar: AppBar(title: Text(widget.title)),
       body: v == null
-          ? _loading()
+          ? (_error.isNotEmpty ? _failed(_error, _retry) : _loading())
           : ListView(
               padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
               children: [
@@ -1079,7 +1160,7 @@ class _SettingsScreenState extends State<_SettingsScreen> {
 Widget returnsSettingsScreen() => _SettingsScreen(
   title: 'Returns',
   path: '/api/commerce/returns',
-  intro: 'Customers ask in My orders on your store; you accept or decline on the order and refund from there. Online payments go back through your Razorpay.',
+  intro: 'Customers ask in My orders on your store; you accept or decline on the order and refund from there. Online payments go back through your Razorpay or Stripe.',
   builder: (v, update) => [
     SwitchListTile(contentPadding: EdgeInsets.zero, value: v['on'] == true, onChanged: (x) => update(() => v['on'] = x), title: const Text('Customers can ask for a return')),
     if (v['on'] == true) TextFormField(initialValue: '${v['days'] ?? 7}', keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Days after delivery'), onChanged: (x) => v['days'] = int.tryParse(x) ?? 7),
@@ -1147,15 +1228,28 @@ class DeliveryPartnersScreen extends StatefulWidget {
 
 class _DeliveryPartnersScreenState extends State<DeliveryPartnersScreen> {
   Map? _data;
+  String _error = '';
+
   @override
   void initState() {
     super.initState();
+    _load();
+  }
+
+  /// A failed load says so, not "Not connected" for partners that may well be connected.
+  Future<void> _load() async {
     final app = AppScope.read(context);
-    app.backend.get('/api/commerce/shipping', {'organizationId': app.orgId}).then((d) {
+    try {
+      final d = await app.backend.get('/api/commerce/shipping', {'organizationId': app.orgId});
       if (mounted) setState(() => _data = d);
-    }).catchError((e) {
-      if (mounted) { setState(() => _data = const {}); toast(context, plain(e)); }
-    });
+    } catch (e) {
+      if (mounted) setState(() => _error = plain(e));
+    }
+  }
+
+  void _retry() {
+    setState(() => _error = '');
+    _load();
   }
 
   @override
@@ -1167,13 +1261,13 @@ class _DeliveryPartnersScreenState extends State<DeliveryPartnersScreen> {
       child: ListTile(
         leading: Icon(p?['connected'] == true ? Icons.check_circle : Icons.radio_button_unchecked, color: p?['connected'] == true ? Brand.blue : Brand.muted),
         title: Text(name, style: const TextStyle(fontWeight: FontWeight.w700)),
-        subtitle: Text(p?['connected'] == true ? 'Connected. Book a pickup from the order page on the web.' : 'Not connected'),
+        subtitle: Text(p?['connected'] == true ? 'Connected. Book a pickup from the order page.' : 'Not connected'),
       ),
     );
     return Scaffold(
       appBar: AppBar(title: const Text('Delivery partners')),
       body: d == null
-          ? _loading()
+          ? (_error.isNotEmpty ? _failed(_error, _retry) : _loading())
           : ListView(padding: const EdgeInsets.all(12), children: [
               row('Shiprocket', settings['shiprocket'] as Map?),
               row('Delhivery', settings['delhivery'] as Map?),

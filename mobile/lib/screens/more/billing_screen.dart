@@ -7,6 +7,7 @@ import 'package:razorpay_flutter/razorpay_flutter.dart';
 
 import '../../config.dart';
 import '../../data/app_state.dart';
+import '../../data/backend.dart';
 import '../../data/demo_backend.dart';
 import '../../data/format.dart';
 import '../../ui/theme.dart';
@@ -65,6 +66,10 @@ String _date(Object? iso) {
   return '${ist.day} ${months[ist.month - 1]} ${ist.year}';
 }
 
+/// A plan change whose new monthly auto-pay was never approved (Razorpay was closed half way): the old auto-pay keeps
+/// charging until it is. Once it is approved, the server sets the old one to stop at the end of the month.
+bool _awaitingApproval(Map b) => b['pendingPlan'] is Map && b['status'] == 'active' && b['cancelAtPeriodEnd'] != true;
+
 /// What the plan panel says: the same states as the web.
 ({String tone, IconData icon, String eyebrow, String title, String body, String? action, String? actionKind, String? caption, double? progress, List<(String, String)> facts}) _status(Map b) {
   final until = _date(b['accessUntil']);
@@ -108,7 +113,8 @@ String _date(Object? iso) {
         tone: 'brand',
         icon: Icons.schedule,
         eyebrow: 'Free trial',
-        title: left <= 1 ? 'Your free trial ends today' : '$left days left in your free trial',
+        // The server rounds up: 1 means less than a day left (it may end tomorrow morning), so not "today"
+        title: left <= 1 ? 'Last day of your free trial' : '$left days left in your free trial',
         body: 'Your trial ends on $until. Subscribe now so your inbox, campaigns and AI keep running without a break.',
         action: 'Subscribe · $price / month',
         actionKind: 'subscribe',
@@ -117,7 +123,26 @@ String _date(Object? iso) {
         facts: [('Plan', planName), ('Trial ends', until), ('After the trial', '$price / month')],
       );
     case 'active':
-      if (b['cancelAtPeriodEnd'] == true) {
+      if (_awaitingApproval(b)) {
+        // An upgrade already paid for has only its new auto-pay left; a downgrade has not started at all
+        final same = pending!['id'] == plan['id'];
+        final newPrice = formatRupees(pending['price']);
+        return (
+          tone: 'amber',
+          icon: Icons.pending_actions_outlined,
+          eyebrow: 'One more step',
+          title: 'Approve the monthly auto-pay for ${pending['name']}',
+          body: same
+              ? 'You are on ${pending['name']}${until.isEmpty ? '' : ' until $until'}. Approve its auto-pay of $newPrice a month so it carries on after that.'
+              : 'Your change to ${pending['name']} is not finished. Until you approve its auto-pay, you stay on ${plan['name'] ?? 'your plan'} and pay the same as now.',
+          action: 'Approve monthly auto-pay',
+          actionKind: 'approve',
+          caption: until.isEmpty ? '$newPrice a month.' : 'First charge of $newPrice on $until.',
+          progress: null,
+          facts: [('Plan', planName), if (!same) ('Changing to', '${pending['name']}'), if (until.isNotEmpty) ('Bill date', until)],
+        );
+      }
+      if (b['cancelAtPeriodEnd'] == true && pending == null) {
         return (
           tone: 'amber',
           icon: Icons.event_busy_outlined,
@@ -150,7 +175,11 @@ String _date(Object? iso) {
         icon: Icons.verified_outlined,
         eyebrow: 'Active',
         title: '$planName is active',
-        body: pending != null ? 'Your change to ${pending['name']} starts on $until.' : 'Your plan renews automatically every month for your whole team.',
+        body: pending == null
+            ? 'Your plan renews automatically every month for your whole team.'
+            : pending['id'] == plan['id']
+            ? 'Its new auto-pay of ${formatRupees(pending['price'])} a month starts on $until.'
+            : 'Your change to ${pending['name']} starts on $until.',
         action: 'Stop auto-renew',
         actionKind: 'cancel',
         caption: null,
@@ -233,6 +262,28 @@ class _BillingScreenState extends State<BillingScreen> {
     }
   }
 
+  /// After a payment or a plan change: this screen, and the app's own profile too, so the trial bar, the WhatsApp
+  /// lock and the tabs follow the new plan at once.
+  Future<void> _reload(AppState app) async {
+    await _load();
+    unawaited(app.load('me', '/api/mobile/me', force: true));
+  }
+
+  /// Razorpay has taken the payment: tell the server. When its answer does not come back (signal gone, server slow),
+  /// the payment is not lost (Razorpay tells the server too), so say that rather than an error that invites paying
+  /// again. Null when it was not confirmed here. A refused payment (wrong signature) stays an error.
+  Future<Map<String, dynamic>?> _confirm(AppState app, String path, Map<String, dynamic> body) async {
+    try {
+      return await app.ask(path, body);
+    } on ApiException catch (e) {
+      if (e.status < 500) rethrow;
+    } on OfflineException catch (_) {
+      // Not answered: said below
+    }
+    if (mounted) setState(() => _notice = 'Razorpay has your payment. We are confirming it: pull down in a minute. Please do not pay again.');
+    return null;
+  }
+
   /// Razorpay Checkout on the phone. Returns its response (to confirm on the server), or null when closed.
   Future<Map<String, dynamic>?> _checkout(Map<String, dynamic> options) async {
     if (AppConfig.demo || AppScope.read(context).backend is DemoBackend) {
@@ -290,10 +341,12 @@ class _BillingScreenState extends State<BillingScreen> {
         'notes': {'organization_id': app.orgId},
       });
       if (paid == null) return;
-      await app.ask('/api/billing/subscribe', paid);
+      final confirmed = await _confirm(app, '/api/billing/subscribe', paid);
       if (!mounted) return;
-      setState(() => _notice = startsAt != null ? 'Auto-pay is set up. Your first $price is charged on ${_date(startsAt)}.' : 'Payment received. Your plan is active. Thank you!');
-      await _load();
+      if (confirmed != null) {
+        setState(() => _notice = startsAt != null ? 'Auto-pay is set up. Your first $price is charged on ${_date(startsAt)}.' : 'Payment received. Your plan is active. Thank you!');
+      }
+      await _reload(app);
     } catch (e) {
       if (mounted) setState(() => _error = '$e'.replaceFirst('Exception: ', ''));
     } finally {
@@ -338,7 +391,7 @@ class _BillingScreenState extends State<BillingScreen> {
             ? 'Auto-pay cancelled. Nothing was charged, and your free trial carries on until ${_date(data['accessUntil'])}.'
             : 'Auto-renew is off. You keep access until ${_date(data['accessUntil'])}.',
       );
-      await _load();
+      await _reload(app);
     } catch (e) {
       if (mounted) setState(() => _error = '$e'.replaceFirst('Exception: ', ''));
     } finally {
@@ -347,31 +400,35 @@ class _BillingScreenState extends State<BillingScreen> {
   }
 
   /// Change plan, as on the web: free on the trial; an upgrade pays the difference for the days left,
-  /// then auto-pay for the new price; a downgrade sets up auto-pay from the bill date.
+  /// then auto-pay for the new price; a downgrade sets up auto-pay from the bill date. For a change whose auto-pay was
+  /// never approved, the server hands back the same auto-pay to approve (no question asked first: it was asked then).
   Future<void> _changePlan(Map plan) async {
     final app = AppScope.read(context);
     final b = _b!;
     final current = (b['plan'] as Map?) ?? const {};
-    final up = ((plan['price'] as num?) ?? 0) > ((current['price'] as num?) ?? 0);
+    final approve = _awaitingApproval(b) && (b['pendingPlan'] as Map)['id'] == plan['id'];
+    final up = approve ? plan['id'] == current['id'] : ((plan['price'] as num?) ?? 0) > ((current['price'] as num?) ?? 0);
     final paying = b['hasSubscription'] == true && b['autoPayPending'] != true;
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (d) => AlertDialog(
-        title: Text(paying ? (up ? 'Upgrade to ${plan['name']}?' : 'Move to ${plan['name']}?') : 'Switch to ${plan['name']}?'),
-        content: Text(
-          paying
-              ? up
-                    ? '${plan['name']} starts as soon as you pay the difference for the days left this month. From your next bill date it is ${formatRupees(plan['price'])} a month.'
-                    : 'You keep ${current['name']} until your next bill date (${_date(b['accessUntil'])}). From then it is ${formatRupees(plan['price'])} a month.'
-              : '${plan['name']} is ${formatRupees(plan['price'])} a month after your free trial. You can switch again any time.',
+    if (!approve) {
+      final ok = await showDialog<bool>(
+        context: context,
+        builder: (d) => AlertDialog(
+          title: Text(paying ? (up ? 'Upgrade to ${plan['name']}?' : 'Move to ${plan['name']}?') : 'Switch to ${plan['name']}?'),
+          content: Text(
+            paying
+                ? up
+                      ? '${plan['name']} starts as soon as you pay the difference for the days left this month. From your next bill date it is ${formatRupees(plan['price'])} a month.'
+                      : 'You keep ${current['name']} until your next bill date (${_date(b['accessUntil'])}). From then it is ${formatRupees(plan['price'])} a month.'
+                : '${plan['name']} is ${formatRupees(plan['price'])} a month after your free trial. You can switch again any time.',
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(d, false), child: const Text('Not now')),
+            TextButton(onPressed: () => Navigator.pop(d, true), child: const Text('Continue')),
+          ],
         ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(d, false), child: const Text('Not now')),
-          TextButton(onPressed: () => Navigator.pop(d, true), child: const Text('Continue')),
-        ],
-      ),
-    );
-    if (ok != true) return;
+      );
+      if (ok != true || !mounted) return;
+    }
     setState(() {
       _busy = '${plan['id']}';
       _error = '';
@@ -391,7 +448,12 @@ class _BillingScreenState extends State<BillingScreen> {
             'description': 'Upgrade to ${plan['name']} for the rest of this month',
           });
           if (paid == null) return;
-          data = await app.ask('/api/billing/change-plan', paid);
+          final next = await _confirm(app, '/api/billing/change-plan', paid);
+          if (next == null) {
+            await _reload(app);
+            return;
+          }
+          data = next;
           if (mounted) setState(() => _notice = 'You are on ${plan['name']}. Approve the new monthly auto-pay to keep it after this month.');
         }
         if (data['kind'] == 'auto_pay' && data['subscriptionId'] != null) {
@@ -402,16 +464,17 @@ class _BillingScreenState extends State<BillingScreen> {
             'notes': {'organization_id': app.orgId},
           });
           if (paid != null) {
-            await app.ask('/api/billing/change-plan', {...paid, 'razorpay_subscription_id': data['subscriptionId']});
+            final confirmed = await _confirm(app, '/api/billing/change-plan', {...paid, 'razorpay_subscription_id': data['subscriptionId']});
             final from = _date(data['startsAt']);
             final done = up
                 ? 'You are on ${plan['name']}. ${formatRupees(plan['price'])} a month from ${from.isEmpty ? 'today' : from}.'
                 : 'Done. ${plan['name']} starts on ${from.isEmpty ? 'your next bill date' : from}.';
-            if (mounted) setState(() => _notice = done);
+            if (mounted && confirmed != null) setState(() => _notice = done);
           }
+          // Closed without approving: the panel and the plan's card offer the same auto-pay again
         }
       }
-      await _load();
+      await _reload(app);
     } catch (e) {
       if (mounted) setState(() => _error = '$e'.replaceFirst('Exception: ', ''));
     } finally {
@@ -430,9 +493,9 @@ class _BillingScreenState extends State<BillingScreen> {
       final data = await app.ask('/api/billing/topup', {'amount': value, 'wallet': 'messages'});
       final paid = await _checkout({'key': data['keyId'], 'order_id': data['orderId'], 'amount': data['amount'], 'currency': data['currency'], 'description': 'Message wallet'});
       if (paid == null) return;
-      await app.ask('/api/billing/topup', {...paid, 'wallet': 'messages'});
+      final confirmed = await _confirm(app, '/api/billing/topup', {...paid, 'wallet': 'messages'});
       if (!mounted) return;
-      setState(() => _notice = '${formatRupees(value)} added to your message wallet.');
+      if (confirmed != null) setState(() => _notice = '${formatRupees(value)} added to your message wallet.');
       await _load();
     } catch (e) {
       if (mounted) setState(() => _error = '$e'.replaceFirst('Exception: ', ''));
@@ -452,10 +515,10 @@ class _BillingScreenState extends State<BillingScreen> {
       final data = await app.ask('/api/billing/topup', {'amount': value});
       final paid = await _checkout({'key': data['keyId'], 'order_id': data['orderId'], 'amount': data['amount'], 'currency': data['currency'], 'description': 'AI credit'});
       if (paid == null) return;
-      await app.ask('/api/billing/topup', paid);
+      final confirmed = await _confirm(app, '/api/billing/topup', paid);
       if (!mounted) return;
       _custom.clear();
-      setState(() => _notice = 'AI credit added. Your meter is back to 100%.');
+      if (confirmed != null) setState(() => _notice = 'AI credit added. Your meter is back to 100%.');
       await _load();
     } catch (e) {
       if (mounted) setState(() => _error = '$e'.replaceFirst('Exception: ', ''));
@@ -474,12 +537,26 @@ class _BillingScreenState extends State<BillingScreen> {
         body: Center(
           child: _error.isEmpty
               ? const CircularProgressIndicator()
-              : Padding(
+              : SingleChildScrollView(
                   padding: const EdgeInsets.all(24),
-                  child: Text(
-                    _error,
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(color: Brand.red),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        _error,
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(color: Brand.red),
+                      ),
+                      const SizedBox(height: 16),
+                      FilledButton.icon(
+                        onPressed: () {
+                          setState(() => _error = '');
+                          _load();
+                        },
+                        icon: const Icon(Icons.refresh),
+                        label: const Text('Try again'),
+                      ),
+                    ],
                   ),
                 ),
         ),
@@ -508,6 +585,8 @@ class _BillingScreenState extends State<BillingScreen> {
     final plans = ((b['plans'] as List?) ?? const []).cast<Map>();
     final aiOn = ((b['allows'] as Map?) ?? const {})['ai_replies'] != false;
     final showWallet = b['whatsappMode'] == 'shared' || (((b['messageBalance'] as num?) ?? 0) > 0);
+    final pendingPlan = b['pendingPlan'] as Map?;
+    final approveId = _awaitingApproval(b) ? pendingPlan!['id'] : null;
 
     return Scaffold(
       appBar: AppBar(title: const Text('Billing')),
@@ -600,8 +679,8 @@ class _BillingScreenState extends State<BillingScreen> {
                     const SizedBox(height: 16),
                     if (!canPay)
                       Text('Only workspace admins can change the plan.', style: TextStyle(color: soft))
-                    else if (AppConfig.store && view.actionKind == 'subscribe')
-                      Text('To subscribe, open Billing on the WAMA CRM website.', style: TextStyle(color: soft))
+                    else if (AppConfig.store && view.actionKind != 'cancel')
+                      Text(view.actionKind == 'approve' ? 'To approve it, open Billing on the WAMA CRM website.' : 'To subscribe, open Billing on the WAMA CRM website.', style: TextStyle(color: soft))
                     else ...[
                       SizedBox(
                         width: double.infinity,
@@ -612,12 +691,18 @@ class _BillingScreenState extends State<BillingScreen> {
                                 child: _busy == 'cancel' ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)) : Text(view.action!),
                               )
                             : FilledButton(
-                                onPressed: _busy != null || !paymentsOn ? null : _subscribe,
+                                onPressed: _busy != null || !paymentsOn
+                                    ? null
+                                    : view.actionKind == 'approve'
+                                    ? () => _changePlan(pendingPlan!)
+                                    : _subscribe,
                                 style: view.tone == 'brand' ? FilledButton.styleFrom(backgroundColor: Colors.white, foregroundColor: Brand.blue) : null,
-                                child: _busy == 'subscribe' ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)) : Text(view.action!),
+                                child: _busy == 'subscribe' || (approveId != null && _busy == '$approveId')
+                                    ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                                    : Text(view.action!, textAlign: TextAlign.center),
                               ),
                       ),
-                      if (view.actionKind == 'subscribe')
+                      if (view.actionKind != 'cancel')
                         Padding(
                           padding: const EdgeInsets.only(top: 6),
                           child: Text(paymentsOn ? view.caption ?? '' : 'Online payments are not switched on yet. Please contact us.', style: TextStyle(color: soft, fontSize: 12.5)),
@@ -643,7 +728,8 @@ class _BillingScreenState extends State<BillingScreen> {
                 PlanCard(
                   plan: p,
                   current: p['id'] == plan['id'],
-                  pending: p['id'] == (b['pendingPlan'] as Map?)?['id'],
+                  pending: p['id'] == pendingPlan?['id'],
+                  approve: approveId != null && p['id'] == approveId,
                   currentPrice: (plan['price'] as num?) ?? 0,
                   busy: _busy == '${p['id']}',
                   onChoose: AppConfig.store || !canPay || !paymentsOn || _busy != null ? null : () => _changePlan(p),
@@ -659,6 +745,13 @@ class _BillingScreenState extends State<BillingScreen> {
                 options: ((b['messageTopupOptions'] as List?) ?? const []).cast<num>(),
                 busy: _busy != null,
                 onTopup: AppConfig.store || !canPay || !paymentsOn ? null : _topupMessages,
+                note: !canPay
+                    ? 'Your workspace admin can top up.'
+                    : AppConfig.store
+                    ? 'To top up, open Billing on the WAMA CRM website.'
+                    : !paymentsOn
+                    ? 'Online payments are not switched on yet. Please contact us.'
+                    : null,
               ),
             ],
             // AI credit
@@ -741,6 +834,9 @@ class _BillingScreenState extends State<BillingScreen> {
                           const Divider(height: 28),
                           if (!canPay)
                             const Text('Your workspace admin can add AI credit.', style: TextStyle(color: Brand.muted))
+                          // Store builds: credit is bought on the web, as plans are
+                          else if (AppConfig.store)
+                            const Text('To add AI credit, open Billing on the WAMA CRM website.', style: TextStyle(color: Brand.muted))
                           else ...[
                             const Text('Add credit', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
                             const SizedBox(height: 8),
@@ -765,7 +861,7 @@ class _BillingScreenState extends State<BillingScreen> {
                             SizedBox(
                               width: double.infinity,
                               child: FilledButton(
-                                onPressed: AppConfig.store || !chosenValid || _busy != null || !paymentsOn ? null : () => _topup(chosen),
+                                onPressed: !chosenValid || _busy != null || !paymentsOn ? null : () => _topup(chosen),
                                 child: _busy == 'topup'
                                     ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
                                     : Text(chosenValid ? 'Add ${formatRupees(chosen)} of AI credit' : 'Choose an amount (₹$minTopup+)'),

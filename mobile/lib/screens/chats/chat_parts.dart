@@ -19,6 +19,16 @@ class ChatEntry {
 
 bool _mine(Map<String, dynamic> m) => m['sender_type'] != 'contact';
 
+/// A reply is kept as "[reply:<message id>]text" (the web does the same): the quoted message's id, and the words.
+(String?, String) replyParts(Object? body) {
+  final text = '${body ?? ''}';
+  final match = RegExp(r'^\[reply:([^\]]+)\]([\s\S]*)$').firstMatch(text);
+  return match == null ? (null, text) : (match.group(1), match.group(2)!);
+}
+
+/// A message's words as people read them (no reply marker in front).
+String messageText(Object? body) => replyParts(body).$2;
+
 /// "Today", "Yesterday", "Monday" (this week), "12 Nov 2026".
 String chatDayLabel(DateTime day, [DateTime? now]) {
   final today = DateUtils.dateOnly(now ?? DateTime.now());

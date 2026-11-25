@@ -628,6 +628,21 @@ class AppState extends ChangeNotifier {
         for (final item in store.outbox()) {
           if (!_sendable(item)) continue; // refused, or waits for what it depends on
           _tried.add(item.id);
+          // A chat message tried before whose answer never came back may have reached the customer already: look first
+          if (item.kind == 'message' && item.attempts > 0) {
+            final saved = await _messageSaved(item);
+            if (session != _session) return;
+            if (saved == null) {
+              stopped = true; // could not look (no internet): it waits for the next try
+              break;
+            }
+            if (saved) {
+              await store.removeOutbox(item.id);
+              _reloadChat(item);
+              sent++;
+              continue;
+            }
+          }
           // Cut off while sending last time (the app was closed): it may have reached the server already
           if (item.state == OutboxState.sending && !_safeToRepeat(item)) {
             await _fail(item, _notSure);
@@ -697,12 +712,22 @@ class AppState extends ChangeNotifier {
               await _fail(item, e.message);
               continue;
             }
+            // WhatsApp or Instagram refused a chat message: the server keeps it in the chat as not sent (with why), so it
+            // is not kept here too (it would show twice, and each Try again would add another)
+            if (item.kind == 'message' && e.status == 400 && await _messageSaved(item) == true) {
+              if (session != _session) return;
+              await store.removeOutbox(item.id);
+              _reloadChat(item);
+              continue;
+            }
             // The server broke while doing it: it may be done already, so a chat message is not sent twice on its own
             if (e.status >= 500 && !_safeToRepeat(item)) {
               await _fail(item, _notSure);
               continue;
             }
-            if (e.retryable && item.attempts < 6) {
+            // Only a counter action's 409 means "still being saved, try again"; anywhere else it is final (say, that
+            // number is already a contact), so it never holds up the changes behind it
+            if (e.retryable && (e.status != 409 || _doneOnce.contains(item.path)) && item.attempts < 6) {
               item.state = OutboxState.waiting;
               item.error = e.message;
               await store.putOutbox(item);
@@ -740,10 +765,50 @@ class AppState extends ChangeNotifier {
     }
   }
 
+  /// Is this chat message already in the chat on the server (sent, or refused by WhatsApp)? Null when the server could
+  /// not be reached to look. Matched by its words (or its file) among your messages since it was written.
+  Future<bool?> _messageSaved(OutboxItem item) async {
+    final conversationId = '${item.body['conversationId'] ?? ''}';
+    if (conversationId.isEmpty) return false;
+    final Map<String, dynamic> data;
+    try {
+      data = await backend.get('/api/messages', {if (orgId.isNotEmpty) 'organizationId': orgId, 'conversationId': conversationId, 'limit': '20'});
+    } on SlowServerException {
+      return null;
+    } on OfflineException {
+      _markOffline();
+      return null;
+    } on ApiException {
+      return false;
+    }
+    final text = '${item.body['message'] ?? ''}'.trim();
+    final media = '${item.body['mediaUrl'] ?? ''}';
+    // A little room for the phone's clock being off from the server's (not more: the same words sent on purpose a
+    // minute earlier must not count)
+    final since = item.createdAt.subtract(const Duration(seconds: 10));
+    for (final m in (data['messages'] as List? ?? const [])) {
+      if (m is! Map || m['sender_type'] == 'contact') continue;
+      final at = DateTime.tryParse('${m['created_at'] ?? ''}');
+      if (at == null || at.isBefore(since)) continue;
+      final body = '${m['body'] ?? ''}'.replaceFirst(RegExp(r'^\[reply:[^\]]*\]'), '').trim();
+      if (text.isNotEmpty ? body == text : media.isNotEmpty && m['media_url'] == media) return true;
+    }
+    return false;
+  }
+
+  /// Fetch a chat's messages again when the phone keeps a copy (a message the server saved in its own way).
+  void _reloadChat(OutboxItem item) {
+    final conversationId = '${item.body['conversationId'] ?? ''}';
+    final key = 'messages:$conversationId';
+    if (conversationId.isEmpty || store.savedAt(key) == null) return;
+    unawaited(load(key, '/api/messages', query: {'conversationId': conversationId, 'limit': '60'}, force: true));
+  }
+
   Future<void> retry(OutboxItem item) async {
+    // A chat message that may have gone already is looked for in the chat first (see _flush), so it is not sent twice
+    item.attempts = item.kind == 'message' && item.error == _notSure ? 1 : 0;
     item.state = OutboxState.waiting;
     item.error = null;
-    item.attempts = 0;
     _tried.remove(item.id);
     await store.putOutbox(item);
     notifyListeners();

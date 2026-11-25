@@ -82,6 +82,13 @@ class _ConnectorsScreenState extends State<ConnectorsScreen> {
 
   String _name(String key) => _connectors.firstWhere((c) => c.key == key, orElse: () => _Connector(key, key, '', const [], '')).name;
 
+  /// What the plan includes, in words: "Front Desk and E-commerce" (Starter has both, one at a time)
+  String get _included {
+    final names = [for (final c in _connectors) if (_only.contains(c.key)) c.name];
+    if (names.length < 2) return names.isEmpty ? 'other connectors' : names.first;
+    return '${names.sublist(0, names.length - 1).join(', ')} and ${names.last}';
+  }
+
   Future<void> _switch(_Connector c, bool on) async {
     final app = AppScope.read(context);
     final current = _current;
@@ -143,7 +150,24 @@ class _ConnectorsScreenState extends State<ConnectorsScreen> {
       backgroundColor: Brand.page,
       appBar: AppBar(title: const Text('Connectors')),
       body: _list == null
-          ? (_error.isNotEmpty ? EmptyState(icon: Icons.cloud_off, title: 'Could not load', text: _error) : const SkeletonCards())
+          ? (_error.isNotEmpty
+                ? ListView(
+                    children: [
+                      EmptyState(
+                        icon: Icons.cloud_off,
+                        title: 'Could not load',
+                        text: _error,
+                        action: FilledButton(
+                          onPressed: () {
+                            setState(() => _error = '');
+                            _load();
+                          },
+                          child: const Text('Try again'),
+                        ),
+                      ),
+                    ],
+                  )
+                : const SkeletonCards())
           : RefreshIndicator(
               onRefresh: _load,
               child: ListView(
@@ -225,7 +249,11 @@ class _ConnectorsScreenState extends State<ConnectorsScreen> {
             ),
           const Divider(height: 20),
           if (locked)
-            const Text('Your plan includes Front Desk only. Change plan in Billing to use this.', style: TextStyle(fontSize: 13, color: Brand.muted))
+            Text(
+              // Store builds change plan on the web only
+              'Your plan includes $_included. To use this, move to Growth or Pro ${AppConfig.store ? 'on the WAMA CRM website' : 'in Billing'}.',
+              style: const TextStyle(fontSize: 13, color: Brand.muted),
+            )
           else if (!admin)
             Text(on ? 'In use' : 'Not in use', style: const TextStyle(color: Brand.muted))
           else

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -270,7 +271,32 @@ Future<void> openLink(BuildContext context, String url) async {
   if (!ok && context.mounted) toast(context, 'Could not open $url');
 }
 
-String plain(Object e) => '$e'.replaceFirst('Exception: ', '');
+/// An error in plain words: no "Exception:" or "FormatException:" in front.
+String plain(Object e) => e is FormatException ? e.message : '$e'.replaceFirst(RegExp(r'^\w*Exception: '), '');
+
+/// One upload can carry about 4 MB. A bigger phone photo is made smaller first (longest side 1600, then
+/// 1200 pixels); if it is still too big, the owner is asked for a smaller one.
+const _uploadLimit = 4 * 1024 * 1024;
+Future<(List<int>, String)> fitPhoto(List<int> bytes, String name) async {
+  if (bytes.length <= _uploadLimit) return (bytes, name);
+  for (final side in const [1600, 1200]) {
+    try {
+      final buffer = await ui.ImmutableBuffer.fromUint8List(bytes is Uint8List ? bytes : Uint8List.fromList(bytes));
+      final codec = await ui.instantiateImageCodecWithSize(
+        buffer,
+        getTargetSize: (w, h) => w >= h ? ui.TargetImageSize(width: w > side ? side : null) : ui.TargetImageSize(height: h > side ? side : null),
+      );
+      final frame = await codec.getNextFrame();
+      final png = await frame.image.toByteData(format: ui.ImageByteFormat.png);
+      frame.image.dispose();
+      codec.dispose();
+      if (png != null && png.lengthInBytes <= _uploadLimit) return (png.buffer.asUint8List(), '${name.replaceFirst(RegExp(r'\.\w+$'), '')}.png');
+    } catch (_) {
+      break;
+    }
+  }
+  throw Exception('This photo is too big. Pick one under 4 MB.');
+}
 
 /// A product photo from the catalog, or a bag when there is none.
 class ProductImage extends StatelessWidget {
@@ -321,24 +347,42 @@ class _OrdersTabState extends State<OrdersTab> with AutomaticKeepAliveClientMixi
   bool _loading = false;
   String _error = '';
   int _ask = 0;
+  AppLifecycleListener? _life;
+
+  /// False while the Store tab is hidden behind another bottom-bar tab.
+  bool _visible = true;
+  DateTime _loadedAt = DateTime.now();
 
   @override
   bool get wantKeepAlive => true;
+
+  /// Someone can see the list: the tab is showing and the app is open.
+  bool get _watching {
+    final life = WidgetsBinding.instance.lifecycleState;
+    return _visible && (life == null || life == AppLifecycleState.resumed);
+  }
+
+  /// Back on the tab or in the app after a while: look again once.
+  void _catchUp() {
+    if (mounted && _watching && !_loading && DateTime.now().difference(_loadedAt) > const Duration(seconds: 30)) _load(_page, silent: true);
+  }
 
   @override
   void initState() {
     super.initState();
     _load(1);
-    // New carts and payments arrive from WhatsApp at any time: look again every 30 seconds
+    // New carts and payments arrive from WhatsApp at any time: look again every 30 seconds, only while someone can see it
     _refresh = Timer.periodic(const Duration(seconds: 30), (_) {
-      if (mounted && !_loading) _load(_page, silent: true);
+      if (mounted && !_loading && _watching) _load(_page, silent: true);
     });
+    _life = AppLifecycleListener(onResume: _catchUp);
   }
 
   @override
   void dispose() {
     _debounce?.cancel();
     _refresh?.cancel();
+    _life?.dispose();
     super.dispose();
   }
 
@@ -356,6 +400,7 @@ class _OrdersTabState extends State<OrdersTab> with AutomaticKeepAliveClientMixi
         _pages = (pagination['pages'] as num?)?.toInt() ?? 1;
         _total = (pagination['total'] as num?)?.toInt() ?? 0;
         _error = '';
+        _loadedAt = DateTime.now();
       });
       if (data['summary'] is Map) widget.store.setSummary(Map<String, dynamic>.from(data['summary'] as Map));
     } catch (e) {
@@ -378,6 +423,10 @@ class _OrdersTabState extends State<OrdersTab> with AutomaticKeepAliveClientMixi
   @override
   Widget build(BuildContext context) {
     super.build(context);
+    // A hidden bottom-bar tab (IndexedStack) reports itself here; this rebuilds when it shows again
+    final visible = Visibility.of(context);
+    if (visible && !_visible) WidgetsBinding.instance.addPostFrameCallback((_) => _catchUp());
+    _visible = visible;
     final summary = widget.store.summary;
     final orders = _orders;
     final revenue = (summary?['revenue'] as List? ?? const []);
@@ -702,17 +751,36 @@ class _OrderScreenState extends State<OrderScreen> {
     }
   }
 
-  Future<void> _refunded() async {
-    final ok = await confirmAction(
-      context,
-      title: 'Mark as refunded?',
-      message:
-          'Confirm that ${formatMoney(_order['total_amount'], _order['currency'])} has gone back to the customer through your payment provider. This only records it here; it does not move any money.',
-      yes: 'Yes, it is refunded',
-    );
-    if (!ok) return;
-    final data = await _patch({'paymentStatus': 'refunded'}, 'refund');
-    if (data != null && mounted) toast(context, 'Order #${_order['order_number']} is marked as refunded.');
+  /// Bumped by pull-to-refresh so the courier, returns and invoice boxes load again too.
+  int _reloads = 0;
+
+  /// Read the order again (a courier update or a refund can change its status and payment on the server).
+  Future<void> _reload({bool boxes = false}) async {
+    if (!mounted) return;
+    final app = AppScope.read(context);
+    try {
+      final data = await app.backend.get('/api/commerce/orders', {'organizationId': app.orgId, 'search': '${_order['order_number']}', 'limit': '100'});
+      final found = (data['orders'] as List? ?? const []).whereType<Map>().where((o) => o['id'] == _order['id']).firstOrNull;
+      if (!mounted) return;
+      final before = _address;
+      setState(() {
+        if (found != null) {
+          _order = Map<String, dynamic>.from(found);
+          _changed = true;
+          // Courier and tracking boxes follow the saved values unless the owner is typing new ones
+          if (_carrier.text.trim() == '${before['carrier'] ?? ''}') _carrier.text = '${_address['carrier'] ?? ''}';
+          if (_tracking.text.trim() == '${before['tracking_number'] ?? ''}') _tracking.text = '${_address['tracking_number'] ?? ''}';
+        }
+        if (boxes) _reloads++;
+      });
+    } catch (e) {
+      if (mounted && boxes) toast(context, plain(e));
+    }
+  }
+
+  void _boxChanged() {
+    _changed = true;
+    _reload();
   }
 
   void _openChat() {
@@ -751,6 +819,9 @@ class _OrderScreenState extends State<OrderScreen> {
     final trackingChanged = _tracking.text.trim() != '${address['tracking_number'] ?? ''}' || _carrier.text.trim() != '${address['carrier'] ?? ''}';
     final flag = paymentFlag(order);
     final canEdit = app.can('write');
+    // Part may already be refunded from "Returns and refunds"
+    final total = (order['total_amount'] is num ? order['total_amount'] as num : num.tryParse('${order['total_amount']}') ?? 0);
+    final refundLeft = total - (num.tryParse('${address['refunded_amount'] ?? 0}') ?? 0);
     Widget section(String title, List<Widget> children, {Widget? trailing}) => Padding(
       padding: const EdgeInsets.only(bottom: 10),
       child: Panel(
@@ -796,7 +867,9 @@ class _OrderScreenState extends State<OrderScreen> {
       },
       child: Scaffold(
         appBar: AppBar(title: Text('Order #${order['order_number']}')),
-        body: ListView(
+        body: RefreshIndicator(
+          onRefresh: () => _reload(boxes: true),
+          child: ListView(
           padding: const EdgeInsets.fromLTRB(12, 12, 12, 32),
           children: [
             Padding(
@@ -817,8 +890,8 @@ class _OrderScreenState extends State<OrderScreen> {
               NoteBox(
                 attention: true,
                 icon: Icons.error_outline,
-                text: 'Refund ${formatMoney(order['total_amount'], currency)}. The customer paid for this order and it was canceled. Return the money through your payment provider.',
-                action: canEdit ? OutlinedButton(onPressed: _busy != null ? null : _refunded, child: const Text('I have refunded it')) : null,
+                text:
+                    'Refund ${formatMoney(refundLeft > 0 ? refundLeft : total, currency)}. The customer paid for this order and it was canceled.${canEdit ? ' Tap Refund under “Returns and refunds” below.' : ''}',
               ),
             section('Customer', [
               Text(customerName(order), style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
@@ -895,9 +968,9 @@ class _OrderScreenState extends State<OrderScreen> {
                   child: Text('A payment request is waiting in the customer\'s chat (reference ${order['meta_payment_reference']}).', style: const TextStyle(color: Brand.muted, fontSize: 13)),
                 ),
             ]),
-            CourierBox(key: ValueKey('courier:${order['id']}:${order['status']}'), order: order, onChanged: () => _changed = true),
-            OrderReturnsBox(key: ValueKey('returns:${order['id']}:${order['status']}:${order['payment_status']}'), order: order, onChanged: () => _changed = true),
-            OrderInvoiceBox(key: ValueKey('invoice:${order['id']}:${order['status']}'), order: order),
+            CourierBox(key: ValueKey('courier:${order['id']}:${order['status']}:$_reloads'), order: order, onChanged: _boxChanged),
+            OrderReturnsBox(key: ValueKey('returns:${order['id']}:${order['status']}:${order['payment_status']}:$_reloads'), order: order, onChanged: _boxChanged),
+            OrderInvoiceBox(key: ValueKey('invoice:${order['id']}:${order['status']}:$_reloads'), order: order),
             section(
               'Deliver to',
               [
@@ -1035,6 +1108,7 @@ class _OrderScreenState extends State<OrderScreen> {
                 ),
               ),
           ],
+          ),
         ),
       ),
     );

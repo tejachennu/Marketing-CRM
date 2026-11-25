@@ -26,6 +26,16 @@ class _StoreSettingsTabState extends State<StoreSettingsTab> with AutomaticKeepA
       org['enable_commerce'] != true && '${org['meta_catalog_id'] ?? ''}'.isEmpty && '${org['commerce_gateway_config_name'] ?? ''}'.isEmpty && '${org['commerce_address_flow_id'] ?? ''}'.isEmpty;
 
   late bool _on = _neverSetUp ? true : org['enable_commerce'] != false;
+
+  /// The saved value _on was taken from. Go live → Switch on can change it while this tab stays open.
+  late Object? _onFrom = org['enable_commerce'];
+  void _followSaved() {
+    final saved = org['enable_commerce'];
+    if (saved == _onFrom) return;
+    _onFrom = saved;
+    _on = saved != false;
+    _neverSetUp = false;
+  }
   late bool _assistant = org['commerce_ai_assistant'] != false;
   late String _catalogId = '${org['meta_catalog_id'] ?? ''}';
   late String _gateway = supportedGateways.contains(org['commerce_payment_gateway']) ? '${org['commerce_payment_gateway']}' : 'razorpay';
@@ -267,6 +277,7 @@ class _StoreSettingsTabState extends State<StoreSettingsTab> with AutomaticKeepA
   }
 
   Future<void> _save() async {
+    _followSaved();
     final shipping = num.tryParse(_shipping.text.trim());
     final freeAbove = num.tryParse(_freeAbove.text.trim());
     final express = num.tryParse(_express.text.trim());
@@ -302,6 +313,7 @@ class _StoreSettingsTabState extends State<StoreSettingsTab> with AutomaticKeepA
   @override
   Widget build(BuildContext context) {
     super.build(context);
+    _followSaved();
     final currency = '${org['currency'] ?? 'INR'}';
     final info = _catalogInfo;
     final catalogs = [

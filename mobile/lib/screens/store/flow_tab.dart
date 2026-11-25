@@ -205,7 +205,7 @@ class _FlowTabState extends State<FlowTab> with AutomaticKeepAliveClientMixin {
                   icon: Icons.local_shipping_outlined,
                   title: '5. Your team ships it',
                   last: true,
-                  note: 'Orders → To ship → Mark as shipped (with courier and tracking), then Mark as delivered. The customer is messaged at each step. For Cash on Delivery, Mark as paid once the cash is collected.',
+                  note: 'Orders → To ship → Mark as shipped (with courier and tracking), then Mark as delivered. The customer is messaged at each step. For Cash on Delivery, Mark as delivered once the cash is collected; that records it as paid.',
                 ),
               ],
             ),

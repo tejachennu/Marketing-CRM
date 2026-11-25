@@ -88,6 +88,7 @@ const paymentMethodLabels = {
   'manual': 'Marked as paid by your team',
   'razorpay_link': 'Payment link',
   'razorpay': 'Paid online (Razorpay)',
+  'stripe': 'Paid online (Stripe)',
   'cash': 'Cash',
   'upi': 'UPI',
   'card': 'Card',

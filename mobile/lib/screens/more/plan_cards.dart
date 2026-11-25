@@ -6,12 +6,16 @@ import '../../ui/theme.dart';
 /// One plan, as on the web's plan picker: name, price, what it is for, what it includes (tap to see
 /// all), and the button to move to it. [action] is null in store builds (plans are bought on the web).
 class PlanCard extends StatelessWidget {
-  const PlanCard({super.key, required this.plan, required this.current, required this.pending, required this.currentPrice, this.busy = false, this.onChoose});
+  const PlanCard({super.key, required this.plan, required this.current, required this.pending, required this.currentPrice, this.approve = false, this.busy = false, this.onChoose});
 
   final Map plan;
   final bool current;
   final bool pending;
   final num currentPrice;
+
+  /// The change to this plan still needs its monthly auto-pay approved (Razorpay was closed half way): the button
+  /// stays on to approve it, even when this is already the plan in use (an upgrade paid for this month)
+  final bool approve;
   final bool busy;
   final VoidCallback? onChoose;
 
@@ -19,7 +23,9 @@ class PlanCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final price = (plan['price'] as num?) ?? 0;
     final features = ((plan['features'] as List?) ?? const []).map((f) => '$f').toList();
-    final label = current
+    final label = approve
+        ? 'Approve monthly auto-pay'
+        : current
         ? 'Your plan'
         : pending
         ? 'Starts on your bill date'
@@ -110,7 +116,7 @@ class PlanCard extends StatelessWidget {
                   child: SizedBox(
                     width: double.infinity,
                     child: FilledButton(
-                      onPressed: current || pending || busy ? null : onChoose,
+                      onPressed: busy || (!approve && (current || pending)) ? null : onChoose,
                       child: busy ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : Text(label, textAlign: TextAlign.center),
                     ),
                   ),
@@ -125,7 +131,7 @@ class PlanCard extends StatelessWidget {
 
 /// The message wallet: booking messages from WAMA's number, paid at Meta's price.
 class MessageWalletCard extends StatelessWidget {
-  const MessageWalletCard({super.key, required this.balance, required this.price, required this.history, required this.options, this.busy = false, this.onTopup});
+  const MessageWalletCard({super.key, required this.balance, required this.price, required this.history, required this.options, this.busy = false, this.onTopup, this.note});
 
   final num balance;
   final num price;
@@ -133,6 +139,9 @@ class MessageWalletCard extends StatelessWidget {
   final List<num> options;
   final bool busy;
   final void Function(num amount)? onTopup;
+
+  /// Why there are no top-up buttons (staff, store builds, payments not on), shown in their place
+  final String? note;
 
   @override
   Widget build(BuildContext context) {
@@ -174,6 +183,9 @@ class MessageWalletCard extends StatelessWidget {
               runSpacing: 8,
               children: [for (final amount in options) OutlinedButton(onPressed: busy ? null : () => onTopup!(amount), child: Text('+ ${formatRupees(amount)}'))],
             ),
+          ] else if (note != null) ...[
+            const SizedBox(height: 10),
+            Text(note!, style: const TextStyle(color: Brand.textSoft, fontSize: 13)),
           ],
           const SizedBox(height: 8),
           const Text('A message that does not reach the customer is not charged.', style: TextStyle(color: Brand.muted, fontSize: 12.5)),

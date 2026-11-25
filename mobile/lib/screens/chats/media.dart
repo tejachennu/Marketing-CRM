@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 
@@ -94,39 +95,82 @@ class ChatMedia {
 
   Uint8List? _bytes;
 
+  /// Files already read out of their messages, newest last: a chat that redraws (a new message, a tick) shows the
+  /// same photo again without decoding it again. A few are kept; customer files can be several MB each.
+  static final _read = <String, Uint8List>{};
+
+  /// [keep]: remember it (photos drawn in the chat); a video or document read once to open it is not kept.
+  static Uint8List _fromData(String source, {bool keep = true}) {
+    final hit = _read.remove(source);
+    if (hit != null) return _read[source] = hit;
+    final comma = source.indexOf(',');
+    if (comma < 0) throw Exception('This file could not be read.');
+    final data = source.substring(comma + 1);
+    final bytes = source.substring(0, comma).contains(';base64') ? base64Decode(data) : Uint8List.fromList(utf8.encode(Uri.decodeComponent(data)));
+    if (!keep) return bytes;
+    _read[source] = bytes;
+    while (_read.length > 12) {
+      _read.remove(_read.keys.first);
+    }
+    return bytes;
+  }
+
+  /// Ready at once (no download needed).
+  bool get ready => _bytes != null || isData;
+
   /// The file itself: read from the message, or downloaded from its link.
   Future<Uint8List> bytes() async {
     if (_bytes != null) return _bytes!;
-    if (isData) {
-      final comma = source.indexOf(',');
-      if (comma < 0) throw Exception('This file could not be read.');
-      final data = source.substring(comma + 1);
-      return _bytes = source.substring(0, comma).contains(';base64') ? base64Decode(data) : Uint8List.fromList(utf8.encode(Uri.decodeComponent(data)));
+    if (isData) return _bytes = _fromData(source, keep: isImage);
+    final http.Response res;
+    try {
+      res = await http.get(Uri.parse(source)).timeout(const Duration(seconds: 30));
+    } on TimeoutException {
+      throw Exception('The file is taking too long to download. Check the internet and try again.');
+    } catch (_) {
+      throw Exception('The file could not be downloaded. Check the internet and try again.');
     }
-    final res = await http.get(Uri.parse(source));
     if (res.statusCode != 200) throw Exception('The file could not be downloaded (${res.statusCode}).');
     return _bytes = res.bodyBytes;
   }
 
-  /// The photo shown in the chat (a data photo is drawn from the message itself).
-  Widget image({double? height, BoxFit fit = BoxFit.cover, Widget? onError}) {
+  /// The photo shown in the chat (a data photo is drawn from the message itself). [cacheWidth]: the width it is drawn
+  /// at on screen, in pixels, so a big photo is kept in memory at that size.
+  Widget image({double? height, BoxFit fit = BoxFit.cover, Widget? onError, int? cacheWidth}) {
     final fallback = onError ?? const SizedBox.shrink();
     if (isData) {
       try {
-        final comma = source.indexOf(',');
-        return Image.memory(base64Decode(source.substring(comma + 1)), height: height, fit: fit, gaplessPlayback: true, errorBuilder: (_, _, _) => fallback);
+        return Image.memory(_fromData(source), height: height, fit: fit, cacheWidth: cacheWidth, gaplessPlayback: true, errorBuilder: (_, _, _) => fallback);
       } catch (_) {
         return fallback;
       }
     }
-    return Image.network(source, height: height, fit: fit, errorBuilder: (_, _, _) => fallback);
+    return Image.network(source, height: height, fit: fit, cacheWidth: cacheWidth, errorBuilder: (_, _, _) => fallback);
+  }
+}
+
+/// A file is being fetched to open or save: further taps wait for it instead of starting it again.
+bool _fetching = false;
+
+Future<Uint8List?> _fetch(BuildContext context, ChatMedia media) async {
+  if (_fetching) {
+    toast(context, 'Getting the file…');
+    return null;
+  }
+  if (!media.ready) toast(context, 'Getting the file…');
+  _fetching = true;
+  try {
+    return await media.bytes();
+  } finally {
+    _fetching = false;
   }
 }
 
 /// Save the file on the phone (the phone asks where), with a note of how it went.
 Future<void> saveMedia(BuildContext context, ChatMedia media, DateTime? at) async {
   try {
-    final data = await media.bytes();
+    final data = await _fetch(context, media);
+    if (data == null || !context.mounted) return;
     final path = await FilePicker.saveFile(dialogTitle: 'Save ${media.label.toLowerCase()}', fileName: media.fileName(at), bytes: data);
     if (context.mounted && path != null) toast(context, 'Saved.');
   } catch (e) {
@@ -137,7 +181,8 @@ Future<void> saveMedia(BuildContext context, ChatMedia media, DateTime? at) asyn
 /// Open it with another app (PDF viewer, Gallery, Drive, WhatsApp…) through the phone's share sheet.
 Future<void> openMedia(BuildContext context, ChatMedia media, DateTime? at) async {
   try {
-    final data = await media.bytes();
+    final data = await _fetch(context, media);
+    if (data == null || !context.mounted) return;
     await SharePlus.instance.share(
       ShareParams(
         files: [XFile.fromData(data, mimeType: media.mime, name: media.fileName(at))],

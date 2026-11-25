@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../data/app_state.dart';
+import '../../data/backend.dart';
 import '../../ui/theme.dart';
 import '../../ui/widgets.dart';
 
@@ -53,7 +54,8 @@ class _ChatTicketsScreenState extends State<ChatTicketsScreen> {
     } catch (e) {
       if (mounted) {
         setState(() {
-          _error = '$e';
+          // The server's or the app's own words (no internet), never a raw error
+          _error = e is ApiException || e is OfflineException ? '$e' : 'Something went wrong. Try again in a minute.';
           _loading = false;
         });
       }
@@ -86,7 +88,25 @@ class _ChatTicketsScreenState extends State<ChatTicketsScreen> {
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : _error.isNotEmpty
-          ? EmptyState(icon: Icons.settings_outlined, title: 'Settings could not be loaded', text: _error)
+          ? ListView(
+              children: [
+                EmptyState(
+                  icon: Icons.settings_outlined,
+                  title: 'Settings could not be loaded',
+                  text: _error,
+                  action: FilledButton(
+                    onPressed: () {
+                      setState(() {
+                        _error = '';
+                        _loading = true;
+                      });
+                      _load();
+                    },
+                    child: const Text('Try again'),
+                  ),
+                ),
+              ],
+            )
           : ListView(
               padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
               children: [

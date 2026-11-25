@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../data/app_state.dart';
@@ -25,6 +27,12 @@ List<Map<String, dynamic>> contactsOf(AppState app) {
   return [...waiting.reversed, ...saved];
 }
 
+/// The last 10 digits of a number, as the server compares them (with or without the country code).
+String _phoneKey(Object? phone) {
+  final digits = '${phone ?? ''}'.replaceAll(RegExp(r'\D'), '');
+  return digits.length > 10 ? digits.substring(digits.length - 10) : digits;
+}
+
 /// Contacts, searchable offline; new ones are saved on the phone and sync later.
 class ContactsScreen extends StatefulWidget {
   const ContactsScreen({super.key});
@@ -35,6 +43,46 @@ class ContactsScreen extends StatefulWidget {
 class _ContactsScreenState extends State<ContactsScreen> {
   String _query = '';
   String? _tag;
+
+  /// The phone keeps the newest 500 contacts; a search also asks the server when there are more.
+  List<Map<String, dynamic>> _found = const [];
+  bool _searching = false;
+  Timer? _wait;
+
+  @override
+  void dispose() {
+    _wait?.cancel();
+    super.dispose();
+  }
+
+  /// All the business's contacts, as the server counts them.
+  int _total(AppState app) => ((app.cached('contacts')?['count'] as num?) ?? 0).toInt();
+
+  void _search(AppState app, String value) {
+    final q = value.trim();
+    setState(() {
+      _query = q;
+      _found = const [];
+    });
+    _wait?.cancel();
+    final saved = (app.cached('contacts')?['contacts'] as List? ?? const []).length;
+    // Every contact is on the phone already: the search there is enough
+    if (q.length < 2 || _total(app) <= saved) return;
+    _wait = Timer(const Duration(milliseconds: 400), () => _searchServer(app, q));
+  }
+
+  Future<void> _searchServer(AppState app, String q) async {
+    if (!app.online || !mounted) return;
+    setState(() => _searching = true);
+    try {
+      final data = await app.backend.get('/api/contacts', {'organizationId': app.orgId, 'search': q, 'limit': '50'});
+      if (mounted && q == _query) setState(() => _found = [for (final c in (data['contacts'] as List? ?? const [])) Map<String, dynamic>.from(c as Map)]);
+    } catch (_) {
+      // The contacts on the phone are still searched
+    } finally {
+      if (mounted) setState(() => _searching = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -51,9 +99,17 @@ class _ContactsScreenState extends State<ContactsScreen> {
       if (q.isEmpty) return true;
       return contactName(c).toLowerCase().contains(q) || (digits.length >= 3 && '${c['phone_number'] ?? ''}'.replaceAll(RegExp(r'\D'), '').contains(digits));
     }).toList();
+    // Contacts the server found for the search that are not on the phone
+    if (q.isNotEmpty) {
+      final ids = {for (final c in shown) c['id']};
+      shown.addAll(_found.where((c) => !ids.contains(c['id']) && (_tag == null || (c['tags'] as List? ?? const []).contains(_tag))));
+    }
+    // The server's count (the phone keeps only the newest ones), plus new ones still waiting to sync
+    final waiting = all.where((c) => c['_waiting'] == true).length;
+    final count = _total(app) + waiting > all.length ? _total(app) + waiting : all.length;
     return Scaffold(
       backgroundColor: Colors.white,
-      appBar: AppBar(title: Text('Contacts · ${all.length}')),
+      appBar: AppBar(title: Text('Contacts · $count')),
       floatingActionButton: app.can('write')
           ? FloatingActionButton.extended(
               heroTag: 'fab-contacts',
@@ -67,7 +123,8 @@ class _ContactsScreenState extends State<ContactsScreen> {
       body: Column(
         children: [
           const SyncBanner(cacheKey: 'contacts'),
-          SearchField(hint: 'Search name or number', onChanged: (v) => setState(() => _query = v.trim())),
+          SearchField(hint: 'Search name or number', onChanged: (v) => _search(app, v)),
+          if (_searching) const LinearProgressIndicator(minHeight: 2),
           if (tags.isNotEmpty)
             FilterChips(
               children: [
@@ -206,9 +263,9 @@ class _NewContactScreenState extends State<NewContactScreen> {
             onPressed: () async {
               setState(() => _tried = true);
               if (_firstError != null || _phoneErr != null || _emailErr != null) return;
-              // The same number twice makes two chats for one customer
-              final digits = _phone.replaceAll(RegExp(r'\D'), '');
-              final already = contactsOf(app).cast<Map<String, dynamic>?>().firstWhere((c) => '${c!['phone_number'] ?? ''}'.replaceAll(RegExp(r'\D'), '') == digits, orElse: () => null);
+              // The same number twice makes two chats for one customer (compared by the last 10 digits, like the server)
+              final key = _phoneKey(_phone);
+              final already = contactsOf(app).cast<Map<String, dynamic>?>().firstWhere((c) => key.isNotEmpty && _phoneKey(c!['phone_number']) == key, orElse: () => null);
               if (already != null) return toast(context, '${contactName(already)} already has this number.');
               final name = '${_first.text.trim()} ${_last.text.trim()}'.trim();
               await app.enqueue(

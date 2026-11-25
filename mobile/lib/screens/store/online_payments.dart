@@ -4,6 +4,7 @@ import '../../data/app_state.dart';
 import '../../ui/skeleton.dart';
 import '../../ui/theme.dart';
 import '../../ui/widgets.dart';
+import 'store_screen.dart' show confirmAction;
 
 /// The business's own online payment accounts, as on the web (Store → Website and Front Desk → Website and
 /// booking): Razorpay (UPI, cards, net banking) and Stripe (cards, Apple Pay, Google Pay), and which one customers
@@ -76,6 +77,19 @@ class _OnlinePaymentsScreenState extends State<OnlinePaymentsScreen> {
     }
   }
 
+  /// Ask first: keys go at once, customers cannot pay online, and the secret has to be found again.
+  Future<void> _disconnect(String gateway, Future<Map<String, dynamic>> Function() step) async {
+    final name = gateway == 'stripe' ? 'Stripe' : 'Razorpay';
+    final ok = await confirmAction(
+      context,
+      title: 'Disconnect $name?',
+      message: 'Customers cannot pay online with $name until you connect it again, and you will need your ${gateway == 'stripe' ? 'secret key' : 'Key Secret'} again.',
+      yes: 'Disconnect',
+      destructive: true,
+    );
+    if (ok && mounted) await _run('$gateway-off', step, '$name disconnected.');
+  }
+
   @override
   Widget build(BuildContext context) {
     final app = AppScope.of(context);
@@ -117,7 +131,7 @@ class _OnlinePaymentsScreenState extends State<OnlinePaymentsScreen> {
                   onSave: _busy.isNotEmpty
                       ? null
                       : () => _run('razorpay', () => put({'keyId': _keyId.text.trim(), if (_keySecret.text.trim().isNotEmpty) 'keySecret': _keySecret.text.trim(), if (_rzpHook.text.trim().isNotEmpty) 'webhookSecret': _rzpHook.text.trim()}), 'Razorpay connected.'),
-                  onDisconnect: _busy.isNotEmpty ? null : () => _run('razorpay-off', () => del('razorpay'), 'Razorpay disconnected.'),
+                  onDisconnect: _busy.isNotEmpty ? null : () => _disconnect('razorpay', () => del('razorpay')),
                 ),
                 const SizedBox(height: 10),
                 _gateway(
@@ -144,7 +158,7 @@ class _OnlinePaymentsScreenState extends State<OnlinePaymentsScreen> {
                   onSave: _busy.isNotEmpty
                       ? null
                       : () => _run('stripe', () => put({'gateway': 'stripe', if (_stripeKey.text.trim().isNotEmpty) 'secretKey': _stripeKey.text.trim(), if (_stripeHook.text.trim().isNotEmpty) 'webhookSecret': _stripeHook.text.trim()}), 'Stripe connected.'),
-                  onDisconnect: _busy.isNotEmpty ? null : () => _run('stripe-off', () => del('stripe'), 'Stripe disconnected.'),
+                  onDisconnect: _busy.isNotEmpty ? null : () => _disconnect('stripe', () => del('stripe')),
                 ),
                 if (gateways.length > 1) ...[
                   const SizedBox(height: 16),

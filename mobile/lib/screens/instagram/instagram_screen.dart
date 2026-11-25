@@ -5,12 +5,13 @@ import 'package:flutter/material.dart';
 
 import '../../config.dart';
 import '../../data/app_state.dart';
+import '../../data/backend.dart';
 import '../../data/format.dart';
 import '../../ui/skeleton.dart';
 import '../../ui/theme.dart';
 import '../../ui/widgets.dart';
 import '../chats/chats_screen.dart';
-import '../store/store_screen.dart' show confirmAction, openLink, plain;
+import '../store/store_screen.dart' show confirmAction, fitPhoto, openLink, plain;
 
 /// Instagram, as its own section (owner's rule: never mixed with WhatsApp chats). Like the web's Instagram menu:
 /// Chats (DMs), Comments, Posts and Auto replies. Connecting the account is done once on the web (Facebook login).
@@ -37,6 +38,13 @@ class _InstagramScreenState extends State<InstagramScreen> {
 
   Future<void> _load() async {
     final app = AppScope.read(context);
+    // Trying again: the loading shapes, not the old error
+    if (_error.isNotEmpty) {
+      setState(() {
+        _error = '';
+        _loaded = false;
+      });
+    }
     try {
       final data = await app.backend.get('/api/instagram', {'organizationId': app.orgId});
       if (mounted) setState(() => _info = data);
@@ -63,18 +71,24 @@ class _InstagramScreenState extends State<InstagramScreen> {
             : ListView(
                 padding: const EdgeInsets.all(16),
                 children: [
-                  EmptyState(
-                    icon: Icons.camera_alt_outlined,
-                    title: 'Connect your Instagram',
-                    text: _error.isNotEmpty
-                        ? _error
-                        : 'Connect it once from WAMA CRM on the web (Settings → Instagram, with your Facebook login). Your Instagram messages, comments and posts then show here, apart from WhatsApp.',
-                    action: FilledButton.icon(
-                      onPressed: () => openLink(context, '${AppConfig.apiBase}/dashboard/settings?tab=instagram'),
-                      icon: const Icon(Icons.open_in_new, size: 18),
-                      label: const Text('Open settings on the web'),
+                  if (_error.isNotEmpty)
+                    EmptyState(
+                      icon: Icons.cloud_off,
+                      title: 'Could not check Instagram',
+                      text: _error,
+                      action: FilledButton(onPressed: _load, child: const Text('Try again')),
+                    )
+                  else
+                    EmptyState(
+                      icon: Icons.camera_alt_outlined,
+                      title: 'Connect your Instagram',
+                      text: 'Connect it once from WAMA CRM on the web (Settings → Instagram, with your Facebook login). Your Instagram messages, comments and posts then show here, apart from WhatsApp.',
+                      action: FilledButton.icon(
+                        onPressed: () => openLink(context, '${AppConfig.apiBase}/dashboard/settings?tab=instagram'),
+                        icon: const Icon(Icons.open_in_new, size: 18),
+                        label: const Text('Open settings on the web'),
+                      ),
                     ),
-                  ),
                 ],
               ),
       );
@@ -109,7 +123,15 @@ class _InstagramScreenState extends State<InstagramScreen> {
             const _IgChats(),
             _IgComments(onChanged: _load),
             const _IgPosts(),
-            _IgAutoReplies(saved: _info?['automation'] as Map?),
+            _IgAutoReplies(
+              saved: _info?['automation'] as Map?,
+              error: _info == null ? _error : '',
+              onRetry: _load,
+              // Kept here too, so the tab shows what was saved when you come back to it
+              onSaved: (automation) {
+                if (mounted) setState(() => _info = {...?_info, 'automation': automation});
+              },
+            ),
           ],
         ),
       ),
@@ -261,7 +283,9 @@ class _IgCommentsState extends State<_IgComments> {
       showDragHandle: true,
       builder: (context) => Padding(
         padding: EdgeInsets.fromLTRB(16, 0, 16, MediaQuery.of(context).viewInsets.bottom + 16),
-        child: Column(
+        // Scrolls when the keyboard leaves little room, so the button is never cut off
+        child: SingleChildScrollView(
+          child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
@@ -284,6 +308,7 @@ class _IgCommentsState extends State<_IgComments> {
               child: Text(private ? 'Send message' : 'Reply'),
             ),
           ],
+          ),
         ),
       ),
     );
@@ -496,12 +521,21 @@ class _NewIgPostScreenState extends State<NewIgPostScreen> {
   bool _posting = false;
   bool _posted = false;
 
+  /// Kept from the start: the screen can no longer look it up while it closes.
+  AppState? _app;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _app = AppScope.read(context);
+  }
+
   @override
   void dispose() {
     // Photos uploaded but not posted are removed from our storage
-    if (!_posted && _photos.isNotEmpty) {
-      final app = AppScope.read(context);
-      app.backend.send('DELETE', '/api/instagram/photos', {'organizationId': app.orgId, 'urls': _photos}).catchError((_) => <String, dynamic>{});
+    final app = _app;
+    if (!_posted && _photos.isNotEmpty && app != null) {
+      app.backend.send('DELETE', '/api/instagram/photos', {'organizationId': app.orgId, 'urls': [..._photos]}).catchError((_) => <String, dynamic>{});
     }
     _caption.dispose();
     super.dispose();
@@ -514,9 +548,12 @@ class _NewIgPostScreenState extends State<NewIgPostScreen> {
     setState(() => _uploading = true);
     try {
       for (final f in picked.take(10 - _photos.length)) {
-        final bytes = await f.readAsBytes();
-        if (bytes.length > 15 * 1024 * 1024) throw Exception('${f.name} is too big (15 MB at most).');
-        final saved = await app.uploadFile(bytes, f.name, path: '/api/instagram/photos', fields: {'organizationId': app.orgId});
+        // The size first, before reading it (a huge file would not fit in the phone's memory)
+        final size = f.lengthSync() ?? await f.length() ?? 0;
+        if (size > 30 * 1024 * 1024) throw Exception('${f.name} is too big. Pick a photo under 4 MB.');
+        // One upload from the app can carry about 4 MB: a bigger phone photo is made smaller first
+        final (bytes, name) = await fitPhoto(await f.readAsBytes(), f.name);
+        final saved = await app.uploadFile(bytes, name, path: '/api/instagram/photos', fields: {'organizationId': app.orgId});
         if (mounted) setState(() => _photos.add('${saved['url']}'));
       }
     } catch (e) {
@@ -534,6 +571,12 @@ class _NewIgPostScreenState extends State<NewIgPostScreen> {
       _posted = true;
       if (!mounted) return;
       toast(context, 'Posted on Instagram.');
+      Navigator.pop(context, true);
+    } on SlowServerException {
+      // Instagram is still putting it up: keep the photos (they are being used), and do not offer to post it again
+      _posted = true;
+      if (!mounted) return;
+      toast(context, 'Still posting. Check Posts in a minute before trying again.');
       Navigator.pop(context, true);
     } catch (e) {
       if (mounted) toast(context, plain(e));
@@ -625,8 +668,13 @@ class _NewIgPostScreenState extends State<NewIgPostScreen> {
 // ── Auto replies ──
 
 class _IgAutoReplies extends StatefulWidget {
-  const _IgAutoReplies({required this.saved});
+  const _IgAutoReplies({required this.saved, this.error = '', this.onRetry, this.onSaved});
   final Map? saved;
+
+  /// Why the settings could not be loaded (empty while loading or loaded).
+  final String error;
+  final VoidCallback? onRetry;
+  final ValueChanged<Map<String, dynamic>>? onSaved;
   @override
   State<_IgAutoReplies> createState() => _IgAutoRepliesState();
 }
@@ -676,16 +724,16 @@ class _IgAutoRepliesState extends State<_IgAutoReplies> {
   Future<void> _save() async {
     final a = _a!;
     setState(() => _saving = true);
+    final automation = <String, dynamic>{
+      'dmAi': a['dmAi'],
+      'commentAi': a['commentAi'],
+      'rules': [for (final r in a['rules'] as List) Map<String, dynamic>.from(r as Map)],
+      'everyComment': {'on': a['everyOn'], 'reply': _everyReply.text.trim(), 'dm': _everyDm.text.trim()},
+      'hideWords': _hide.text.split(',').map((w) => w.trim()).where((w) => w.isNotEmpty).toList(),
+    };
     try {
-      await AppScope.read(context).ask('/api/instagram', {
-        'automation': {
-          'dmAi': a['dmAi'],
-          'commentAi': a['commentAi'],
-          'rules': a['rules'],
-          'everyComment': {'on': a['everyOn'], 'reply': _everyReply.text.trim(), 'dm': _everyDm.text.trim()},
-          'hideWords': _hide.text.split(',').map((w) => w.trim()).where((w) => w.isNotEmpty).toList(),
-        },
-      }, method: 'PUT');
+      await AppScope.read(context).ask('/api/instagram', {'automation': automation}, method: 'PUT');
+      widget.onSaved?.call(automation);
       if (mounted) toast(context, 'Auto replies saved.');
     } catch (e) {
       if (mounted) toast(context, plain(e));
@@ -749,7 +797,19 @@ class _IgAutoRepliesState extends State<_IgAutoReplies> {
   Widget build(BuildContext context) {
     final app = AppScope.of(context);
     final a = _a;
-    if (a == null) return const SkeletonCards();
+    if (a == null) {
+      if (widget.error.isEmpty) return const SkeletonCards();
+      return ListView(
+        children: [
+          EmptyState(
+            icon: Icons.cloud_off,
+            title: 'Could not load auto replies',
+            text: widget.error,
+            action: widget.onRetry == null ? null : FilledButton(onPressed: widget.onRetry, child: const Text('Try again')),
+          ),
+        ],
+      );
+    }
     final manage = app.can('manage');
     final rules = a['rules'] as List;
     Widget toggle(String key, String title, String subtitle) => SwitchListTile(

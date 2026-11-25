@@ -1,7 +1,10 @@
+import 'dart:async';
+
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
 import '../../data/app_state.dart';
+import '../../data/backend.dart' show SlowServerException;
 import '../../ui/theme.dart';
 import '../../ui/widgets.dart';
 import '../campaigns/audience.dart' show readSheet;
@@ -30,6 +33,8 @@ class _ProductOptionsScreenState extends State<ProductOptionsScreen> {
   bool _loaded = false;
   bool _saving = false;
   String _error = '';
+  /// The saved sizes and colours could not be read: the editor stays hidden, so Save cannot wipe them.
+  String _loadError = '';
 
   @override
   void initState() {
@@ -41,10 +46,15 @@ class _ProductOptionsScreenState extends State<ProductOptionsScreen> {
     final app = AppScope.read(context);
     try {
       final d = await app.backend.get('/api/commerce/products/options', {'organizationId': app.orgId, 'productId': widget.productId});
-      _fill(d);
+      if (mounted) _fill(d);
     } catch (e) {
-      if (mounted) setState(() { _loaded = true; _error = plain(e); });
+      if (mounted) setState(() { _loaded = true; _loadError = plain(e); });
     }
+  }
+
+  void _retry() {
+    setState(() { _loaded = false; _loadError = ''; });
+    _load();
   }
 
   void _fill(Map d) {
@@ -62,14 +72,20 @@ class _ProductOptionsScreenState extends State<ProductOptionsScreen> {
   }
 
   Future<void> _save() async {
+    final options = [
+      for (final (name, values) in _options)
+        if (name.text.trim().isNotEmpty && values.text.trim().isNotEmpty)
+          {'name': name.text.trim(), 'values': values.text.split(',').map((v) => v.trim()).where((v) => v.isNotEmpty).toList()},
+    ];
+    // Saving no options deletes every size and colour with its price and stock: ask first
+    if (options.isEmpty && _variants.isNotEmpty) {
+      final ok = await confirmAction(context, title: 'Remove all sizes and colours?', message: 'The price and stock of each one are deleted too. The product is sold as one item.', yes: 'Remove all', destructive: true);
+      if (!ok || !mounted) return;
+    }
     setState(() { _saving = true; _error = ''; });
     try {
-      final options = [
-        for (final (name, values) in _options)
-          if (name.text.trim().isNotEmpty && values.text.trim().isNotEmpty)
-            {'name': name.text.trim(), 'values': values.text.split(',').map((v) => v.trim()).where((v) => v.isNotEmpty).toList()},
-      ];
       final d = await AppScope.read(context).ask('/api/commerce/products/options', {'productId': widget.productId, 'options': options, 'variants': _variants}, method: 'PUT');
+      if (!mounted) return;
       _fill(d);
       if (mounted) toast(context, options.isEmpty ? 'Options removed.' : 'Saved. Set the price and stock of each below.');
     } catch (e) {
@@ -85,6 +101,8 @@ class _ProductOptionsScreenState extends State<ProductOptionsScreen> {
       appBar: AppBar(title: const Text('Sizes and colours')),
       body: !_loaded
           ? _loading()
+          : _loadError.isNotEmpty
+          ? ListView(children: [EmptyState(icon: Icons.cloud_off, title: 'Could not load the sizes and colours', text: _loadError, action: FilledButton(onPressed: _retry, child: const Text('Try again')))])
           : ListView(
               padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
               children: [
@@ -106,6 +124,8 @@ class _ProductOptionsScreenState extends State<ProductOptionsScreen> {
                   const Text('Price and stock of each', style: TextStyle(fontWeight: FontWeight.w700)),
                   for (final v in _variants)
                     Padding(
+                      // Keyed, so the boxes show this size's numbers after a save changes the list
+                      key: ValueKey('variant:${v['id'] ?? v['name']}'),
                       padding: const EdgeInsets.only(top: 8),
                       child: Row(children: [
                         Expanded(child: Text('${v['name']}', style: const TextStyle(fontWeight: FontWeight.w600))),
@@ -160,13 +180,22 @@ class _CourierBoxState extends State<CourierBox> {
   }
 
   Future<Map<String, dynamic>?> _post(Map<String, dynamic> body) async {
-    setState(() => _busy = '${body['action']}');
+    final action = '${body['action']}';
+    setState(() => _busy = action);
     try {
       final d = await AppScope.read(context).ask('/api/commerce/shipping/ship', {'orderId': widget.order['id'], ...body});
       if (d['shipments'] != null && mounted) setState(() => _data = {...?_data, 'shipments': d['shipments']});
+      // A refresh can move the order to Shipped or Delivered; the order page reads it again
+      if (action == 'refresh' || action == 'cancel') widget.onChanged();
       return d;
     } catch (e) {
       if (mounted) toast(context, plain(e));
+      // A slow booking may still have gone through: look before "Book a courier" can be tapped again
+      if (action == 'book' && mounted) {
+        setState(() => _busy = 'checking');
+        await _load();
+        widget.onChanged();
+      }
       return null;
     } finally {
       if (mounted) setState(() => _busy = null);
@@ -241,7 +270,9 @@ class _CourierBoxState extends State<CourierBox> {
                   ]),
               ]),
             ),
-          if (canEdit && ready.isNotEmpty && open.isEmpty)
+          if (_busy == 'checking')
+            const Text('Checking whether the booking went through…', style: TextStyle(color: Brand.muted, fontSize: 13))
+          else if (canEdit && ready.isNotEmpty && open.isEmpty)
             d['blocker'] != null
                 ? Text('${d['blocker']}', style: const TextStyle(color: Brand.muted, fontSize: 13))
                 : OutlinedButton.icon(onPressed: _busy != null ? null : _book, icon: _busy == 'rates' ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.local_shipping_outlined, size: 18), label: const Text('Book a courier')),
@@ -263,10 +294,35 @@ Future<void> uploadProductsSheet(BuildContext context, VoidCallback onDone) asyn
     if (!context.mounted) return;
     final ok = await confirmAction(context, title: 'Add ${sheet.rows.length} products?', message: 'From ${file.name}. A SKU you already have updates that product. Needs the headings Name and Price (Stock, SKU, Category, Description, Photo link, Weight (grams), HSN, GST % are optional).', yes: 'Add products');
     if (!ok || !context.mounted) return;
-    final d = await AppScope.read(context).ask('/api/commerce/products/import', {'rows': rows});
+    final app = AppScope.read(context);
+    // A big sheet takes a while: a window that cannot be closed, so it is not sent twice
+    unawaited(showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const PopScope(
+        canPop: false,
+        child: AlertDialog(
+          content: Row(children: [
+            SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2.5)),
+            SizedBox(width: 16),
+            Expanded(child: Text('Adding products…')),
+          ]),
+        ),
+      ),
+    ));
+    Map<String, dynamic> d;
+    try {
+      d = await app.ask('/api/commerce/products/import', {'rows': rows});
+    } finally {
+      if (context.mounted) Navigator.of(context, rootNavigator: true).pop();
+    }
     if (!context.mounted) return;
     final errors = (d['errors'] as List? ?? const []);
     toast(context, '${d['added']} added, ${d['updated']} updated.${errors.isEmpty ? '' : ' ${errors.length} rows had problems: ${errors.first}'}');
+    onDone();
+  } on SlowServerException {
+    // The server may still be adding them: show what is there now, and say so
+    if (context.mounted) toast(context, 'It is still adding the products. Pull down on the list in a minute to see them all.');
     onDone();
   } catch (e) {
     if (context.mounted) toast(context, plain(e).replaceAll('at least one person', 'at least one product'));

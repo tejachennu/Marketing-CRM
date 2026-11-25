@@ -6,6 +6,7 @@ import '../../data/format.dart';
 import '../../ui/skeleton.dart';
 import '../../ui/theme.dart';
 import '../../ui/widgets.dart';
+import '../store/store_screen.dart' show confirmAction, plain;
 
 /// The AI's extra tools, as on the web's Settings → Knowledge Base and General:
 /// - Questions the AI couldn't answer: write the answer (the AI drafts it from the team's reply), save it as an FAQ
@@ -34,22 +35,27 @@ class _UnansweredScreenState extends State<UnansweredScreen> {
       final data = await app.backend.get('/api/knowledge/gaps', {'organizationId': app.orgId, 'status': 'open'});
       if (mounted) setState(() => _gaps = [for (final g in (data['gaps'] as List? ?? const [])) Map<String, dynamic>.from(g as Map)]);
     } catch (e) {
-      if (mounted) setState(() => _error = '$e');
+      if (mounted) setState(() => _error = plain(e));
     }
+  }
+
+  void _retry() {
+    setState(() => _error = '');
+    _load();
   }
 
   Future<void> _mark(Map<String, dynamic> gap, String action) async {
     try {
       await AppScope.read(context).ask('/api/knowledge/gaps', {'id': gap['id'], 'action': action});
-      _load();
+      if (mounted) _load();
     } catch (e) {
-      if (mounted) toast(context, '$e');
+      if (mounted) toast(context, plain(e));
     }
   }
 
   Future<void> _answer(Map<String, dynamic> gap) async {
     final saved = await Navigator.of(context).push<bool>(MaterialPageRoute(builder: (_) => _AnswerGapScreen(gap: gap)));
-    if (saved == true) _load();
+    if (saved == true && mounted) _load();
   }
 
   @override
@@ -59,7 +65,7 @@ class _UnansweredScreenState extends State<UnansweredScreen> {
       backgroundColor: Brand.page,
       appBar: AppBar(title: const Text('Questions the AI couldn\'t answer')),
       body: _gaps == null
-          ? (_error.isNotEmpty ? EmptyState(icon: Icons.cloud_off, title: 'Could not load', text: _error) : const SkeletonList(rows: 5, avatar: false))
+          ? (_error.isNotEmpty ? _LoadFailed(text: _error, onRetry: _retry) : const SkeletonList(rows: 5, avatar: false))
           : RefreshIndicator(
               onRefresh: _load,
               child: ListView(
@@ -130,7 +136,7 @@ class _AnswerGapScreenState extends State<_AnswerGapScreen> {
       });
       if (_content.text.contains('[')) toast(context, 'Fill in the [blanks] before saving.');
     } catch (e) {
-      if (mounted) setState(() => _error = '$e');
+      if (mounted) setState(() => _error = plain(e));
     } finally {
       if (mounted) setState(() => _drafting = false);
     }
@@ -150,7 +156,7 @@ class _AnswerGapScreenState extends State<_AnswerGapScreen> {
         Navigator.of(context).pop(true);
       }
     } catch (e) {
-      if (mounted) setState(() => _error = '$e');
+      if (mounted) setState(() => _error = plain(e));
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -202,18 +208,24 @@ class _SourcesScreenState extends State<SourcesScreen> {
       final data = await app.backend.get('/api/knowledge/sources', {'organizationId': app.orgId});
       if (mounted) setState(() => _sources = [for (final s in (data['sources'] as List? ?? const [])) Map<String, dynamic>.from(s as Map)]);
     } catch (e) {
-      if (mounted) setState(() => _error = '$e');
+      if (mounted) setState(() => _error = plain(e));
     }
+  }
+
+  void _retry() {
+    setState(() => _error = '');
+    _load();
   }
 
   Future<void> _add(Map<String, dynamic> body, String done) async {
     setState(() => _busy = true);
     try {
       await AppScope.read(context).ask('/api/knowledge/sources', body);
-      if (mounted) toast(context, done);
+      if (!mounted) return;
+      toast(context, done);
       _load();
     } catch (e) {
-      if (mounted) toast(context, '$e');
+      if (mounted) toast(context, plain(e));
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -226,6 +238,8 @@ class _SourcesScreenState extends State<SourcesScreen> {
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, set) => AlertDialog(
+          // Scrolls above the keyboard on small phones
+          scrollable: true,
           title: const Text('Add your website'),
           content: Column(
             mainAxisSize: MainAxisSize.min,
@@ -247,6 +261,7 @@ class _SourcesScreenState extends State<SourcesScreen> {
     final ok = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
+        scrollable: true,
         title: const Text('Paste text'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
@@ -267,6 +282,10 @@ class _SourcesScreenState extends State<SourcesScreen> {
   Future<void> _addFile() async {
     final file = await FilePicker.pickFile(type: FileType.custom, allowedExtensions: ['pdf', 'docx', 'txt', 'md', 'csv']);
     if (file == null || !mounted) return;
+    // The size first, before reading it: the AI reads files up to 25 MB
+    final size = file.lengthSync() ?? await file.length() ?? 0;
+    if (!mounted) return;
+    if (size > 25 * 1024 * 1024) return toast(context, 'The file is bigger than 25 MB. Split it into smaller files.');
     setState(() => _busy = true);
     final app = AppScope.read(context);
     try {
@@ -276,22 +295,28 @@ class _SourcesScreenState extends State<SourcesScreen> {
       final type = {'pdf': 'application/pdf', 'docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'csv': 'text/csv'}[ending] ?? 'text/plain';
       await app.backend.uploadToStorage('${pass['bucket']}', '${pass['path']}', '${pass['token']}', bytes, type);
       await app.ask('/api/knowledge/sources', {'kind': 'file', 'path': pass['path'], 'fileName': file.name});
-      if (mounted) toast(context, 'Reading ${file.name}. It takes a minute or two.');
+      if (!mounted) return;
+      toast(context, 'Reading ${file.name}. It takes a minute or two.');
       _load();
     } catch (e) {
-      if (mounted) toast(context, '$e');
+      if (mounted) toast(context, plain(e));
     } finally {
       if (mounted) setState(() => _busy = false);
     }
   }
 
   Future<void> _delete(Map<String, dynamic> s) async {
+    // The AI stops answering from it at once, and reading a website again takes minutes: ask first
+    final sure = await confirmAction(context, title: 'Delete this source?', message: 'The AI stops using "${s['title'] ?? 'it'}" in its answers.', yes: 'Delete', destructive: true);
+    if (!sure || !mounted) return;
     final app = AppScope.read(context);
     try {
       await app.backend.send('DELETE', '/api/knowledge/sources?organizationId=${app.orgId}&id=${s['id']}', const {});
+      if (!mounted) return;
+      toast(context, 'Deleted.');
       _load();
     } catch (e) {
-      if (mounted) toast(context, '$e');
+      if (mounted) toast(context, plain(e));
     }
   }
 
@@ -314,7 +339,7 @@ class _SourcesScreenState extends State<SourcesScreen> {
             )
           : null,
       body: _sources == null
-          ? (_error.isNotEmpty ? EmptyState(icon: Icons.cloud_off, title: 'Could not load', text: _error) : const SkeletonList(rows: 4, avatar: false))
+          ? (_error.isNotEmpty ? _LoadFailed(text: _error, onRetry: _retry) : const SkeletonList(rows: 4, avatar: false))
           : RefreshIndicator(
               onRefresh: _load,
               child: ListView(
@@ -387,8 +412,13 @@ class _ReplyStyleScreenState extends State<ReplyStyleScreen> {
         _message.text = '${_settings!['message'] ?? ''}';
       });
     } catch (e) {
-      if (mounted) setState(() => _error = '$e');
+      if (mounted) setState(() => _error = plain(e));
     }
+  }
+
+  void _retry() {
+    setState(() => _error = '');
+    _load();
   }
 
   Future<void> _save() async {
@@ -397,7 +427,7 @@ class _ReplyStyleScreenState extends State<ReplyStyleScreen> {
       await AppScope.read(context).ask('/api/ai/handoff', {'settings': {..._settings!, 'message': _message.text.trim()}, 'style': _style}, method: 'PUT');
       if (mounted) toast(context, 'Saved.');
     } catch (e) {
-      if (mounted) toast(context, '$e');
+      if (mounted) toast(context, plain(e));
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -415,7 +445,7 @@ class _ReplyStyleScreenState extends State<ReplyStyleScreen> {
           ? SafeArea(child: Padding(padding: const EdgeInsets.fromLTRB(16, 8, 16, 10), child: FilledButton(style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(50)), onPressed: _saving ? null : _save, child: Text(_saving ? 'Saving…' : 'Save'))))
           : null,
       body: s == null || st == null
-          ? (_error.isNotEmpty ? EmptyState(icon: Icons.cloud_off, title: 'Could not load', text: _error) : const SkeletonCards())
+          ? (_error.isNotEmpty ? _LoadFailed(text: _error, onRetry: _retry) : const SkeletonCards())
           : ListView(
               padding: const EdgeInsets.all(16),
               children: [
@@ -456,4 +486,22 @@ class _ReplyStyleScreenState extends State<ReplyStyleScreen> {
             ),
     );
   }
+}
+
+/// The first load did not work: why, with Try again.
+class _LoadFailed extends StatelessWidget {
+  const _LoadFailed({required this.text, required this.onRetry});
+  final String text;
+  final VoidCallback onRetry;
+  @override
+  Widget build(BuildContext context) => ListView(
+    children: [
+      EmptyState(
+        icon: Icons.cloud_off,
+        title: 'Could not load',
+        text: text,
+        action: FilledButton(onPressed: onRetry, child: const Text('Try again')),
+      ),
+    ],
+  );
 }
