@@ -118,6 +118,35 @@ Email: `HOSTINGER_SMTP_*`, `SENDGRID_*`. Other: `NEXT_PUBLIC_APP_URL`, `CRON_SEC
 
 ## What has been built (recent history, newest first)
 
+- **App: sign-up and welcome pages redesigned with pictures; "Delete my account"; release check of the whole app**
+  (owner, 25 Nov 2026: "redesign mobile signup and onboarding screens ... use some images ... attractive ... production
+  ready", then "make it two steps and explain more about it" for the pick page).
+  - Pictures: flat drawings in WhatsApp colours (no gradients, no brand name inside) drawn by code in
+    `mobile/design/art/` (`gen.py` → SVG, `render.cjs` → PNG 1x/2x/3x with Playwright's Chromium, then `pngquant`; steps in
+    its README). In `mobile/assets/images/` (+ `2.0x/`, `3.0x/`, ~430 KB): `welcome`, `desk`, `shop`, `nowa`, `team`,
+    `signup`, `code`, `offline`, and Google's G (`google_g`) for "Continue with Google".
+  - Auth screens moved to `mobile/lib/screens/auth/`: `login_screen.dart` (welcome page with the picture, "Create a free
+    account" first, Google, "Already have an account? Sign in" → a separate Welcome back form with Forgot password (opens
+    `/forgot-password` on the website), and the Name your business step after a first Google sign-in), `signup_screen.dart`
+    (3 steps with a step bar: business → login → 6-box email code that sends itself when complete), `auth_parts.dart`
+    (`AuthPicture`, `GoogleButton`, `BigButton`, `CodeBoxes`, `AuthError`, `friendlyAuthError` (server / Supabase words →
+    plain sentences), `TermsLine` → `/terms`, `/privacy`, `StepBar`, `SoftPill`). Android back steps back inside each.
+  - Welcome pages (`onboarding/onboarding_screen.dart`): a picture per slide, icon rows, "You gain", the ads-team card,
+    then the pick in **two steps**: 1. Front Desk or E-commerce (picture, "Best for", what you get), 2. Without WhatsApp
+    (₹300: what is in it, what is not, Meta's price per message from the wallet) or With my own WhatsApp (Growth ₹2,500:
+    what it adds), "Not sure? start without", trial note. The Growth price is written in the app; keep it in step with
+    `lib/plans.ts`.
+  - **Delete my account** (Google Play rule for apps that make accounts): `lib/account-deletion.ts` (pure: emails, scope,
+    recipients), `GET/POST /api/auth/delete-account` (under /api/auth so it works after a trial ends; emails the super
+    admins, else support@magnetora.ai, and a copy to the person; owners/admins = whole workspace, staff = own login;
+    nothing is deleted automatically: the team checks and deletes), public page `/delete-account` (for the Play Console
+    "delete account URL"), app More → Delete my account (`more/delete_account_screen.dart`).
+  - Tests: `test/release_signup_test.dart` (welcome → 3 steps, wrong code then right, onboarding follows),
+    `test/release_signin_test.dart`, `release_onboarding_test.dart` follows the two pick steps; `tests/account-deletion.test.cjs`.
+    `tapText` (release_helpers) now lays out before tapping (it used to tap where the text was before scrolling).
+  - Screenshots of these screens: `mobile/test/screenshots.dart` (not in the test run; `SHOTS_DIR=… flutter test
+    test/screenshots.dart`). Flutter tests draw text with no font family as boxes, so it wraps the app in a Roboto theme.
+
 - **₹300 without WhatsApp; sign-up first; welcome pages in the app** (owner, 25 Nov 2026: "signup first ... take the
   country and mobile number ... remove glow salon ... after signup show two connectors ... ads ... social media ...
   without whatsapp ... confirmation message by wama crm ... invoices billing analysis ... monthly 300"). **Starter is now

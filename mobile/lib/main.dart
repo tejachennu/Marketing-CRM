@@ -46,7 +46,10 @@ import 'screens/ai/assistant_screen.dart';
 import 'screens/ai/knowledge_screen.dart';
 import 'screens/front_desk/booking_flow_screen.dart';
 import 'screens/front_desk/booking_try_screen.dart';
-import 'screens/more/signup_screen.dart';
+import 'screens/auth/login_screen.dart';
+import 'screens/auth/auth_parts.dart';
+import 'screens/auth/signup_screen.dart';
+import 'screens/more/delete_account_screen.dart';
 import 'ui/front_desk_icon.dart';
 import 'ui/notice_host.dart';
 import 'ui/splash.dart';
@@ -192,6 +195,8 @@ class WamaApp extends StatelessWidget {
     final desk = FrontDesk(app);
     return switch (name) {
       'login' => const LoginScreen(),
+      'login_signin' => const LoginScreen(startOnSignIn: true),
+      'delete_account' => const DeleteAccountScreen(),
       'splash' => const SplashScreen(),
       'signup' => const SignupScreen(),
       'signup_code' => const SignupScreen(demoCodeStep: true),
@@ -201,6 +206,7 @@ class WamaApp extends StatelessWidget {
       'onboarding_store' => const OnboardingScreen(startPage: 1),
       'onboarding_nowa' => const OnboardingScreen(startPage: 2),
       'onboarding_pick' => const OnboardingScreen(startPage: 3),
+      'onboarding_whatsapp' => const OnboardingScreen(startPage: 4),
       'more' => const HomeShell(tab: 4),
       'chat_ai' => ChatScreen(conversation: app.chatsOf('whatsapp').first, showSuggestions: true),
       'instagram' => const InstagramScreen(),
@@ -397,6 +403,7 @@ class _NeedsInternetApp extends StatelessWidget {
     debugShowCheckedModeBanner: false,
     theme: buildTheme(),
     home: Scaffold(
+      backgroundColor: Colors.white,
       body: SafeArea(
         child: Padding(
           padding: const EdgeInsets.all(28),
@@ -404,8 +411,8 @@ class _NeedsInternetApp extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.center,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Icon(Icons.wifi_off, size: 40, color: Brand.navy),
-              const SizedBox(height: 16),
+              const AuthPicture('offline', aspect: 240 / 150, maxHeight: 150),
+              const SizedBox(height: 20),
               const Text('Connect to the internet once', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w700)),
               const SizedBox(height: 8),
               const Text('The first time, WAMA CRM needs the internet to set itself up and sign you in. After that it works offline too.', style: TextStyle(color: Brand.textSoft, height: 1.4)),

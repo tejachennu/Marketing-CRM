@@ -5,6 +5,8 @@ void main() {
   screenChecks(
     screens: [
       'login',
+      'login_signin',
+      'delete_account',
       'signup',
       'signup_code',
       'desk',
@@ -61,6 +63,7 @@ void main() {
       'onboarding_store',
       'onboarding_nowa',
       'onboarding_pick',
+      'onboarding_whatsapp',
     ],
     flows: [
       ('members', ['Priya Sharma']),

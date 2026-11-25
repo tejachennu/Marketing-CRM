@@ -75,6 +75,8 @@ Future<void> tapText(WidgetTester tester, String text) async {
   final found = await reach(tester, find.text(text));
   expect(found, findsWidgets, reason: 'No "$text" on the screen');
   await tester.ensureVisible(found.last);
+  // Lay out the scrolled list first, or the tap lands where the text was before
+  await tester.pump();
   await tester.tap(found.last, warnIfMissed: false);
   await settle(tester);
 }

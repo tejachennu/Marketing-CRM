@@ -9,7 +9,6 @@ import '../../data/local_store.dart';
 import '../../data/push.dart';
 import '../../ui/front_desk_icon.dart';
 import '../../ui/theme.dart';
-import '../../ui/validate.dart';
 import '../../ui/whatsapp_lock.dart';
 import '../../ui/widgets.dart';
 import '../ai/assistant_screen.dart';
@@ -24,7 +23,7 @@ import '../instagram/instagram_screen.dart';
 import '../store/store_screen.dart';
 import 'chat_tickets_screen.dart';
 import 'connectors_screen.dart';
-import 'signup_screen.dart';
+import 'delete_account_screen.dart';
 
 /// Account, workspace, templates and the sync status.
 class MoreScreen extends StatelessWidget {
@@ -222,6 +221,15 @@ class MoreScreen extends StatelessWidget {
                     );
                     if (ok == true) await app.signOut();
                   },
+                ),
+                // Google Play: people who made an account can ask for it to be deleted from inside the app
+                _Row(
+                  icon: Icons.person_remove_outlined,
+                  iconColor: Brand.red,
+                  title: 'Delete my account',
+                  titleColor: Brand.red,
+                  subtitle: 'Ask us to delete your account and data',
+                  onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const DeleteAccountScreen())),
                 ),
               ],
             ),
@@ -464,237 +472,6 @@ class _ItemCard extends StatelessWidget {
               ),
             ],
           ],
-        ),
-      ),
-    );
-  }
-}
-
-class LoginScreen extends StatefulWidget {
-  const LoginScreen({super.key});
-  @override
-  State<LoginScreen> createState() => _LoginScreenState();
-}
-
-class _LoginScreenState extends State<LoginScreen> {
-  final _email = TextEditingController();
-  final _password = TextEditingController();
-  bool _busy = false;
-  bool _hide = true;
-  String? _error;
-
-  bool _tried = false;
-  // After a first "Continue with Google": the business name step
-  Map<String, dynamic>? _newAccount;
-  final _business = TextEditingController();
-  final _name = TextEditingController();
-  String _phone = '';
-  String? get _emailErr => _tried ? emailError(_email.text, required: true) : null;
-  String? get _passwordErr => _tried && _password.text.isEmpty ? 'Enter your password.' : null;
-
-  Future<void> _go() async {
-    setState(() => _tried = true);
-    if (_emailErr != null || _passwordErr != null) return;
-    setState(() {
-      _busy = true;
-      _error = null;
-    });
-    try {
-      await AppScope.read(context).signIn(_email.text.trim(), _password.text);
-    } catch (e) {
-      setState(() => _error = '$e');
-    } finally {
-      if (mounted) setState(() => _busy = false);
-    }
-  }
-
-  Future<void> _google() async {
-    setState(() {
-      _busy = true;
-      _error = null;
-    });
-    try {
-      final next = await AppScope.read(context).signInWithGoogle();
-      if (next != null && mounted) {
-        setState(() {
-          _newAccount = next;
-          _name.text = '${next['name'] ?? ''}';
-        });
-      }
-    } catch (e) {
-      if (mounted) setState(() => _error = '$e'.replaceFirst('Exception: ', ''));
-    } finally {
-      if (mounted) setState(() => _busy = false);
-    }
-  }
-
-  Future<void> _finishBusiness() async {
-    if (_business.text.trim().length < 2) {
-      setState(() => _error = 'Please type your business name.');
-      return;
-    }
-    final phoneProblem = phoneError(_phone, required: true);
-    if (phoneProblem != null) {
-      setState(() => _error = phoneProblem);
-      return;
-    }
-    setState(() {
-      _busy = true;
-      _error = null;
-    });
-    try {
-      await AppScope.read(context).finishGoogleSignUp(_business.text.trim(), _name.text.trim(), phone: _phone);
-    } catch (e) {
-      if (mounted) setState(() => _error = '$e'.replaceFirst('Exception: ', ''));
-    } finally {
-      if (mounted) setState(() => _busy = false);
-    }
-  }
-
-  Widget _errorBox() => Container(
-    padding: const EdgeInsets.all(12),
-    decoration: BoxDecoration(color: Brand.redSoft, borderRadius: BorderRadius.circular(12)),
-    child: Text(
-      _error!,
-      style: const TextStyle(color: Brand.red, fontWeight: FontWeight.w600),
-    ),
-  );
-
-  /// The one step after a first Google sign-in: the business name (and their own name).
-  List<Widget> _businessStep() => [
-    Align(alignment: Alignment.centerLeft, child: Image.asset('assets/app_icon.png', width: 68, height: 68)),
-    const SizedBox(height: 22),
-    const Text('Name your business', style: TextStyle(fontSize: 26, fontWeight: FontWeight.w700, letterSpacing: -0.5)),
-    const SizedBox(height: 6),
-    Text(
-      'One last step. Your 14-day free trial starts now${'${_newAccount?['email'] ?? ''}'.isEmpty ? '' : ' for ${_newAccount!['email']}'}.',
-      style: const TextStyle(color: Brand.textSoft, height: 1.4),
-    ),
-    const SizedBox(height: 22),
-    TextField(
-      controller: _business,
-      autofocus: true,
-      textCapitalization: TextCapitalization.words,
-      decoration: const InputDecoration(labelText: 'Business name', prefixIcon: Icon(Icons.storefront_outlined)),
-    ),
-    const SizedBox(height: 12),
-    PhoneField(value: _phone, label: 'Mobile number', onChanged: (v) => setState(() => _phone = v)),
-    const SizedBox(height: 12),
-    TextField(
-      controller: _name,
-      textCapitalization: TextCapitalization.words,
-      decoration: const InputDecoration(labelText: 'Your name', prefixIcon: Icon(Icons.person_outline)),
-      onSubmitted: (_) => _finishBusiness(),
-    ),
-    if (_error != null) ...[const SizedBox(height: 12), _errorBox()],
-    const SizedBox(height: 18),
-    FilledButton(
-      onPressed: _busy ? null : _finishBusiness,
-      child: _busy ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Text('Start my free trial'),
-    ),
-  ];
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.white,
-      body: SafeArea(
-        child: Center(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(24),
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 420),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: _newAccount != null
-                    ? _businessStep()
-                    : [
-                        Align(alignment: Alignment.centerLeft, child: Image.asset('assets/app_icon.png', width: 68, height: 68)),
-                        const SizedBox(height: 22),
-                        const Text('Welcome to WAMA CRM', style: TextStyle(fontSize: 26, fontWeight: FontWeight.w700, letterSpacing: -0.5)),
-                        const SizedBox(height: 6),
-                        const Text(
-                          'Bookings, bills, your online store and WhatsApp, for any business. New here? Start with a free 14-day trial.',
-                          style: TextStyle(color: Brand.textSoft, height: 1.4),
-                        ),
-                        const SizedBox(height: 26),
-                        // First-time users first (owner: "give access for the signup first")
-                        FilledButton.icon(
-                          onPressed: _busy ? null : () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SignupScreen())),
-                          style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(52)),
-                          icon: const Icon(Icons.person_add_alt_1_outlined),
-                          label: const Text('Create a free account'),
-                        ),
-                        const SizedBox(height: 10),
-                        OutlinedButton.icon(
-                          onPressed: _busy ? null : _google,
-                          style: OutlinedButton.styleFrom(
-                            minimumSize: const Size.fromHeight(50),
-                            foregroundColor: Brand.text,
-                            side: const BorderSide(color: Brand.line),
-                          ),
-                          icon: const Text(
-                            'G',
-                            style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: Color(0xFF4285F4)),
-                          ),
-                          label: const Text('Continue with Google', style: TextStyle(fontWeight: FontWeight.w600)),
-                        ),
-                        const Padding(
-                          padding: EdgeInsets.symmetric(vertical: 16),
-                          child: Text(
-                            'Already have an account? Sign in',
-                            textAlign: TextAlign.center,
-                            style: TextStyle(color: Brand.muted, fontSize: 13),
-                          ),
-                        ),
-                        TextField(
-                          controller: _email,
-                          keyboardType: TextInputType.emailAddress,
-                          autofillHints: const [AutofillHints.email],
-                          onChanged: (_) => _tried ? setState(() {}) : null,
-                          decoration: InputDecoration(labelText: 'Email', prefixIcon: const Icon(Icons.mail_outline), errorText: _emailErr),
-                        ),
-                        const SizedBox(height: 12),
-                        TextField(
-                          controller: _password,
-                          onChanged: (_) => _tried ? setState(() {}) : null,
-                          obscureText: _hide,
-                          autofillHints: const [AutofillHints.password],
-                          decoration: InputDecoration(
-                            errorText: _passwordErr,
-                            labelText: 'Password',
-                            prefixIcon: const Icon(Icons.lock_outline),
-                            suffixIcon: IconButton(onPressed: () => setState(() => _hide = !_hide), icon: Icon(_hide ? Icons.visibility_outlined : Icons.visibility_off_outlined)),
-                          ),
-                          onSubmitted: (_) => _go(),
-                        ),
-                        if (_error != null) ...[
-                          const SizedBox(height: 12),
-                          Container(
-                            padding: const EdgeInsets.all(12),
-                            decoration: BoxDecoration(color: Brand.redSoft, borderRadius: BorderRadius.circular(12)),
-                            child: Text(
-                              _error!,
-                              style: const TextStyle(color: Brand.red, fontWeight: FontWeight.w600),
-                            ),
-                          ),
-                        ],
-                        const SizedBox(height: 18),
-                        OutlinedButton(
-                          onPressed: _busy ? null : _go,
-                          style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(50)),
-                          child: _busy ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)) : const Text('Sign in'),
-                        ),
-                        const SizedBox(height: 14),
-                        const Text(
-                          'Forgot your password? Reset it on wamacrm.magnetora.in.',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(fontSize: 12.5, color: Brand.muted),
-                        ),
-                      ],
-              ),
-            ),
-          ),
         ),
       ),
     );

@@ -657,6 +657,8 @@ class DemoBackend implements Backend {
       return {'success': true, 'appointments': [], 'requests': _requests, 'invoices': []};
     }
     switch (path) {
+      case '/api/auth/delete-account':
+        return {'success': true, 'wholeWorkspace': !staff, 'scope': staff ? 'your login. Your workspace and its data stay for the rest of your team' : 'your login and your whole workspace: customers, chats, bookings, bills, orders, products and settings, for everyone on your team'};
       case '/api/connectors':
         return _connectorsAnswer();
       case '/api/mobile/me':
@@ -900,6 +902,8 @@ class DemoBackend implements Backend {
         }
         _setup['settings'] = settings;
         return {'success': true, 'settings': settings};
+      case '/api/auth/delete-account':
+        return {'success': true, 'wholeWorkspace': !staff, 'message': 'Request sent. We emailed a copy to you. Our team will check it is you, then delete it.'};
       case '/api/auth/signup/send-code':
         if ('${body['email']}'.isEmpty || !'${body['email']}'.contains('@')) throw ApiException(400, 'Please enter a valid email address');
         if ('${body['password']}'.length < 6) throw ApiException(400, 'Password must be at least 6 characters long');

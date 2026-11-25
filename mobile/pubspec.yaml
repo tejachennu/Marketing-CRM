@@ -74,6 +74,9 @@ flutter:
   assets:
     - assets/app_icon.png
     - assets/splash_mark.png
+    # Pictures for sign-in, sign-up and the welcome pages (1x here, 2.0x/ and 3.0x/ for sharper phones).
+    # Drawn in mobile/design/art (gen.py) — change them there and render again.
+    - assets/images/
 
   # To add assets to your application, add an assets section, like this:
   # assets:
