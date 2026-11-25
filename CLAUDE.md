@@ -121,6 +121,14 @@ Email: `HOSTINGER_SMTP_*`, `SENDGRID_*`. Other: `NEXT_PUBLIC_APP_URL`, `CRON_SEC
 - **Videos: a voice in English / Telugu / Hindi, a website video, a new screen after each video** (owner, 25 Nov 2026:
   "for the videos audio is not coming"; "ee screen baledu ... we are also giving a website for ecommerce and frontdesk ...
   all sides nunchi customer attraction ... product sale").
+  - **Recorded voice with a natural Indian accent** (owner: "you can add voice to a video, do it yourself, natural Indian
+    accent"): every scene line in English / Telugu / Hindi is a clip in `mobile/assets/voice/` (105 clips, 3.4 MB, AAC
+    mono 32 kbps), made with OpenAI's speech service in the `coral` voice told to speak like a friendly Hyderabad
+    business advisor (`mobile/design/voice/make_voice.py`; lines from `test/voice_lines.dart`; steps in
+    `design/voice/README.md`; the key comes from the cloud environment's saved network secret for api.openai.com, the
+    model from `VOICE_MODEL`, never in the repo). `RecordedNarrator` (just_audio) plays the clip named
+    `<lang>_<FNV-1a of "lang|text">`; a line without a clip falls back to the phone's text-to-speech. A test fails when
+    words change without new clips. `test/record_videos.dart` + `design/voice/mux_videos.py` make MP4s with the voice.
   - Voice: `mobile/lib/screens/explainers/narrator.dart` (`Narrator`; `PhoneNarrator` = the phone's text-to-speech via
     `flutter_tts` (en-IN → en-US/GB, te-IN, hi-IN; rate 0.45 = a little slower than normal; `speak` waits for the end);
     `SilentNarrator` for tests/desktop; `spokenWords` = title + line, "×" said as by / బై / बाय). The player

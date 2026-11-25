@@ -1,13 +1,16 @@
-// Records the explainer videos as MP4 frames for a look outside the app (not part of the test run: no _test in the name).
-// Draws every scene frame by frame from the player itself, then the screen after the video. No sound: the voice is
-// the phone's own text-to-speech.
+// Records the explainer videos for a look outside the app (not part of the test run: no _test in the name). Draws
+// every scene frame by frame from the player itself, then the screen after the video. Like the player, a scene lasts
+// until its recorded voice line has finished (design/voice/durations.json); each folder gets timeline.json (when each
+// clip starts) for design/voice/mux_videos.py, which puts the voice in and makes the MP4s.
 //   VIDEOS_DIR=/tmp/videos VIDEOS=grow:en,website:te FPS=12 flutter test test/record_videos.dart
-// then for each folder: ffmpeg -framerate 12 -i <folder>/%05d.png -c:v libx264 -pix_fmt yuv420p <folder>.mp4
+//   python3 design/voice/mux_videos.py /tmp/videos
 import 'dart:io';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
+import 'dart:convert';
+
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:wama_mobile/data/app_state.dart';
@@ -15,12 +18,15 @@ import 'package:wama_mobile/data/demo_backend.dart';
 import 'package:wama_mobile/data/local_store.dart';
 import 'package:wama_mobile/screens/explainers/explainer_content.dart';
 import 'package:wama_mobile/screens/explainers/explainer_player.dart';
+import 'package:wama_mobile/screens/explainers/narrator.dart';
 import 'package:wama_mobile/ui/theme.dart';
 
 void main() {
   late AppState app;
   final out = Platform.environment['VIDEOS_DIR'] ?? '/tmp/videos';
   final fps = int.tryParse(Platform.environment['FPS'] ?? '') ?? 12;
+  final durationsFile = File(Platform.environment['VOICE_DURATIONS'] ?? 'design/voice/durations.json');
+  final voiceMs = durationsFile.existsSync() ? Map<String, num>.from(jsonDecode(durationsFile.readAsStringSync()) as Map) : <String, num>{};
   final wanted = (Platform.environment['VIDEOS'] ?? 'grow:en').split(',').where((s) => s.contains(':')).map((s) => (s.split(':')[0], s.split(':')[1])).toList();
 
   setUpAll(() async {
@@ -91,12 +97,20 @@ void main() {
         frame++;
       }
 
+      final timeline = <Map<String, Object>>[];
       for (var i = 0; i < scenes.length; i++) {
-        final n = (scenes[i].ms / 1000 * fps).round();
+        final clip = voiceClipName(spokenWords(scenes[i], lang), lang);
+        final voice = (voiceMs[clip] ?? 0).toInt();
+        timeline.add({'start_ms': (frame * 1000 / fps).round(), 'clip': clip});
+        // As in the player: the picture plays, then waits for the words (plus a short breath)
+        final total = voice > 0 ? (voice + 400 > scenes[i].ms ? voice + 400 : scenes[i].ms) : scenes[i].ms;
+        final n = (total / 1000 * fps).round();
         for (var f = 0; f < n; f++) {
-          await shoot(ExplainerScreen(startId: id, startScene: i, holdAt: f / n, autoplay: false, lang: lang));
+          final played = (f / fps * 1000) / scenes[i].ms;
+          await shoot(ExplainerScreen(startId: id, startScene: i, holdAt: played > 1 ? 1 : played, autoplay: false, lang: lang));
         }
       }
+      File('${folder.path}/timeline.json').writeAsStringSync(jsonEncode({'fps': fps, 'clips': timeline}));
       // The screen after the video, for two seconds
       for (var f = 0; f < fps * 2; f++) {
         await shoot(ExplainerScreen(startId: id, autoplay: false, showEnd: true, lang: lang));

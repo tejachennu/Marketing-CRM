@@ -1,4 +1,6 @@
 import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -151,6 +153,39 @@ void main() {
     expect(r.app.store.read('videos')?['sound'], true);
     expect(fake.said.last, spokenWords(grow.scenes[1], 'en'));
     await close(tester);
+  });
+
+  test('every line of every video has its recorded voice, in English, Telugu and Hindi', () {
+    final missing = <String>[];
+    for (final ex in explainers) {
+      for (final (i, scene) in ex.scenes.indexed) {
+        for (final (lang, _) in videoLanguages) {
+          final clip = voiceClipAsset(spokenWords(scene, lang), lang);
+          if (!File(clip).existsSync()) missing.add('${ex.id} scene $i ($lang): $clip');
+        }
+      }
+    }
+    expect(missing, isEmpty, reason: 'Words changed: make the voice again (design/voice/README.md)\n${missing.join('\n')}');
+  });
+
+  test('the app and the voice maker name the clips the same way', () {
+    final lines = (jsonDecode(File('design/voice/lines.json').readAsStringSync()) as List).cast<Map>();
+    for (final line in lines.take(12)) {
+      expect(voiceClipName('${line['text']}', '${line['lang']}'), line['name']);
+    }
+  });
+
+  testWidgets('a line with no recorded clip is read by the phone instead', (tester) async {
+    final phone = FakeNarrator();
+    final recorded = RecordedNarrator(phone);
+    await tester.runAsync(() async {
+      expect(await recorded.canSpeak('te'), isTrue, reason: 'Telugu clips are in the app');
+      unawaited(recorded.say('A line nobody recorded', 'en'));
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+    });
+    expect(phone.said, ['A line nobody recorded']);
+    await tester.runAsync(recorded.stop);
+    expect(phone.stops, 1);
   });
 
   test('the words said for a scene: title then line, "×" said as "by"', () {

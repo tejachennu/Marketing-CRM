@@ -1,0 +1,737 @@
+[
+  {
+    "video": "grow",
+    "scene": 0,
+    "lang": "en",
+    "text": "Your shop, open on WhatsApp 24 by 7. Customers message you any time. The app replies, books and sends bills for you.",
+    "name": "en_6766d020"
+  },
+  {
+    "video": "grow",
+    "scene": 0,
+    "lang": "te",
+    "text": "మీ షాప్ WhatsApp లో 24 బై 7 ఓపెన్. కస్టమర్లు ఎప్పుడైనా మెసేజ్ చేయొచ్చు. యాప్ మీ తరఫున జవాబిస్తుంది, బుక్ చేస్తుంది, బిల్ పంపుతుంది.",
+    "name": "te_8d40f4e9"
+  },
+  {
+    "video": "grow",
+    "scene": 0,
+    "lang": "hi",
+    "text": "आपकी दुकान WhatsApp पर 24 बाय 7 खुली. ग्राहक कभी भी मैसेज कर सकते हैं। ऐप आपकी तरफ़ से जवाब देता है, बुकिंग करता है और बिल भेजता है।",
+    "name": "hi_684b92c1"
+  },
+  {
+    "video": "grow",
+    "scene": 1,
+    "lang": "en",
+    "text": "From first message to happy customer. Every step happens in one app.",
+    "name": "en_1939c968"
+  },
+  {
+    "video": "grow",
+    "scene": 1,
+    "lang": "te",
+    "text": "మొదటి మెసేజ్ నుంచి హ్యాపీ కస్టమర్ వరకు. ప్రతి స్టెప్ ఒకే యాప్‌లో.",
+    "name": "te_75962187"
+  },
+  {
+    "video": "grow",
+    "scene": 1,
+    "lang": "hi",
+    "text": "पहले मैसेज से खुश ग्राहक तक. हर कदम एक ही ऐप में।",
+    "name": "hi_18250529"
+  },
+  {
+    "video": "grow",
+    "scene": 2,
+    "lang": "en",
+    "text": "Replies in seconds, even at midnight. The AI answers from your own prices and timings.",
+    "name": "en_5393ed78"
+  },
+  {
+    "video": "grow",
+    "scene": 2,
+    "lang": "te",
+    "text": "అర్ధరాత్రి అయినా సెకన్లలో జవాబు. మీ ధరలు, టైమింగ్స్ చూసి AI జవాబిస్తుంది.",
+    "name": "te_373dec00"
+  },
+  {
+    "video": "grow",
+    "scene": 2,
+    "lang": "hi",
+    "text": "आधी रात को भी सेकंडों में जवाब. AI आपकी अपनी कीमतों और टाइमिंग के हिसाब से जवाब देता है।",
+    "name": "hi_9b69603f"
+  },
+  {
+    "video": "grow",
+    "scene": 3,
+    "lang": "en",
+    "text": "Reminders, bills and reviews go out by themselves. Less phone work, fewer missed visits.",
+    "name": "en_cbd356ca"
+  },
+  {
+    "video": "grow",
+    "scene": 3,
+    "lang": "te",
+    "text": "రిమైండర్లు, బిల్లులు, రివ్యూలు ఆటోమేటిక్‌గా వెళ్తాయి. ఫోన్ పని తక్కువ, మిస్ అయ్యే అపాయింట్‌మెంట్లు తక్కువ.",
+    "name": "te_aafb1be4"
+  },
+  {
+    "video": "grow",
+    "scene": 3,
+    "lang": "hi",
+    "text": "रिमाइंडर, बिल और रिव्यू अपने आप जाते हैं. फ़ोन का काम कम, छूटने वाले अपॉइंटमेंट कम।",
+    "name": "hi_1b1c5a01"
+  },
+  {
+    "video": "grow",
+    "scene": 4,
+    "lang": "en",
+    "text": "More customers, less work. Start free for 14 days. No card needed.",
+    "name": "en_8deea945"
+  },
+  {
+    "video": "grow",
+    "scene": 4,
+    "lang": "te",
+    "text": "ఎక్కువ కస్టమర్లు, తక్కువ పని. 14 రోజులు ఉచితంగా వాడండి. కార్డ్ అవసరం లేదు.",
+    "name": "te_83e910b5"
+  },
+  {
+    "video": "grow",
+    "scene": 4,
+    "lang": "hi",
+    "text": "ज़्यादा ग्राहक, कम काम. 14 दिन मुफ़्त इस्तेमाल करें। कार्ड की ज़रूरत नहीं।",
+    "name": "hi_b2d1ad14"
+  },
+  {
+    "video": "website",
+    "scene": 0,
+    "lang": "en",
+    "text": "Your own online store. Products, prices, cart and payment. On our address or your own domain.",
+    "name": "en_9dcef13f"
+  },
+  {
+    "video": "website",
+    "scene": 0,
+    "lang": "te",
+    "text": "మీ సొంత ఆన్‌లైన్ స్టోర్. ప్రొడక్ట్స్, ధరలు, కార్ట్, పేమెంట్. మా అడ్రస్‌లో లేదా మీ సొంత డొమైన్‌లో.",
+    "name": "te_1e92c700"
+  },
+  {
+    "video": "website",
+    "scene": 0,
+    "lang": "hi",
+    "text": "आपका अपना ऑनलाइन स्टोर. प्रोडक्ट, दाम, कार्ट और पेमेंट। हमारे पते पर या आपके अपने डोमेन पर।",
+    "name": "hi_3cd9330c"
+  },
+  {
+    "video": "website",
+    "scene": 1,
+    "lang": "en",
+    "text": "A booking website for your services. Customers see your services and team, and book a time themselves.",
+    "name": "en_3f820f94"
+  },
+  {
+    "video": "website",
+    "scene": 1,
+    "lang": "te",
+    "text": "మీ సర్వీసులకు బుకింగ్ వెబ్‌సైట్. కస్టమర్లు మీ సర్వీసులు, టీమ్ చూసి, వాళ్ళే టైమ్ బుక్ చేసుకుంటారు.",
+    "name": "te_94fb51f0"
+  },
+  {
+    "video": "website",
+    "scene": 1,
+    "lang": "hi",
+    "text": "आपकी सर्विस के लिए बुकिंग वेबसाइट. ग्राहक आपकी सर्विस और टीम देखकर खुद समय बुक करते हैं।",
+    "name": "hi_bd8ecf05"
+  },
+  {
+    "video": "website",
+    "scene": 2,
+    "lang": "en",
+    "text": "Customers from every side. Google, Instagram, WhatsApp and ads all bring people to your website.",
+    "name": "en_ed1f5472"
+  },
+  {
+    "video": "website",
+    "scene": 2,
+    "lang": "te",
+    "text": "అన్ని వైపుల నుంచి కస్టమర్లు. Google, Instagram, WhatsApp, యాడ్స్ అన్నీ మీ వెబ్‌సైట్‌కి జనాన్ని తెస్తాయి.",
+    "name": "te_41e47697"
+  },
+  {
+    "video": "website",
+    "scene": 2,
+    "lang": "hi",
+    "text": "हर तरफ़ से ग्राहक. Google, Instagram, WhatsApp और ऐड, सब लोगों को आपकी वेबसाइट तक लाते हैं।",
+    "name": "hi_e0e536b6"
+  },
+  {
+    "video": "website",
+    "scene": 3,
+    "lang": "en",
+    "text": "Ready in minutes. It fills itself from your products and services. Our team can help you set it up.",
+    "name": "en_76b2a0ac"
+  },
+  {
+    "video": "website",
+    "scene": 3,
+    "lang": "te",
+    "text": "కొన్ని నిమిషాల్లో రెడీ. మీ ప్రొడక్ట్స్, సర్వీసుల నుంచి అదే నిండిపోతుంది. సెటప్‌కి మా టీమ్ సాయం చేస్తుంది.",
+    "name": "te_dc59866a"
+  },
+  {
+    "video": "website",
+    "scene": 3,
+    "lang": "hi",
+    "text": "कुछ ही मिनटों में तैयार. आपके प्रोडक्ट और सर्विस से यह खुद भर जाती है। सेट करने में हमारी टीम मदद करती है।",
+    "name": "hi_b072f3e8"
+  },
+  {
+    "video": "website",
+    "scene": 4,
+    "lang": "en",
+    "text": "Get found, get orders. Start free for 14 days. No card needed.",
+    "name": "en_4ee1e694"
+  },
+  {
+    "video": "website",
+    "scene": 4,
+    "lang": "te",
+    "text": "కస్టమర్లు మిమ్మల్ని కనుగొంటారు, ఆర్డర్లు వస్తాయి. 14 రోజులు ఉచితంగా వాడండి. కార్డ్ అవసరం లేదు.",
+    "name": "te_46279890"
+  },
+  {
+    "video": "website",
+    "scene": 4,
+    "lang": "hi",
+    "text": "ग्राहक आपको ढूँढेंगे, ऑर्डर आएँगे. 14 दिन मुफ़्त इस्तेमाल करें। कार्ड की ज़रूरत नहीं।",
+    "name": "hi_150ba232"
+  },
+  {
+    "video": "instagram",
+    "scene": 0,
+    "lang": "en",
+    "text": "Every comment gets a reply. Someone asks the price under your post. The AI replies at once and sends the details in a DM.",
+    "name": "en_d249c6c0"
+  },
+  {
+    "video": "instagram",
+    "scene": 0,
+    "lang": "te",
+    "text": "ప్రతి కామెంట్‌కి జవాబు. మీ పోస్ట్ కింద ఎవరైనా ధర అడిగితే, AI వెంటనే జవాబిచ్చి, వివరాలు DM లో పంపుతుంది.",
+    "name": "te_33a5c4a6"
+  },
+  {
+    "video": "instagram",
+    "scene": 0,
+    "lang": "hi",
+    "text": "हर कमेंट का जवाब. आपकी पोस्ट के नीचे कोई दाम पूछे, तो AI तुरंत जवाब देता है और डिटेल DM में भेजता है।",
+    "name": "hi_1789a802"
+  },
+  {
+    "video": "instagram",
+    "scene": 1,
+    "lang": "en",
+    "text": "DMs answered day and night. The AI answers in your customer's language and helps them order.",
+    "name": "en_bdbc7a49"
+  },
+  {
+    "video": "instagram",
+    "scene": 1,
+    "lang": "te",
+    "text": "DMలకు రాత్రీ పగలూ జవాబు. కస్టమర్ భాషలోనే AI జవాబిచ్చి, ఆర్డర్ చేయడంలో సాయం చేస్తుంది.",
+    "name": "te_f790b37e"
+  },
+  {
+    "video": "instagram",
+    "scene": 1,
+    "lang": "hi",
+    "text": "DM का जवाब दिन-रात. AI ग्राहक की भाषा में जवाब देता है और ऑर्डर करने में मदद करता है।",
+    "name": "hi_ffa796ca"
+  },
+  {
+    "video": "instagram",
+    "scene": 2,
+    "lang": "en",
+    "text": "Bookings from Instagram too. Customers pick a time from the chat, and it shows on your Front Desk.",
+    "name": "en_0cc58de5"
+  },
+  {
+    "video": "instagram",
+    "scene": 2,
+    "lang": "te",
+    "text": "Instagram నుంచి బుకింగ్‌లు కూడా. కస్టమర్లు చాట్ నుంచే టైమ్ ఎంచుకుంటారు, అది మీ Front Desk లో కనిపిస్తుంది.",
+    "name": "te_14dc2703"
+  },
+  {
+    "video": "instagram",
+    "scene": 2,
+    "lang": "hi",
+    "text": "Instagram से बुकिंग भी. ग्राहक चैट से ही समय चुनते हैं, और वह आपके Front Desk में दिखता है।",
+    "name": "hi_615c9db0"
+  },
+  {
+    "video": "instagram",
+    "scene": 3,
+    "lang": "en",
+    "text": "From a comment to a sale. Instagram and WhatsApp chats in one app, with the same AI.",
+    "name": "en_38aba8f6"
+  },
+  {
+    "video": "instagram",
+    "scene": 3,
+    "lang": "te",
+    "text": "కామెంట్ నుంచి సేల్ వరకు. Instagram, WhatsApp చాట్‌లు ఒకే యాప్‌లో, అదే AI తో.",
+    "name": "te_dc842aa0"
+  },
+  {
+    "video": "instagram",
+    "scene": 3,
+    "lang": "hi",
+    "text": "कमेंट से बिक्री तक. Instagram और WhatsApp की चैट एक ही ऐप में, उसी AI के साथ।",
+    "name": "hi_f03df031"
+  },
+  {
+    "video": "instagram",
+    "scene": 4,
+    "lang": "en",
+    "text": "Sell on Instagram while you sleep. Connect Instagram, then switch on auto replies.",
+    "name": "en_068c4b17"
+  },
+  {
+    "video": "instagram",
+    "scene": 4,
+    "lang": "te",
+    "text": "మీరు నిద్రపోతున్నా Instagram లో అమ్మకాలు. Instagram కనెక్ట్ చేసి, ఆటో రిప్లైలు ఆన్ చేయండి.",
+    "name": "te_09937ecb"
+  },
+  {
+    "video": "instagram",
+    "scene": 4,
+    "lang": "hi",
+    "text": "आप सोएँ तब भी Instagram पर बिक्री. Instagram जोड़ें, फिर ऑटो रिप्लाई चालू करें।",
+    "name": "hi_9372def4"
+  },
+  {
+    "video": "replies",
+    "scene": 0,
+    "lang": "en",
+    "text": "A customer asks at 11:42 pm. The AI replies in seconds, with your prices.",
+    "name": "en_97f1fa81"
+  },
+  {
+    "video": "replies",
+    "scene": 0,
+    "lang": "te",
+    "text": "రాత్రి 11:42 కి కస్టమర్ అడిగారు. AI సెకన్లలో మీ ధరలతో జవాబిస్తుంది.",
+    "name": "te_ac23edc6"
+  },
+  {
+    "video": "replies",
+    "scene": 0,
+    "lang": "hi",
+    "text": "रात 11:42 बजे ग्राहक ने पूछा. AI सेकंडों में आपकी कीमतें बताकर जवाब देता है।",
+    "name": "hi_684245c2"
+  },
+  {
+    "video": "replies",
+    "scene": 1,
+    "lang": "en",
+    "text": "English, తెలుగు, हिंदी and mixes. It answers in the language your customer writes in.",
+    "name": "en_d2c3c654"
+  },
+  {
+    "video": "replies",
+    "scene": 1,
+    "lang": "te",
+    "text": "English, తెలుగు, हिंदी, మిక్స్ చేసినా సరే. కస్టమర్ ఏ భాషలో రాస్తే అదే భాషలో జవాబిస్తుంది.",
+    "name": "te_a8740f45"
+  },
+  {
+    "video": "replies",
+    "scene": 1,
+    "lang": "hi",
+    "text": "English, తెలుగు, हिंदी और मिली-जुली भाषा. ग्राहक जिस भाषा में लिखे, उसी में जवाब देता है।",
+    "name": "hi_21a5ee0e"
+  },
+  {
+    "video": "replies",
+    "scene": 2,
+    "lang": "en",
+    "text": "Hands over to you when needed. Tricky questions come to your team, with the full chat.",
+    "name": "en_f76b0beb"
+  },
+  {
+    "video": "replies",
+    "scene": 2,
+    "lang": "te",
+    "text": "అవసరమైతే చాట్ మీకు అప్పగిస్తుంది. కష్టమైన ప్రశ్నలు పూర్తి చాట్‌తో సహా మీ టీమ్‌కి వస్తాయి.",
+    "name": "te_57e0db1c"
+  },
+  {
+    "video": "replies",
+    "scene": 2,
+    "lang": "hi",
+    "text": "ज़रूरत हो तो चैट आपको सौंप देता है. मुश्किल सवाल पूरी चैट के साथ आपकी टीम के पास आते हैं।",
+    "name": "hi_2fbda8d3"
+  },
+  {
+    "video": "replies",
+    "scene": 3,
+    "lang": "en",
+    "text": "It learns from your business. Add your services, prices and answers once. The AI uses them every time.",
+    "name": "en_cb6a40dd"
+  },
+  {
+    "video": "replies",
+    "scene": 3,
+    "lang": "te",
+    "text": "మీ బిజినెస్ నుంచే నేర్చుకుంటుంది. మీ సర్వీసులు, ధరలు, జవాబులు ఒక్కసారి పెట్టండి. AI ప్రతిసారీ వాటినే వాడుతుంది.",
+    "name": "te_cacef3c2"
+  },
+  {
+    "video": "replies",
+    "scene": 3,
+    "lang": "hi",
+    "text": "यह आपके बिज़नेस से सीखता है. अपनी सर्विस, कीमतें और जवाब एक बार डालें। AI हर बार उन्हीं का इस्तेमाल करता है।",
+    "name": "hi_c4287e0a"
+  },
+  {
+    "video": "replies",
+    "scene": 4,
+    "lang": "en",
+    "text": "Never miss a customer again. Your AI assistant works day and night.",
+    "name": "en_60a11a65"
+  },
+  {
+    "video": "replies",
+    "scene": 4,
+    "lang": "te",
+    "text": "ఇక ఏ కస్టమర్‌నీ మిస్ చేసుకోరు. మీ AI అసిస్టెంట్ రాత్రీ పగలూ పని చేస్తుంది.",
+    "name": "te_b4b98769"
+  },
+  {
+    "video": "replies",
+    "scene": 4,
+    "lang": "hi",
+    "text": "अब कोई ग्राहक नहीं छूटेगा. आपका AI असिस्टेंट दिन-रात काम करता है।",
+    "name": "hi_3cf8aea3"
+  },
+  {
+    "video": "inbox",
+    "scene": 0,
+    "lang": "en",
+    "text": "All chats in one place. Your whole team uses one WhatsApp number, on the app and the website.",
+    "name": "en_2bd29000"
+  },
+  {
+    "video": "inbox",
+    "scene": 0,
+    "lang": "te",
+    "text": "అన్ని చాట్‌లు ఒకే చోట. మీ టీమ్ అంతా ఒకే WhatsApp నంబర్ వాడుతుంది, యాప్‌లో, వెబ్‌సైట్‌లో.",
+    "name": "te_4912e472"
+  },
+  {
+    "video": "inbox",
+    "scene": 0,
+    "lang": "hi",
+    "text": "सारी चैट एक जगह. आपकी पूरी टीम एक ही WhatsApp नंबर इस्तेमाल करती है, ऐप और वेबसाइट दोनों पर।",
+    "name": "hi_c2b18b50"
+  },
+  {
+    "video": "inbox",
+    "scene": 1,
+    "lang": "en",
+    "text": "Give each chat to the right person. Staff see the chats given to them. Nothing gets lost.",
+    "name": "en_05d5735e"
+  },
+  {
+    "video": "inbox",
+    "scene": 1,
+    "lang": "te",
+    "text": "ప్రతి చాట్‌ని సరైన వ్యక్తికి ఇవ్వండి. ఎవరికి ఇచ్చిన చాట్‌లు వాళ్ళకి కనిపిస్తాయి. ఏదీ మిస్ అవ్వదు.",
+    "name": "te_f84b378c"
+  },
+  {
+    "video": "inbox",
+    "scene": 1,
+    "lang": "hi",
+    "text": "हर चैट सही इंसान को दें. स्टाफ़ को सिर्फ़ अपनी चैट दिखती हैं। कुछ नहीं छूटता।",
+    "name": "hi_327c23c3"
+  },
+  {
+    "video": "inbox",
+    "scene": 2,
+    "lang": "en",
+    "text": "Turn problems into tickets. Track every complaint until it is solved.",
+    "name": "en_957f0553"
+  },
+  {
+    "video": "inbox",
+    "scene": 2,
+    "lang": "te",
+    "text": "సమస్యలను టికెట్లుగా మార్చండి. ప్రతి కంప్లైంట్ పరిష్కారం అయ్యే వరకు ట్రాక్ చేయండి.",
+    "name": "te_fc1161c2"
+  },
+  {
+    "video": "inbox",
+    "scene": 2,
+    "lang": "hi",
+    "text": "शिकायत को टिकट बनाइए. हर शिकायत को हल होने तक ट्रैक करें।",
+    "name": "hi_f0a472d9"
+  },
+  {
+    "video": "inbox",
+    "scene": 3,
+    "lang": "en",
+    "text": "A pop-up for every new message. Reply fast, even when the app is closed.",
+    "name": "en_1d661b73"
+  },
+  {
+    "video": "inbox",
+    "scene": 3,
+    "lang": "te",
+    "text": "ప్రతి కొత్త మెసేజ్‌కి పాప్-అప్. యాప్ మూసి ఉన్నా వెంటనే జవాబివ్వండి.",
+    "name": "te_90a858f3"
+  },
+  {
+    "video": "inbox",
+    "scene": 3,
+    "lang": "hi",
+    "text": "हर नए मैसेज पर पॉप-अप. ऐप बंद हो तब भी जल्दी जवाब दें।",
+    "name": "hi_da8ead4f"
+  },
+  {
+    "video": "inbox",
+    "scene": 4,
+    "lang": "en",
+    "text": "Fast replies win customers. Answer every chat on time, together.",
+    "name": "en_9b81b3d4"
+  },
+  {
+    "video": "inbox",
+    "scene": 4,
+    "lang": "te",
+    "text": "త్వరగా జవాబిస్తే కస్టమర్లు మీవాళ్ళే. అందరూ కలిసి, ప్రతి చాట్‌కి టైమ్‌కి జవాబివ్వండి.",
+    "name": "te_65c987a7"
+  },
+  {
+    "video": "inbox",
+    "scene": 4,
+    "lang": "hi",
+    "text": "जल्दी जवाब, ज़्यादा ग्राहक. सब मिलकर हर चैट का समय पर जवाब दें।",
+    "name": "hi_f97883ff"
+  },
+  {
+    "video": "automation",
+    "scene": 0,
+    "lang": "en",
+    "text": "Messages that send themselves. Set them up once. They go out at the right time, every time.",
+    "name": "en_cfc64188"
+  },
+  {
+    "video": "automation",
+    "scene": 0,
+    "lang": "te",
+    "text": "ఆటోమేటిక్‌గా వెళ్ళే మెసేజ్‌లు. ఒక్కసారి సెట్ చేయండి. ప్రతిసారీ సరైన టైమ్‌కి వెళ్తాయి.",
+    "name": "te_8be42b2e"
+  },
+  {
+    "video": "automation",
+    "scene": 0,
+    "lang": "hi",
+    "text": "मैसेज जो अपने आप जाते हैं. एक बार सेट करें। हर बार सही समय पर जाते हैं।",
+    "name": "hi_26177caa"
+  },
+  {
+    "video": "automation",
+    "scene": 1,
+    "lang": "en",
+    "text": "Reminders cut missed visits. Customers get a WhatsApp message before every visit.",
+    "name": "en_ae836d38"
+  },
+  {
+    "video": "automation",
+    "scene": 1,
+    "lang": "te",
+    "text": "రిమైండర్లతో మిస్ అయ్యే అపాయింట్‌మెంట్లు తగ్గుతాయి. ప్రతి అపాయింట్‌మెంట్‌కి ముందు కస్టమర్‌కి WhatsApp మెసేజ్ వెళ్తుంది.",
+    "name": "te_d49e8ba1"
+  },
+  {
+    "video": "automation",
+    "scene": 1,
+    "lang": "hi",
+    "text": "रिमाइंडर से छूटने वाले अपॉइंटमेंट कम. हर अपॉइंटमेंट से पहले ग्राहक को WhatsApp मैसेज जाता है।",
+    "name": "hi_b10cbd26"
+  },
+  {
+    "video": "automation",
+    "scene": 2,
+    "lang": "en",
+    "text": "Get back lost sales. Cart reminders and back-in-stock messages for your online shop.",
+    "name": "en_31972ee8"
+  },
+  {
+    "video": "automation",
+    "scene": 2,
+    "lang": "te",
+    "text": "పోయిన సేల్స్ మళ్ళీ తెచ్చుకోండి. మీ ఆన్‌లైన్ షాప్‌కి కార్ట్ రిమైండర్లు, స్టాక్ వచ్చిందని మెసేజ్‌లు.",
+    "name": "te_18718415"
+  },
+  {
+    "video": "automation",
+    "scene": 2,
+    "lang": "hi",
+    "text": "छूटी हुई बिक्री वापस पाएँ. आपकी ऑनलाइन दुकान के लिए कार्ट रिमाइंडर और स्टॉक वापस आने के मैसेज।",
+    "name": "hi_65778748"
+  },
+  {
+    "video": "automation",
+    "scene": 3,
+    "lang": "en",
+    "text": "More good reviews. After each visit or order we ask how it went. Happy customers leave reviews.",
+    "name": "en_3510e641"
+  },
+  {
+    "video": "automation",
+    "scene": 3,
+    "lang": "te",
+    "text": "మంచి రివ్యూలు ఎక్కువ వస్తాయి. ప్రతి సర్వీస్ లేదా ఆర్డర్ తర్వాత ఎలా ఉందో అడుగుతాం. హ్యాపీ కస్టమర్లు రివ్యూ ఇస్తారు.",
+    "name": "te_fcea37a6"
+  },
+  {
+    "video": "automation",
+    "scene": 3,
+    "lang": "hi",
+    "text": "ज़्यादा अच्छे रिव्यू. हर अपॉइंटमेंट या ऑर्डर के बाद हम पूछते हैं कि कैसा रहा। खुश ग्राहक रिव्यू देते हैं।",
+    "name": "hi_448748f7"
+  },
+  {
+    "video": "automation",
+    "scene": 4,
+    "lang": "en",
+    "text": "Set it once, it works every day. Less follow-up work for you and your staff.",
+    "name": "en_7ae76119"
+  },
+  {
+    "video": "automation",
+    "scene": 4,
+    "lang": "te",
+    "text": "ఒక్కసారి సెట్ చేస్తే, రోజూ పని చేస్తుంది. మీకు, మీ స్టాఫ్‌కి ఫాలో-అప్ పని తగ్గుతుంది.",
+    "name": "te_2e99c692"
+  },
+  {
+    "video": "automation",
+    "scene": 4,
+    "lang": "hi",
+    "text": "एक बार सेट करें, रोज़ काम करे. आपके और आपके स्टाफ़ के लिए फ़ॉलो-अप का काम कम।",
+    "name": "hi_ecac2ad2"
+  },
+  {
+    "video": "ads",
+    "scene": 0,
+    "lang": "en",
+    "text": "Our team runs your ads. On Instagram, Facebook and Google, made for your business and your area.",
+    "name": "en_d8b6c09b"
+  },
+  {
+    "video": "ads",
+    "scene": 0,
+    "lang": "te",
+    "text": "మా టీమ్ మీ యాడ్స్ రన్ చేస్తుంది. Instagram, Facebook, Google లో, మీ బిజినెస్‌కి, మీ ఏరియాకి తగ్గట్టు.",
+    "name": "te_f9fe95a9"
+  },
+  {
+    "video": "ads",
+    "scene": 0,
+    "lang": "hi",
+    "text": "हमारी टीम आपके ऐड चलाती है. Instagram, Facebook और Google पर, आपके बिज़नेस और इलाके के हिसाब से।",
+    "name": "hi_97272908"
+  },
+  {
+    "video": "ads",
+    "scene": 1,
+    "lang": "en",
+    "text": "Ad clicks become WhatsApp chats. People tap your ad and message you straight away.",
+    "name": "en_b4624cef"
+  },
+  {
+    "video": "ads",
+    "scene": 1,
+    "lang": "te",
+    "text": "యాడ్ క్లిక్‌లు WhatsApp చాట్‌లు అవుతాయి. యాడ్ నొక్కగానే నేరుగా మీకు మెసేజ్ చేస్తారు.",
+    "name": "te_d374fc06"
+  },
+  {
+    "video": "ads",
+    "scene": 1,
+    "lang": "hi",
+    "text": "ऐड के क्लिक WhatsApp चैट बन जाते हैं. लोग आपके ऐड पर टैप करते ही सीधे आपको मैसेज करते हैं।",
+    "name": "hi_c965ebdd"
+  },
+  {
+    "video": "ads",
+    "scene": 2,
+    "lang": "en",
+    "text": "The AI replies, you get the booking. No lead waits, even at night.",
+    "name": "en_87e0842c"
+  },
+  {
+    "video": "ads",
+    "scene": 2,
+    "lang": "te",
+    "text": "AI జవాబిస్తుంది, మీకు బుకింగ్ వస్తుంది. రాత్రి అయినా ఏ కస్టమరూ వెయిట్ చేయక్కర్లేదు.",
+    "name": "te_4ae0d4e6"
+  },
+  {
+    "video": "ads",
+    "scene": 2,
+    "lang": "hi",
+    "text": "AI जवाब देता है, आपको बुकिंग मिलती है. रात को भी किसी ग्राहक को इंतज़ार नहीं करना पड़ता।",
+    "name": "hi_2629d177"
+  },
+  {
+    "video": "ads",
+    "scene": 3,
+    "lang": "en",
+    "text": "Social media, taken care of. Posts, reels and photos made by our team, and you see every chat that comes in.",
+    "name": "en_7070f90a"
+  },
+  {
+    "video": "ads",
+    "scene": 3,
+    "lang": "te",
+    "text": "సోషల్ మీడియా మేమే చూసుకుంటాం. పోస్టులు, రీల్స్, ఫోటోలు మా టీమ్ చేస్తుంది, వచ్చే ప్రతి చాట్ మీకు కనిపిస్తుంది.",
+    "name": "te_cb8f2078"
+  },
+  {
+    "video": "ads",
+    "scene": 3,
+    "lang": "hi",
+    "text": "सोशल मीडिया हम संभालते हैं. पोस्ट, रील्स और फ़ोटो हमारी टीम बनाती है, और आने वाली हर चैट आपको दिखती है।",
+    "name": "hi_688dd8e6"
+  },
+  {
+    "video": "ads",
+    "scene": 4,
+    "lang": "en",
+    "text": "Grow faster with ads and WhatsApp. Ask our team from More, then Grow your business.",
+    "name": "en_363a8a63"
+  },
+  {
+    "video": "ads",
+    "scene": 4,
+    "lang": "te",
+    "text": "యాడ్స్, WhatsApp తో బిజినెస్ వేగంగా పెంచుకోండి. More లో Grow your business నుంచి మా టీమ్‌ని అడగండి.",
+    "name": "te_6245fe3c"
+  },
+  {
+    "video": "ads",
+    "scene": 4,
+    "lang": "hi",
+    "text": "ऐड और WhatsApp से तेज़ी से बढ़ें. More में Grow your business खोलें और हमारी टीम से पूछें।",
+    "name": "hi_5b8ddb92"
+  }
+]

@@ -50,6 +50,7 @@ dependencies:
   firebase_core: ^5.1.0
   firebase_messaging: ^17.0.1
   flutter_tts: ^4.2.5
+  just_audio: ^0.10.6
 
 dev_dependencies:
   flutter_test:
@@ -78,6 +79,8 @@ flutter:
     # Pictures for sign-in, sign-up and the welcome pages (1x here, 2.0x/ and 3.0x/ for sharper phones).
     # Drawn in mobile/design/art (gen.py) — change them there and render again.
     - assets/images/
+    # The videos' recorded voice, one clip per scene and language (made by mobile/design/voice/make_voice.py)
+    - assets/voice/
 
   # To add assets to your application, add an assets section, like this:
   # assets:
