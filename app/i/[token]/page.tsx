@@ -1,10 +1,11 @@
 import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
+import { InvoiceDocument, invoiceDate, invoiceMoney, type InvoiceAmountRow, type InvoiceView } from '@/components/invoice/invoice-document'
 import { getSupabaseAdminClient } from '@/lib/api-auth-helper'
-import { amountInWords, formatRupees } from '@/lib/salon/invoice'
+import { BRAND } from '@/lib/brand'
+import { amountInWords } from '@/lib/salon/invoice'
 import { isSafeLogoUrl } from '@/lib/salon/logo'
 import { formatIstTime } from '@/lib/salon/spoken'
-import { PrintButton } from './print-button'
 
 export const dynamic = 'force-dynamic'
 export const metadata: Metadata = { title: 'Invoice', robots: { index: false, follow: false } }
@@ -25,18 +26,9 @@ async function invoiceLogo(invoice: any): Promise<string | null> {
   return isSafeLogoUrl(data?.logo_url) ? data.logo_url : null
 }
 
-function formatDate(iso: string) {
-  const date = new Date(iso)
-  return Number.isFinite(date.getTime()) ? date.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' }) : ''
-}
-
-export default async function PublicInvoicePage({ params }: { params: Promise<{ token: string }> }) {
-  const { token } = await params
-  const invoice = await loadInvoice(token)
-  if (!invoice) notFound()
-
+/** A Front Desk bill as the invoice page shows it. */
+function billView(invoice: any, logo: string | null, token: string): InvoiceView {
   const business = invoice.business || {}
-  const logo = await invoiceLogo(invoice)
   const registered = Boolean(business.gstin)
   const items: any[] = Array.isArray(invoice.items) ? invoice.items : []
   const rates = new Map<number, { taxable: number; tax: number }>()
@@ -47,127 +39,83 @@ export default async function PublicInvoicePage({ params }: { params: Promise<{ 
     rates.set(Number(item.tax_rate), row)
   }
   const igst = Number(invoice.igst) > 0
-  const money = (value: unknown) => formatRupees(Number(value) || 0)
+  const money = invoiceMoney
+  const status = String(invoice.status || 'unpaid')
+  const total = Number(invoice.total) || 0
+  const membershipPaid = Number(invoice.membership_paid) || 0
+  const advancePaid = Number(invoice.advance_paid) || 0
+  const balance = Math.max(0, total - membershipPaid - advancePaid)
 
-  return (
-    <main className="min-h-screen bg-[#eef1f6] py-6 sm:py-10 px-3 print:bg-white print:p-0">
-      <style>{'@page { size: A4; margin: 14mm } @media print { .no-print { display: none !important } }'}</style>
-      <div className="no-print max-w-[820px] mx-auto mb-4 flex flex-wrap items-center justify-between gap-3">
-        <p className="text-[14px] text-[#4a5672]">Invoice from <strong className="text-[#0E1B3D]">{business.name || 'us'}</strong></p>
-        <div className="flex flex-wrap gap-2">
-          {invoice.status !== 'void' && <a href={`/f/${token}`} className="inline-flex items-center gap-2 h-11 px-5 rounded-xl border border-[#d5ddeb] bg-white text-[#0E1B3D] text-[15px] font-bold hover:bg-[#f4f6fa]">⭐ Rate your visit</a>}
-          <PrintButton />
-        </div>
-      </div>
+  const totals: InvoiceAmountRow[] = [{ label: 'Subtotal', value: money(invoice.subtotal) }]
+  if (Number(invoice.discount) > 0) totals.push({ label: 'Discount', value: money(invoice.discount), minus: true })
+  if (registered) {
+    totals.push({ label: 'Taxable value', value: money(invoice.taxable) })
+    if (igst) totals.push({ label: 'IGST', value: money(invoice.igst) })
+    else totals.push({ label: 'CGST', value: money(invoice.cgst) }, { label: 'SGST', value: money(invoice.sgst) })
+  }
+  const after: InvoiceAmountRow[] = []
+  if (membershipPaid > 0 || advancePaid > 0) {
+    if (membershipPaid > 0) after.push({ label: 'Paid from membership', value: money(membershipPaid), minus: true })
+    if (advancePaid > 0) after.push({ label: 'Paid online when booking', value: money(advancePaid), minus: true })
+    after.push({ label: status === 'paid' ? 'Paid' : 'To pay', value: money(balance), strong: true })
+  }
 
-      <article className="relative max-w-[820px] mx-auto bg-white text-[#0E1B3D] rounded-2xl shadow-sm print:shadow-none print:rounded-none p-6 sm:p-10 overflow-hidden">
+  return {
+    title: registered ? 'TAX INVOICE' : 'BILL',
+    docName: registered ? 'Invoice' : 'Bill',
+    numberLabel: registered ? 'Invoice no.' : 'Bill no.',
+    number: String(invoice.number || ''),
+    date: `${invoiceDate(invoice.issued_at)}, ${formatIstTime(invoice.issued_at)}`,
+    stamp: status === 'paid' ? 'paid' : status === 'void' ? 'cancelled' : 'unpaid',
+    notice: status === 'void' ? `This ${registered ? 'invoice' : 'bill'} has been cancelled.` : null,
+    business: {
+      name: String(business.name || 'Invoice'),
+      logo,
+      address: business.address || null,
+      contact: [business.phone, business.email].filter(Boolean),
+      gstin: registered ? business.gstin : null,
+    },
+    facts: [],
+    headline: status === 'unpaid' ? { label: 'To pay', value: money(balance) } : { label: 'Total', value: money(total) },
+    parties: [
+      { label: 'Bill to', title: invoice.customer_name, lines: [invoice.customer_phone, invoice.customer_gstin && `GSTIN ${invoice.customer_gstin}`].filter(Boolean) },
+      {
+        label: 'Payment',
+        title: status === 'paid' ? `Paid · ${PAYMENT_LABELS[invoice.payment_method] || 'Paid'}` : status === 'void' ? 'Cancelled' : 'Not paid yet',
+        lines: invoice.staff_name ? [`Served by ${invoice.staff_name}`] : [],
+      },
+    ],
+    itemHeading: 'Service',
+    showTax: registered,
+    lines: items.map((item) => ({
+      name: String(item.name || ''),
+      details: [item.staff_name && `by ${item.staff_name}`, item.sac_code && `SAC ${item.sac_code}`].filter(Boolean),
+      quantity: Number(item.quantity) || 1,
+      rate: money(item.price),
+      taxable: money(item.taxable),
+      gst: `${Number(item.tax_rate) || 0}%`,
+      amount: money(item.total),
+    })),
+    taxSummary: registered && rates.size > 0 ? {
+      igst,
+      rows: [...rates.entries()].sort((a, b) => a[0] - b[0]).map(([rate, row]) => ({
+        rate: `${rate}%`, taxable: money(row.taxable), cgst: money(row.tax / 2), sgst: money(row.tax / 2), igst: money(row.tax),
+      })),
+    } : null,
+    totals,
+    total: { label: 'Total', value: money(total) },
+    after,
+    amountInWords: amountInWords(total),
+    notes: invoice.prices_include_tax && registered ? ['Prices include GST.'] : [],
+    footer: { message: business.note || 'Thank you for visiting!', madeWith: `Made with ${BRAND.name}` },
+    rateHref: status !== 'void' ? `/f/${token}` : null,
+  }
+}
 
-        <header className="flex flex-col sm:flex-row sm:items-start justify-between gap-5 border-b border-[#e3e8f2] pb-6">
-          <div className="flex items-start gap-4">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            {logo && <img src={logo} alt={business.name ? `${business.name} logo` : 'Logo'} className="h-16 w-auto max-w-[140px] object-contain shrink-0" />}
-            <div>
-              <h1 className="text-[24px] font-extrabold leading-tight">{business.name || 'Invoice'}</h1>
-              {business.address && <p className="text-[13.5px] text-[#4a5672] mt-1 whitespace-pre-line max-w-sm">{business.address}</p>}
-              <p className="text-[13.5px] text-[#4a5672] mt-1">{[business.phone, business.email].filter(Boolean).join(' · ')}</p>
-              {registered && <p className="text-[13.5px] mt-1"><span className="text-[#6B7894]">GSTIN</span> <strong>{business.gstin}</strong></p>}
-            </div>
-          </div>
-          <div className="sm:text-right">
-            <p className="text-[13px] font-bold tracking-[0.15em] text-[#1D5BEA]">{registered ? 'TAX INVOICE' : 'BILL'}</p>
-            <p className="text-[20px] font-extrabold mt-1">{invoice.number}</p>
-            <p className="text-[13.5px] text-[#4a5672] mt-1">{formatDate(invoice.issued_at)}, {formatIstTime(invoice.issued_at)}</p>
-            {invoice.status !== 'unpaid' && (
-              <span className={`inline-block mt-2 px-3 py-1 rounded-md border-2 text-[13px] font-extrabold tracking-[0.2em] ${invoice.status === 'paid' ? 'border-[#1D5BEA] text-[#174bc4]' : 'border-[#b91c1c] text-[#b91c1c]'}`}>{invoice.status === 'paid' ? 'PAID' : 'VOID'}</span>
-            )}
-          </div>
-        </header>
-
-        <section className="grid grid-cols-1 sm:grid-cols-2 gap-4 py-5 text-[14px]">
-          <div>
-            <p className="text-[12.5px] font-semibold text-[#6B7894]">Bill to</p>
-            <p className="font-bold text-[15.5px] mt-0.5">{invoice.customer_name}</p>
-            {invoice.customer_phone && <p className="text-[#4a5672]">{invoice.customer_phone}</p>}
-            {invoice.customer_gstin && <p className="text-[#4a5672]">GSTIN {invoice.customer_gstin}</p>}
-          </div>
-          <div className="sm:text-right">
-            <p className="text-[12.5px] font-semibold text-[#6B7894]">Payment</p>
-            <p className="font-bold text-[15.5px] mt-0.5">{invoice.status === 'paid' ? `Paid · ${PAYMENT_LABELS[invoice.payment_method] || 'Paid'}` : invoice.status === 'void' ? 'Cancelled' : 'Not paid yet'}</p>
-            {invoice.staff_name && <p className="text-[#4a5672]">Served by {invoice.staff_name}</p>}
-          </div>
-        </section>
-
-        <div className="overflow-x-auto">
-          <table className="w-full text-[14px] border-collapse min-w-[520px]">
-            <thead>
-              <tr className="bg-[#f6f8fc] text-left text-[12.5px] text-[#4a5672]">
-                <th className="py-2.5 px-3 font-semibold">#</th>
-                <th className="py-2.5 px-3 font-semibold">Service</th>
-                <th className="py-2.5 px-3 font-semibold text-right">Qty</th>
-                <th className="py-2.5 px-3 font-semibold text-right">Rate</th>
-                <th className="py-2.5 px-3 font-semibold text-right">Taxable</th>
-                {registered && <th className="py-2.5 px-3 font-semibold text-right">GST</th>}
-                <th className="py-2.5 px-3 font-semibold text-right">Amount</th>
-              </tr>
-            </thead>
-            <tbody>
-              {items.map((item, index) => (
-                <tr key={index} className="border-b border-[#eef1f6]">
-                  <td className="py-2.5 px-3 text-[#6B7894]">{index + 1}</td>
-                  <td className="py-2.5 px-3"><span className="font-semibold">{item.name}</span>{item.staff_name && <span className="block text-[12px] text-[#6B7894]">by {item.staff_name}</span>}{item.sac_code && <span className="block text-[12px] text-[#6B7894]">SAC {item.sac_code}</span>}</td>
-                  <td className="py-2.5 px-3 text-right">{item.quantity}</td>
-                  <td className="py-2.5 px-3 text-right">{money(item.price)}</td>
-                  <td className="py-2.5 px-3 text-right">{money(item.taxable)}</td>
-                  {registered && <td className="py-2.5 px-3 text-right">{Number(item.tax_rate)}%</td>}
-                  <td className="py-2.5 px-3 text-right font-semibold">{money(item.total)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-
-        <section className="mt-5 flex flex-col sm:flex-row justify-between gap-6">
-          <div className="text-[13px] text-[#4a5672] sm:max-w-[50%]">
-            <p className="font-semibold text-[#0E1B3D]">Amount in words</p>
-            <p className="mt-0.5">{amountInWords(Number(invoice.total))}</p>
-            {registered && rates.size > 0 && (
-              <table className="mt-4 text-[12.5px] border-collapse">
-                <thead><tr className="text-[#6B7894]"><th className="pr-4 text-left font-semibold">GST</th><th className="pr-4 text-right font-semibold">Taxable</th>{igst ? <th className="text-right font-semibold">IGST</th> : <><th className="pr-4 text-right font-semibold">CGST</th><th className="text-right font-semibold">SGST</th></>}</tr></thead>
-                <tbody>
-                  {[...rates.entries()].sort((a, b) => a[0] - b[0]).map(([rate, row]) => (
-                    <tr key={rate}><td className="pr-4">{rate}%</td><td className="pr-4 text-right">{money(row.taxable)}</td>{igst ? <td className="text-right">{money(row.tax)}</td> : <><td className="pr-4 text-right">{money(row.tax / 2)}</td><td className="text-right">{money(row.tax / 2)}</td></>}</tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-          </div>
-          <dl className="w-full sm:w-72 text-[14px] space-y-1.5">
-            <div className="flex justify-between"><dt className="text-[#4a5672]">Subtotal</dt><dd>{money(invoice.subtotal)}</dd></div>
-            {Number(invoice.discount) > 0 && <div className="flex justify-between"><dt className="text-[#4a5672]">Discount</dt><dd>− {money(invoice.discount)}</dd></div>}
-            {registered && <div className="flex justify-between"><dt className="text-[#4a5672]">Taxable value</dt><dd>{money(invoice.taxable)}</dd></div>}
-            {registered && (igst
-              ? <div className="flex justify-between"><dt className="text-[#4a5672]">IGST</dt><dd>{money(invoice.igst)}</dd></div>
-              : <>
-                <div className="flex justify-between"><dt className="text-[#4a5672]">CGST</dt><dd>{money(invoice.cgst)}</dd></div>
-                <div className="flex justify-between"><dt className="text-[#4a5672]">SGST</dt><dd>{money(invoice.sgst)}</dd></div>
-              </>)}
-            <div className="flex justify-between border-t border-[#e3e8f2] pt-2 mt-2 text-[18px] font-extrabold"><dt>Total</dt><dd>{money(invoice.total)}</dd></div>
-            {(Number(invoice.membership_paid) > 0 || Number(invoice.advance_paid) > 0) && (
-              <>
-                {Number(invoice.membership_paid) > 0 && <div className="flex justify-between text-[14.5px]"><dt>Paid from membership</dt><dd>− {money(invoice.membership_paid)}</dd></div>}
-                {Number(invoice.advance_paid) > 0 && <div className="flex justify-between text-[14.5px]"><dt>Paid online when booking</dt><dd>− {money(invoice.advance_paid)}</dd></div>}
-                <div className="flex justify-between font-bold text-[15.5px]"><dt>{invoice.status === 'paid' ? 'Paid' : 'To pay'}</dt><dd>{money(Math.max(0, Number(invoice.total) - (Number(invoice.membership_paid) || 0) - (Number(invoice.advance_paid) || 0)))}</dd></div>
-              </>
-            )}
-            {invoice.prices_include_tax && registered && <p className="text-[12px] text-[#6B7894] text-right">Prices include GST</p>}
-          </dl>
-        </section>
-
-        <footer className="mt-8 pt-5 border-t border-[#e3e8f2] text-[13px] text-[#4a5672] flex flex-col sm:flex-row justify-between gap-2">
-          <p>{business.note || 'Thank you for visiting!'}</p>
-          <p className="text-[#8a94a8]">Made with WAMA CRM</p>
-        </footer>
-      </article>
-    </main>
-  )
+export default async function PublicInvoicePage({ params }: { params: Promise<{ token: string }> }) {
+  const { token } = await params
+  const invoice = await loadInvoice(token)
+  if (!invoice) notFound()
+  const logo = await invoiceLogo(invoice)
+  return <InvoiceDocument view={billView(invoice, logo, token)} />
 }
