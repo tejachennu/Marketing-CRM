@@ -196,7 +196,7 @@ export function StoreAddress({ orgId, canManage, showToast, kind = 'store', ourL
       <input type="radio" name="store-address" checked={choice === value} onChange={onPick} disabled={!canManage || busy} className="mt-1 accent-[#1D5BEA]" />
       <span className="min-w-0">
         <span className="block text-[13px] font-semibold text-slate-900 dark:text-white">{title}</span>
-        <span className={`block ${sub} break-all`}>{text}</span>
+        <span className={`block ${sub} [overflow-wrap:anywhere]`}>{text}</span>
       </span>
     </label>
   )

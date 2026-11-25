@@ -50,7 +50,8 @@ const card = 'bg-white dark:bg-[#111b21] rounded-2xl border border-[#e3e8f2] dar
 const formatDate = (iso: string | null | undefined) => (iso ? new Date(iso).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '')
 // Shown under the questions when set (NEXT_PUBLIC_SUPPORT_EMAIL)
 const SUPPORT_EMAIL = (process.env.NEXT_PUBLIC_SUPPORT_EMAIL || '').trim()
-const rupees = (value: number) => `₹${value.toLocaleString('en-IN', { maximumFractionDigits: 2 })}`
+// ₹145.50, not ₹145.5: paise always in pairs
+const rupees = (value: number) => `₹${value.toLocaleString('en-IN', { minimumFractionDigits: Number.isInteger(value) ? 0 : 2, maximumFractionDigits: 2 })}`
 
 const GROUP_ICONS: Record<string, LucideIcon> = {
   inbox: MessageCircle, ai: Bot, commerce: ShoppingBag, campaigns: Megaphone, flows: Workflow, sales: TrendingUp, team: Users,
@@ -58,13 +59,10 @@ const GROUP_ICONS: Record<string, LucideIcon> = {
 const USE_CASE_ICONS: Record<string, LucideIcon> = {
   retail: Store, d2c: Package, clinics: Stethoscope, education: GraduationCap, 'real-estate': Building2, support: Headphones,
 }
+// Simple colours only (pink, amber and violet tiles were here): blue, navy and grey in turn
 const TINTS = [
-  'bg-[#eef3fe] text-[#1D5BEA] dark:bg-blue-950/40 dark:text-blue-300',
-  'bg-[#eef3fe] text-[#174bc4] dark:bg-[#0E1B3D]/40 dark:text-[#9db5ef]',
-  'bg-[#fdeef3] text-[#be185d] dark:bg-pink-950/40 dark:text-pink-300',
-  'bg-[#fff4e0] text-[#b45309] dark:bg-amber-950/40 dark:text-amber-300',
-  'bg-[#f1ecfe] text-[#6d28d9] dark:bg-violet-950/40 dark:text-violet-300',
-  'bg-[#eef3fe] text-[#1D5BEA] dark:bg-cyan-950/40 dark:text-cyan-300',
+  'bg-[#eef3fe] text-[#1D5BEA] dark:bg-[#0E1B3D]/60 dark:text-[#9db5ef]',
+  'bg-[#eef1f6] text-[#0E1B3D] dark:bg-slate-800 dark:text-slate-200',
 ]
 const AI_USES = ['WhatsApp AI replies', 'Shopping assistant', 'Reply suggestions', 'Lead scoring', 'Writing help']
 
@@ -138,7 +136,8 @@ function statusView(billing: Billing): StatusView {
 const TONES: Record<Tone, { panel: string; icon: string; eyebrow: string; title: string; body: string }> = {
   brand: { panel: 'bg-[#0E1B3D] border-transparent text-white', icon: 'bg-white/10 text-[#9db5ef]', eyebrow: 'bg-white/10 text-[#9db5ef]', title: 'text-white', body: 'text-white/75' },
   green: { panel: 'bg-white dark:bg-[#111b21] border-[#eef3fe] dark:border-[#0E1B3D]/60', icon: 'bg-[#eef3fe] text-[#174bc4] dark:bg-[#0E1B3D]/50 dark:text-[#9db5ef]', eyebrow: 'bg-[#eef3fe] text-[#174bc4] dark:bg-[#0E1B3D]/50 dark:text-[#9db5ef]', title: 'text-[#0E1B3D] dark:text-white', body: 'text-[#4a5672] dark:text-slate-400' },
-  amber: { panel: 'bg-[#fffbf3] dark:bg-amber-950/20 border-[#f6e1b5] dark:border-amber-900/60', icon: 'bg-[#fff1d6] text-[#92400e] dark:bg-amber-950/50 dark:text-amber-300', eyebrow: 'bg-[#fff1d6] text-[#92400e] dark:bg-amber-950/50 dark:text-amber-300', title: 'text-[#0E1B3D] dark:text-white', body: 'text-[#4a5672] dark:text-slate-400' },
+  // "Plan ends on …": a grey panel with a navy mark (no amber in the palette)
+  amber: { panel: 'bg-white dark:bg-[#111b21] border-[#d5ddeb] dark:border-slate-700', icon: 'bg-[#eef1f6] text-[#0E1B3D] dark:bg-slate-800 dark:text-slate-200', eyebrow: 'bg-[#0E1B3D] text-white dark:bg-slate-700 dark:text-white', title: 'text-[#0E1B3D] dark:text-white', body: 'text-[#4a5672] dark:text-slate-400' },
   red: { panel: 'bg-[#fff8f8] dark:bg-red-950/20 border-[#f5cccc] dark:border-red-900/60', icon: 'bg-[#fde4e4] text-[#b91c1c] dark:bg-red-950/50 dark:text-red-300', eyebrow: 'bg-[#fde4e4] text-[#b91c1c] dark:bg-red-950/50 dark:text-red-300', title: 'text-[#0E1B3D] dark:text-white', body: 'text-[#4a5672] dark:text-slate-400' },
   neutral: { panel: 'bg-white dark:bg-[#111b21] border-[#e3e8f2] dark:border-slate-800', icon: 'bg-[#eef1f6] text-[#4a5672] dark:bg-slate-800 dark:text-slate-300', eyebrow: 'bg-[#eef1f6] text-[#4a5672] dark:bg-slate-800 dark:text-slate-300', title: 'text-[#0E1B3D] dark:text-white', body: 'text-[#4a5672] dark:text-slate-400' },
 }
@@ -148,7 +147,8 @@ const TONES: Record<Tone, { panel: string; icon: string; eyebrow: string; title:
 function CreditRing({ percent, paused }: { percent: number; paused: boolean }) {
   const radius = 52
   const circumference = 2 * Math.PI * radius
-  const color = paused ? '#E5484D' : percent <= 20 ? '#F59E0B' : '#1D5BEA'
+  // Red only when it needs attention (low or paused)
+  const color = paused || percent <= 20 ? '#b91c1c' : '#1D5BEA'
   return (
     <div className="relative h-32 w-32 shrink-0">
       <svg viewBox="0 0 128 128" className="h-full w-full -rotate-90" aria-hidden="true">
@@ -393,7 +393,7 @@ export default function BillingPage() {
         <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3">
           <div>
             <h1 className="text-[28px] sm:text-[30px] font-extrabold tracking-tight text-[#0E1B3D] dark:text-white">Billing</h1>
-            <p className="text-[15px] text-[#4a5672] dark:text-slate-400 mt-0.5">{orgName ? `${orgName} · ` : ''}your plan, payments and AI credit</p>
+            <p className="text-[15px] text-[#4a5672] dark:text-slate-400 mt-0.5">{orgName ? `${orgName} · ` : ''}Your plan, payments and AI credit</p>
           </div>
           <p className="inline-flex items-center gap-1.5 text-[13.5px] font-medium text-[#6B7894]"><Lock size={14} /> Payments secured by Razorpay</p>
         </div>
@@ -473,7 +473,7 @@ export default function BillingPage() {
                   <h2 className="text-[22px] font-extrabold text-[#0E1B3D] dark:text-white mt-0.5">{billing.plan.name}</h2>
                 </div>
                 {!billing.exempt && (
-                  <p className="text-right"><span className="text-[34px] font-extrabold tracking-tight text-[#0E1B3D] dark:text-white">{rupees(billing.plan.price)}</span><span className="text-[15px] font-semibold text-[#6B7894]"> / month</span></p>
+                  <p className="sm:text-right whitespace-nowrap"><span className="text-[28px] sm:text-[34px] font-extrabold tracking-tight text-[#0E1B3D] dark:text-white">{rupees(billing.plan.price)}</span><span className="text-[15px] font-semibold text-[#6B7894]"> / month</span></p>
                 )}
               </div>
               <p className="text-[14.5px] text-[#4a5672] dark:text-slate-400 mt-1">{billing.plan.tagline}. Plus 18% GST.</p>
@@ -503,7 +503,7 @@ export default function BillingPage() {
             <div className="flex items-center justify-between gap-3">
               <h2 className="text-[17px] font-bold text-[#0E1B3D] dark:text-white flex items-center gap-2"><Sparkles size={18} className="text-[#1D5BEA]" /> AI credit</h2>
               {aiTracked && (
-                <span className={`inline-flex items-center h-6 px-2.5 rounded-full text-[12.5px] font-bold ${billing.aiPaused ? 'bg-[#fde4e4] text-[#b91c1c] dark:bg-red-950/50 dark:text-red-300' : percent <= 20 ? 'bg-[#fff1d6] text-[#92400e] dark:bg-amber-950/50 dark:text-amber-300' : 'bg-[#eef3fe] text-[#174bc4] dark:bg-[#0E1B3D]/50 dark:text-[#9db5ef]'}`}>
+                <span className={`inline-flex items-center h-6 px-2.5 rounded-full text-[12.5px] font-bold ${billing.aiPaused || percent <= 20 ? 'bg-[#fdf0f0] text-[#b91c1c] dark:bg-red-950/50 dark:text-red-300' : 'bg-[#eef3fe] text-[#174bc4] dark:bg-[#0E1B3D]/50 dark:text-[#9db5ef]'}`}>
                   {billing.aiPaused ? 'Paused' : percent <= 20 ? 'Running low' : 'Running'}
                 </span>
               )}
@@ -513,7 +513,7 @@ export default function BillingPage() {
               <p className="mt-4 text-[15px] text-[#4a5672] dark:text-slate-400">Your workspace uses its own AI key, so there is no AI credit to track.</p>
             ) : (
               <>
-                <div className="mt-4 flex items-center gap-5">
+                <div className="mt-4 flex items-center gap-4 sm:gap-5">
                   <CreditRing percent={percent} paused={billing.aiPaused} />
                   <div className="min-w-0">
                     <p className="text-[15.5px] font-bold text-[#0E1B3D] dark:text-white">
@@ -538,7 +538,7 @@ export default function BillingPage() {
                           const selected = amount === option
                           return (
                             <button key={option} type="button" role="radio" aria-checked={selected} onClick={() => setAmount(option)}
-                              className={`h-11 rounded-xl border text-[15px] font-bold transition-colors cursor-pointer ${selected ? 'border-[#1D5BEA] bg-[#eef3fe] text-[#1D5BEA] dark:bg-blue-950/40 dark:text-blue-300' : 'border-[#d5ddeb] dark:border-slate-700 text-[#0E1B3D] dark:text-white hover:border-[#9db5ef]'}`}>
+                              className={`h-11 rounded-xl border text-[15px] font-bold transition-colors cursor-pointer ${selected ? 'border-[#1D5BEA] bg-[#eef3fe] text-[#1D5BEA] dark:bg-[#0E1B3D]/60 dark:text-[#9db5ef]' : 'border-[#d5ddeb] dark:border-slate-700 text-[#0E1B3D] dark:text-white hover:border-[#9db5ef]'}`}>
                               {option === 'other' ? 'Other' : rupees(option)}
                             </button>
                           )
@@ -618,15 +618,15 @@ export default function BillingPage() {
                     const isPlan = payment.purpose === 'subscription'
                     return (
                       <li key={`${payment.date}-${index}`} className="px-5 sm:px-6 py-3.5 flex items-center gap-3">
-                        <span className={`h-10 w-10 shrink-0 rounded-xl flex items-center justify-center ${isPlan ? 'bg-[#eef3fe] text-[#1D5BEA] dark:bg-blue-950/40 dark:text-blue-300' : 'bg-[#eef3fe] text-[#174bc4] dark:bg-[#0E1B3D]/40 dark:text-[#9db5ef]'}`}>
+                        <span className={`h-10 w-10 shrink-0 rounded-xl flex items-center justify-center ${isPlan ? 'bg-[#eef3fe] text-[#1D5BEA] dark:bg-[#0E1B3D]/60 dark:text-[#9db5ef]' : 'bg-[#eef3fe] text-[#174bc4] dark:bg-[#0E1B3D]/40 dark:text-[#9db5ef]'}`}>
                           {isPlan ? <CreditCard size={18} /> : <Sparkles size={18} />}
                         </span>
                         <span className="flex-1 min-w-0">
-                          <span className="block text-[14.5px] font-semibold text-[#0E1B3D] dark:text-white">{isPlan ? `WAMA CRM ${billing.plans.find((plan) => plan.id === payment.plan)?.name || 'plan'} · monthly` : payment.purpose === 'upgrade' ? `Upgrade to ${billing.plans.find((plan) => plan.id === payment.plan)?.name || 'a bigger plan'}` : payment.purpose === 'message_topup' ? 'Message wallet' : 'AI credit'}</span>
+                          <span className="block text-[14.5px] font-semibold text-[#0E1B3D] dark:text-white truncate">{isPlan ? `WAMA CRM ${billing.plans.find((plan) => plan.id === payment.plan)?.name || 'plan'} · monthly` : payment.purpose === 'upgrade' ? `Upgrade to ${billing.plans.find((plan) => plan.id === payment.plan)?.name || 'a bigger plan'}` : payment.purpose === 'message_topup' ? 'Message wallet' : 'AI credit'}</span>
                           <span className="block text-[13px] text-[#6B7894]">{formatDate(payment.date)}</span>
                         </span>
-                        <span className="text-right">
-                          <span className="block text-[15px] font-bold text-[#0E1B3D] dark:text-white">{rupees(payment.amount)}</span>
+                        <span className="text-right shrink-0">
+                          <span className="block text-[15px] font-bold text-[#0E1B3D] dark:text-white tabular-nums whitespace-nowrap">{rupees(payment.amount)}</span>
                           <span className="block text-[12.5px] font-semibold text-[#174bc4] dark:text-[#9db5ef]">Paid</span>
                         </span>
                       </li>

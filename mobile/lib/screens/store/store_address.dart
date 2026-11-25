@@ -223,9 +223,9 @@ class _StoreAddressCardState extends State<StoreAddressCard> {
                 const Text('Remove any other A or CNAME record with the same name first. It can take from a few minutes up to a day to work.', style: TextStyle(color: Brand.muted, fontSize: 12.5)),
               ],
               const SizedBox(height: 8),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
+              // Equal buttons, two to a row (they wrapped in uneven widths)
+              ButtonGrid(
+                minWidth: 104,
                 children: [
                   if (!connected) OutlinedButton.icon(onPressed: _busy ? null : _check, icon: const Icon(Icons.refresh, size: 18), label: const Text('Check again')),
                   if (connected) OutlinedButton.icon(onPressed: () => openLink(context, 'https://$domain'), icon: const Icon(Icons.open_in_new, size: 18), label: const Text('Open')),

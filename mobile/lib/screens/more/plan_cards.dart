@@ -147,9 +147,11 @@ class MessageWalletCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final low = balance < 100;
     final left = price > 0 ? (balance / price).floor() : null;
+    // White, like the plan cards above it (it was grey on the grey page, with no edge to see)
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
+        color: Colors.white,
         border: Border.all(color: Brand.line),
         borderRadius: BorderRadius.circular(16),
       ),
@@ -170,7 +172,7 @@ class MessageWalletCard extends StatelessWidget {
                   style: TextStyle(fontSize: 26, fontWeight: FontWeight.w700, color: low ? Brand.red : Brand.text),
                 ),
                 Text(
-                  '${left != null ? 'About $left booking messages at ${formatRupees(price)} each.' : 'Booking messages are free right now.'}${low ? ' Top up so confirmations and reminders keep going out.' : ''}',
+                  '${left != null ? 'About ${formatRupees(left).replaceFirst('₹', '')} booking messages at ${formatRupees(price)} each.' : 'Booking messages are free right now.'}${low ? ' Top up so confirmations and reminders keep going out.' : ''}',
                   style: const TextStyle(color: Brand.textSoft, fontSize: 13),
                 ),
               ],
@@ -178,10 +180,25 @@ class MessageWalletCard extends StatelessWidget {
           ),
           if (onTopup != null) ...[
             const SizedBox(height: 10),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [for (final amount in options) OutlinedButton(onPressed: busy ? null : () => onTopup!(amount), child: Text('+ ${formatRupees(amount)}'))],
+            // Two equal buttons a row (they wrapped to uneven widths)
+            LayoutBuilder(
+              builder: (context, box) {
+                final width = (box.maxWidth - 8) / 2;
+                return Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    for (final amount in options)
+                      SizedBox(
+                        width: width,
+                        child: OutlinedButton(
+                          onPressed: busy ? null : () => onTopup!(amount),
+                          child: FittedBox(fit: BoxFit.scaleDown, child: Text('+ ${formatRupees(amount)}')),
+                        ),
+                      ),
+                  ],
+                );
+              },
             ),
           ] else if (note != null) ...[
             const SizedBox(height: 10),

@@ -2,6 +2,8 @@
 // (no _test in the name). Text is drawn in Roboto (flutter test otherwise draws boxes for text with no font set).
 //   SHOTS_DIR=/tmp/shots SHOTS_SIZES=360x780,320x640,360x740@1.3 SHOTS=welcome,signup flutter test test/screenshots.dart
 // Sizes are width x height, "@1.3" = large phone text. SHOTS picks screens (all when empty).
+// Screens behind a few taps (an order, the shop screens under Store settings) are in `flows`: the texts are tapped in
+// order, like test/screen_check.dart. SHOTS_TALL=1 shoots the whole scrolling page (2400 px high).
 import 'dart:io';
 import 'dart:ui' as ui;
 
@@ -21,7 +23,12 @@ import 'package:wama_mobile/screens/explainers/explainer_player.dart';
 import 'package:wama_mobile/screens/more/expenses_screen.dart';
 import 'package:wama_mobile/data/demo_auto_messages.dart' as demo;
 import 'package:wama_mobile/screens/front_desk/setup_templates.dart';
-import 'package:wama_mobile/screens/store/shop_more.dart' show shopMessagesScreen;
+import 'package:wama_mobile/screens/more/billing_screen.dart';
+import 'package:wama_mobile/screens/store/new_order_screen.dart';
+import 'package:wama_mobile/screens/store/online_payments.dart';
+import 'package:wama_mobile/screens/store/shop_more.dart' show ShopReportsScreen, shopMessagesScreen;
+import 'package:wama_mobile/screens/store/store_screen.dart';
+import 'package:wama_mobile/screens/store/website_screen.dart';
 import 'package:wama_mobile/screens/templates/auto_messages_screen.dart';
 import 'package:wama_mobile/ui/theme.dart';
 
@@ -47,7 +54,7 @@ void main() {
     }
     // Text with no font family falls back to the test font: show it as Roboto, like a phone
     const fonts = '/opt/flutter/bin/cache/artifacts/material_fonts';
-    for (final family in ['Roboto', 'Ahem']) {
+    for (final family in ['Roboto', 'Ahem', 'FlutterTest']) {
       final roboto = FontLoader(family);
       for (final f in ['Roboto-Regular.ttf', 'Roboto-Medium.ttf', 'Roboto-Bold.ttf']) {
         roboto.addFont(Future.value(ByteData.sublistView(File('$fonts/$f').readAsBytesSync())));
@@ -115,6 +122,34 @@ void main() {
       for (var i = 0; i < ex.scenes.length; i++)
         for (final (lang, _) in videoLanguages) 'video_${ex.id}_${i}_$lang': () => ExplainerScreen(startId: ex.id, startScene: i, holdAt: 0.85, lang: lang),
   };
+  // E-commerce, billing and shop reports, and the screens behind a tap: name → (screen, texts to tap)
+  final flows = <String, (Widget Function(), List<String>)>{
+    'store': (() => const StoreScreen(), const []),
+    'store_products': (() => const StoreScreen(initialTab: 1), const []),
+    'store_flow': (() => const StoreScreen(initialTab: 2), const []),
+    'store_settings': (() => const StoreScreen(initialTab: 3), const []),
+    'store_website': (() => const WebsiteScreen(), const []),
+    'store_payments': (() => const OnlinePaymentsScreen(), const []),
+    'new_order': (() => const NewOrderScreen(currency: 'INR'), const []),
+    'new_order_delivery': (() => const NewOrderScreen(currency: 'INR'), const ['Phone call', 'Delivery']),
+    'order': (() => const StoreScreen(), const ['#ORD-241114-0007']),
+    'order_paid': (() => const StoreScreen(), const ['#ORD-241112-0002']),
+    'order_cod': (() => const StoreScreen(), const ['#ORD-241114-0006']),
+    'product': (() => const StoreScreen(initialTab: 1), const ['Classic white linen shirt']),
+    'product_edit': (() => const StoreScreen(initialTab: 1), const ['Classic white linen shirt', 'Edit']),
+    'shop_reports': (() => const ShopReportsScreen(currency: 'INR'), const []),
+    'shop_reviews': (() => const StoreScreen(initialTab: 3), const ['Customer reviews']),
+    'shop_offers': (() => const StoreScreen(initialTab: 3), const ['Offers and points']),
+    'shop_offer_new': (() => const StoreScreen(initialTab: 3), const ['Offers and points', 'New offer']),
+    'shop_returns': (() => const StoreScreen(initialTab: 3), const ['Returns']),
+    'shop_invoices': (() => const StoreScreen(initialTab: 3), const ['GST invoices']),
+    'shop_delivery': (() => const StoreScreen(initialTab: 3), const ['Delivery partners']),
+    'billing': (() => const BillingScreen(), const []),
+  };
+  for (final e in flows.entries) {
+    screens[e.key] = e.value.$1;
+  }
+  final tall = Platform.environment['SHOTS_TALL'] == '1';
   final only = (Platform.environment['SHOTS'] ?? '').split(',').where((s) => s.isNotEmpty).toSet();
   // SHOTS=video_ads picks every screen whose name starts with it
   final sizes = (Platform.environment['SHOTS_SIZES'] ?? '360x780').split(',');
@@ -124,7 +159,7 @@ void main() {
     for (final size in sizes) {
       final parts = size.split('x');
       final w = double.parse(parts[0]);
-      final h = double.parse(parts[1].split('@').first);
+      final h = tall ? 2400.0 : double.parse(parts[1].split('@').first);
       final scale = parts[1].contains('@') ? double.parse(parts[1].split('@')[1]) : 1.0;
       testWidgets('shot ${entry.key} $size', (tester) async {
         final problems = <String>[];
@@ -145,9 +180,24 @@ void main() {
             ),
           ),
         );
-        for (var i = 0; i < 14; i++) {
-          await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 60)));
-          await tester.pump(const Duration(milliseconds: 120));
+        Future<void> settle() async {
+          for (var i = 0; i < 14; i++) {
+            await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 60)));
+            await tester.pump(const Duration(milliseconds: 120));
+          }
+        }
+
+        await settle();
+        for (final t in flows[entry.key]?.$2 ?? const <String>[]) {
+          final starts = find.byWidgetPredicate((w) => w is Text && (w.data ?? '').startsWith(t));
+          if (starts.evaluate().isEmpty) {
+            problems.add('No "$t" on the screen');
+            break;
+          }
+          await tester.ensureVisible(starts.last);
+          await tester.pump();
+          await tester.tap(starts.last, warnIfMissed: false);
+          await settle();
         }
         await tester.runAsync(() async {
           final boundary = key.currentContext!.findRenderObject()! as RenderRepaintBoundary;
@@ -179,6 +229,12 @@ class _Roboto extends StatelessWidget {
         outlinedButtonTheme: OutlinedButtonThemeData(style: t.outlinedButtonTheme.style?.copyWith(textStyle: fix(t.outlinedButtonTheme.style?.textStyle))),
         textButtonTheme: TextButtonThemeData(style: t.textButtonTheme.style?.copyWith(textStyle: fix(t.textButtonTheme.style?.textStyle))),
         appBarTheme: t.appBarTheme.copyWith(titleTextStyle: t.appBarTheme.titleTextStyle?.copyWith(fontFamily: 'Roboto')),
+        listTileTheme: t.listTileTheme.copyWith(
+          titleTextStyle: t.listTileTheme.titleTextStyle?.copyWith(fontFamily: 'Roboto'),
+          subtitleTextStyle: t.listTileTheme.subtitleTextStyle?.copyWith(fontFamily: 'Roboto'),
+        ),
+        chipTheme: t.chipTheme.copyWith(labelStyle: t.chipTheme.labelStyle?.copyWith(fontFamily: 'Roboto'), secondaryLabelStyle: t.chipTheme.secondaryLabelStyle?.copyWith(fontFamily: 'Roboto')),
+        segmentedButtonTheme: SegmentedButtonThemeData(style: t.segmentedButtonTheme.style?.copyWith(textStyle: fix(t.segmentedButtonTheme.style?.textStyle))),
         inputDecorationTheme: t.inputDecorationTheme.copyWith(
           labelStyle: t.inputDecorationTheme.labelStyle?.copyWith(fontFamily: 'Roboto'),
           hintStyle: t.inputDecorationTheme.hintStyle?.copyWith(fontFamily: 'Roboto'),

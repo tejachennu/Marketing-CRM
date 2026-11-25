@@ -8,6 +8,7 @@ import { CourierPanel } from './courier-panel'
 import { OrderInvoice } from './order-invoice'
 import { OrderReturns } from './order-returns'
 import { codCheckLabel } from '@/lib/commerce/shop-messages'
+import { showPhone } from '@/lib/phone-display'
 import type { CommerceOrder } from '@/lib/types'
 import { useConfirm } from '@/lib/dialog-context'
 import type { CommerceSummary } from '@/lib/commerce/commerce-stats'
@@ -55,10 +56,10 @@ function itemSummary(order: CommerceOrder): string {
 }
 
 function paymentLabel(order: CommerceOrder): { text: string; tone: string } {
-  if (needsRefund(order)) return { text: 'Paid, then canceled: refund due', tone: 'text-rose-600 dark:text-rose-400' }
+  if (needsRefund(order)) return { text: 'Paid, then canceled: refund due', tone: 'text-[#b91c1c] dark:text-red-300' }
   if (order.payment_status === 'paid') return { text: 'Paid', tone: 'text-[#1D5BEA] dark:text-[#5f86ee]' }
   if (order.payment_status === 'refunded') return { text: 'Refunded', tone: 'text-slate-700 dark:text-slate-200' }
-  if (order.payment_status === 'failed') return { text: 'Last payment attempt failed', tone: 'text-rose-600 dark:text-rose-400' }
+  if (order.payment_status === 'failed') return { text: 'Last payment attempt failed', tone: 'text-[#b91c1c] dark:text-red-300' }
   if (order.payment_method === 'cod') return { text: 'To be collected on delivery', tone: 'text-slate-900 dark:text-white' }
   return { text: 'Not paid yet', tone: 'text-slate-900 dark:text-white' }
 }
@@ -309,8 +310,9 @@ export function OrdersTab({ orgId, canEdit, collectsAddress, currency, onSummary
   const waitingOn = selected && collectsAddress && !selected.shipping_address?.address_line_1 ? 'their delivery address' : 'payment'
 
   return (
-    <div className="space-y-3">
-      <div className={`${cardClass} p-3 flex flex-col lg:flex-row lg:items-center justify-between gap-3`}>
+    <div className="@container space-y-3">
+      {/* Filters on their own row (beside the search they were cut off); search, New order and refresh below */}
+      <div className={`${cardClass} p-3 flex flex-col gap-2.5`}>
         <div className="flex items-center gap-1 overflow-x-auto no-scrollbar" role="group" aria-label="Filter orders">
           {VIEWS.map((item) => {
             const active = view === item.id
@@ -320,18 +322,19 @@ export function OrdersTab({ orgId, canEdit, collectsAddress, currency, onSummary
                 type="button"
                 aria-pressed={active}
                 onClick={() => setView(item.id)}
-                className={`shrink-0 inline-flex items-center gap-1.5 h-8 px-3 rounded-lg text-xs font-semibold whitespace-nowrap transition-colors cursor-pointer ${
+                className={`shrink-0 inline-flex items-center gap-1.5 h-8 max-sm:h-10 px-3 rounded-lg text-xs font-semibold whitespace-nowrap transition-colors cursor-pointer ${
                   active ? 'bg-[#1D5BEA]/10 text-[#174bc4] dark:text-[#9db5ef] ring-1 ring-[#1D5BEA]/30' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
                 }`}
               >
                 {item.label}
-                {summary && <span className="tabular-nums text-slate-400">{item.count(summary).toLocaleString()}</span>}
+                {summary && <span className="tabular-nums text-slate-400">{item.count(summary).toLocaleString('en-IN')}</span>}
               </button>
             )
           })}
         </div>
-        <div className="flex items-center gap-2 shrink-0">
-          <div className="relative flex-1 lg:w-64">
+        {/* Phones: the search on a row of its own (beside the buttons it shrank to a few letters) */}
+        <div className="flex flex-wrap items-center gap-2 min-w-0">
+          <div className="relative min-w-0 basis-full @md:basis-auto @md:flex-1 @xl:max-w-sm">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={15} />
             <input type="text" inputMode="search" aria-label="Search orders" placeholder="Order number, name or phone" value={search} onChange={(event) => setSearch(event.target.value)} className={`${inputClass} pl-9 pr-8`} />
             {search && (
@@ -341,7 +344,7 @@ export function OrdersTab({ orgId, canEdit, collectsAddress, currency, onSummary
             )}
           </div>
           {canEdit && (
-            <button type="button" onClick={() => setAdding(true)} title="An order taken in the shop or on a phone call" className={`${primaryButton} shrink-0`}>
+            <button type="button" onClick={() => setAdding(true)} title="An order taken in the shop or on a phone call" className={`${primaryButton} shrink-0 @max-md:flex-1 @xl:ml-auto`}>
               <Plus size={14} /> New order
             </button>
           )}
@@ -357,7 +360,7 @@ export function OrdersTab({ orgId, canEdit, collectsAddress, currency, onSummary
         </div>
       ) : error ? (
         <div role="alert" className={`${cardClass} py-12 px-6 text-center`}>
-          <AlertCircle size={26} className="mx-auto text-rose-500" />
+          <AlertCircle size={26} className="mx-auto text-[#b91c1c]" />
           <p className="mt-2 text-sm font-semibold text-slate-800 dark:text-slate-100">Orders could not be loaded</p>
           <p className="mt-1 text-xs text-slate-500 break-words">{error}</p>
           <button type="button" onClick={() => load(page)} className={`${primaryButton} mt-3`}>
@@ -379,8 +382,8 @@ export function OrdersTab({ orgId, canEdit, collectsAddress, currency, onSummary
         </div>
       ) : (
         <>
-          {/* Table on larger screens */}
-          <div className={`${cardClass} hidden md:block overflow-hidden`}>
+          {/* Table when the content area is wide enough (at 768-1100 px with the side menu, Total was cut off) */}
+          <div className={`${cardClass} hidden @4xl:block overflow-hidden`}>
             <table className="w-full text-left text-xs">
               <thead className="bg-slate-50 dark:bg-slate-900/60 text-slate-500 dark:text-slate-400 border-b border-slate-200/80 dark:border-slate-800">
                 <tr>
@@ -403,11 +406,11 @@ export function OrdersTab({ orgId, canEdit, collectsAddress, currency, onSummary
                   >
                     <td className="py-3 px-4 whitespace-nowrap">
                       <div className="font-bold text-slate-900 dark:text-white">#{order.order_number}</div>
-                      <div className="text-[11px] text-slate-400">{new Date(order.created_at).toLocaleString([], { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })}</div>
+                      <div className="text-[11px] text-slate-400">{new Date(order.created_at).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })}</div>
                     </td>
                     <td className="py-3 px-4">
                       <div className="font-medium text-slate-900 dark:text-white truncate max-w-[160px]">{customerName(order)}</div>
-                      <div className="text-[11px] text-slate-500">{order.contact?.phone_number}</div>
+                      <div className="text-[11px] text-slate-500 whitespace-nowrap">{order.contact?.phone_number ? showPhone(order.contact.phone_number) : ''}</div>
                     </td>
                     <td className="py-3 px-4 max-w-[220px]">
                       <div className="truncate text-slate-700 dark:text-slate-300">{itemSummary(order)}</div>
@@ -436,8 +439,8 @@ export function OrdersTab({ orgId, canEdit, collectsAddress, currency, onSummary
             </table>
           </div>
 
-          {/* Cards on phones */}
-          <div className="md:hidden space-y-2">
+          {/* Cards on phones and narrower screens, two side by side when there is room */}
+          <div className="@4xl:hidden grid grid-cols-1 @xl:grid-cols-2 gap-2">
             {orders.map((order) => (
               <button key={order.id} type="button" onClick={() => openOrder(order)} className={`${cardClass} w-full text-left p-3.5 cursor-pointer`}>
                 <div className="flex items-start justify-between gap-2">
@@ -490,7 +493,7 @@ export function OrdersTab({ orgId, canEdit, collectsAddress, currency, onSummary
                   <PaymentFlag order={selected} />
                 </div>
                 <p className="mt-0.5 text-xs text-slate-500">
-                  {new Date(selected.created_at).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}
+                  {new Date(selected.created_at).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })}
                   {channelLabel(selected) && <> · <Store size={11} className="inline -mt-0.5" /> {channelLabel(selected)}</>}
                 </p>
               </div>
@@ -501,7 +504,7 @@ export function OrdersTab({ orgId, canEdit, collectsAddress, currency, onSummary
 
             <div className="flex-1 overflow-y-auto p-5 space-y-5">
               {needsRefund(selected) && (
-                <div role="alert" className="p-3 rounded-xl bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-900/60 text-xs text-rose-800 dark:text-rose-200 space-y-2">
+                <div role="alert" className="p-3 rounded-xl bg-[#fdf0f0] dark:bg-red-950/30 border border-[#f5c9c9] dark:border-red-900/60 text-xs text-[#b91c1c] dark:text-red-200 space-y-2">
                   <p className="flex items-start gap-2">
                     <AlertCircle size={15} className="shrink-0 mt-px" />
                     <span>
@@ -523,7 +526,7 @@ export function OrdersTab({ orgId, canEdit, collectsAddress, currency, onSummary
                   <div className="min-w-0 text-sm">
                     <p className="font-semibold text-slate-900 dark:text-white truncate">{customerName(selected)}</p>
                     <p className="text-xs text-slate-500 flex items-center gap-1">
-                      <Phone size={11} /> {selected.contact?.phone_number || 'No phone number'}
+                      <Phone size={11} /> {selected.contact?.phone_number ? showPhone(selected.contact.phone_number) : 'No phone number'}
                     </p>
                   </div>
                   {selected.conversation_id && (
@@ -609,7 +612,7 @@ export function OrdersTab({ orgId, canEdit, collectsAddress, currency, onSummary
                     <p>{selected.shipping_address.address_line_1}</p>
                     {selected.shipping_address.address_line_2 && <p>{selected.shipping_address.address_line_2}</p>}
                     <p>{[selected.shipping_address.city, selected.shipping_address.state, selected.shipping_address.pincode].filter(Boolean).join(', ')}</p>
-                    {selected.shipping_address.phone_number && <p>{selected.shipping_address.phone_number}</p>}
+                    {selected.shipping_address.phone_number && <p>{showPhone(selected.shipping_address.phone_number)}</p>}
                     <p className="mt-1 text-slate-500 capitalize">{selected.shipping_address.delivery_speed || 'standard'} delivery</p>
                     {selected.shipping_address.notes && <p className="mt-1 text-slate-500">Note: {selected.shipping_address.notes}</p>}
                   </address>
@@ -624,7 +627,7 @@ export function OrdersTab({ orgId, canEdit, collectsAddress, currency, onSummary
                 )}
                 {fulfillment && (fulfillment.trackingNumber || fulfillment.carrier) && (
                   <p className="mt-2 text-xs text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
-                    <Truck size={13} className="text-blue-500 shrink-0" />
+                    <Truck size={13} className="text-[#1D5BEA] shrink-0" />
                     <span>
                       {fulfillment.carrier || 'Shipped'}
                       {fulfillment.trackingNumber && <> · <span className="font-mono">{fulfillment.trackingNumber}</span></>}

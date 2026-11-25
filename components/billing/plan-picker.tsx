@@ -11,7 +11,8 @@ export interface PlanView {
   features: string[]
 }
 
-const rupees = (value: number) => `₹${value.toLocaleString('en-IN', { maximumFractionDigits: 2 })}`
+// ₹145.50, not ₹145.5: paise always in pairs
+const rupees = (value: number) => `₹${value.toLocaleString('en-IN', { minimumFractionDigits: Number.isInteger(value) ? 0 : 2, maximumFractionDigits: 2 })}`
 const card = 'bg-white dark:bg-[#111b21] rounded-2xl border border-[#e3e8f2] dark:border-slate-800'
 
 /**
@@ -36,18 +37,19 @@ export function PlanPicker({ plans, currentId, pendingId, canChange, busyId, onC
         </div>
         <p className="text-[13.5px] text-[#6B7894]">Upgrade: pay only the difference for the days left. Downgrade: starts on your next bill date.</p>
       </div>
-      <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-3">
+      {/* Five across only on very wide screens: with the side menu open they were squeezed and the prices broke */}
+      <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-5 gap-3">
         {plans.map((plan) => {
           const current = plan.id === currentId
           const pending = plan.id === pendingId
           const label = current ? 'Your plan' : pending ? 'Starts on your bill date' : plan.price > currentPrice ? `Upgrade to ${plan.name}` : `Switch to ${plan.name}`
           return (
-            <div key={plan.id} className={`rounded-xl border p-4 flex flex-col min-w-0 ${current ? 'border-[#1D5BEA] bg-[#f4f7fe] dark:bg-blue-950/20' : 'border-[#e3e8f2] dark:border-slate-800'}`}>
+            <div key={plan.id} className={`rounded-xl border p-4 flex flex-col min-w-0 ${current ? 'border-[#1D5BEA] bg-[#f4f7fe] dark:bg-[#0E1B3D]/40' : 'border-[#e3e8f2] dark:border-slate-800'}`}>
               <div className="flex items-center justify-between gap-2">
                 <h3 className="text-[16px] font-extrabold text-[#0E1B3D] dark:text-white">{plan.name}</h3>
                 {current && <span className="text-[11.5px] font-bold px-2 py-0.5 rounded-full bg-[#1D5BEA] text-white">Current</span>}
               </div>
-              <p className="mt-1"><span className="text-[24px] font-extrabold tracking-tight text-[#0E1B3D] dark:text-white">{rupees(plan.price)}</span><span className="text-[13px] font-semibold text-[#6B7894]"> / month</span></p>
+              <p className="mt-1 whitespace-nowrap"><span className="text-[24px] font-extrabold tracking-tight text-[#0E1B3D] dark:text-white tabular-nums">{rupees(plan.price)}</span><span className="text-[13px] font-semibold text-[#6B7894]"> / month</span></p>
               <p className="text-[13px] text-[#4a5672] dark:text-slate-400 mt-1 leading-snug">{plan.tagline}</p>
               {plan.whatsapp === 'shared' && (
                 <p className="mt-2 inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-[#4a5672] dark:text-slate-300">
@@ -63,7 +65,7 @@ export function PlanPicker({ plans, currentId, pendingId, canChange, busyId, onC
               </ul>
               {canChange && (
                 <button type="button" disabled={current || pending || busyId !== null} onClick={() => onChoose(plan)}
-                  className={`mt-4 h-10 w-full rounded-lg text-[13.5px] font-bold inline-flex items-center justify-center gap-2 transition-colors ${current || pending ? 'bg-[#eef1f6] text-[#6B7894] dark:bg-slate-800 cursor-default' : 'bg-[#1D5BEA] hover:bg-[#174bc4] text-white cursor-pointer disabled:opacity-50'}`}>
+                  className={`mt-4 h-11 sm:h-10 w-full rounded-lg text-[13.5px] font-bold inline-flex items-center justify-center gap-2 transition-colors ${current || pending ? 'bg-[#eef1f6] text-[#6B7894] dark:bg-slate-800 cursor-default' : 'bg-[#1D5BEA] hover:bg-[#174bc4] text-white cursor-pointer disabled:opacity-50'}`}>
                   {busyId === plan.id && <Loader2 size={15} className="animate-spin" />} {label}
                 </button>
               )}
@@ -97,7 +99,7 @@ export function MessageWallet({ balance, price, history, options, canPay, busy, 
         </div>
       </div>
       <div className={`mt-4 rounded-xl p-4 ${low ? 'bg-[#fdf0f0] dark:bg-red-950/30' : 'bg-[#f4f6fa] dark:bg-slate-800/60'}`}>
-        <p className={`text-[30px] font-extrabold tracking-tight ${low ? 'text-[#b91c1c]' : 'text-[#0E1B3D] dark:text-white'}`}>{rupees(balance)}</p>
+        <p className={`text-[30px] font-extrabold tracking-tight tabular-nums ${low ? 'text-[#b91c1c]' : 'text-[#0E1B3D] dark:text-white'}`}>{rupees(balance)}</p>
         <p className="text-[13.5px] text-[#4a5672] dark:text-slate-400">
           {messagesLeft !== null ? `About ${messagesLeft.toLocaleString('en-IN')} booking messages at ${rupees(price)} each.` : 'Booking messages are free right now.'}
           {low ? ' Top up so confirmations and reminders keep going out.' : ''}
@@ -107,7 +109,7 @@ export function MessageWallet({ balance, price, history, options, canPay, busy, 
         <div className="mt-4 grid grid-cols-2 sm:grid-cols-4 gap-2">
           {options.map((amount) => (
             <button key={amount} type="button" disabled={busy} onClick={() => onTopup(amount)}
-              className="h-10 rounded-lg border border-[#d5ddeb] dark:border-slate-700 text-[14px] font-bold text-[#0E1B3D] dark:text-slate-100 hover:border-[#1D5BEA] hover:text-[#1D5BEA] transition-colors cursor-pointer disabled:opacity-50">
+              className="h-11 sm:h-10 rounded-lg border border-[#d5ddeb] dark:border-slate-700 text-[14px] font-bold text-[#0E1B3D] dark:text-slate-100 hover:border-[#1D5BEA] hover:text-[#1D5BEA] transition-colors cursor-pointer disabled:opacity-50">
               + {rupees(amount)}
             </button>
           ))}

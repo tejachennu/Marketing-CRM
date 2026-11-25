@@ -182,6 +182,77 @@ class StoreNotes extends StatelessWidget {
 
 // ── Small shared pieces ──
 
+/// Two form fields side by side when their names fit, one under the other on small phones and with
+/// large text (side by side, "Category (optional)" read "Category (optio…").
+class PairedFields extends StatelessWidget {
+  const PairedFields({super.key, required this.children, this.minWidth = 370});
+  final List<Widget> children;
+  final double minWidth;
+  @override
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, box) {
+      if (box.maxWidth >= MediaQuery.textScalerOf(context).scale(minWidth)) {
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            for (var i = 0; i < children.length; i++) ...[if (i > 0) const SizedBox(width: 10), Expanded(child: children[i])],
+          ],
+        );
+      }
+      return Column(
+        children: [
+          for (var i = 0; i < children.length; i++) ...[if (i > 0) const SizedBox(height: 12), children[i]],
+        ],
+      );
+    },
+  );
+}
+
+/// Buttons two to a row in equal widths (one to a row on a very narrow screen); a row is as tall as its
+/// tallest button, so a label that wraps keeps the pair even.
+class ButtonGrid extends StatelessWidget {
+  const ButtonGrid({super.key, required this.children, this.minWidth = 136});
+  final List<Widget> children;
+  final double minWidth;
+  @override
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, box) {
+      // With large text a button needs more room: one to a row sooner, so no word is broken in two
+      final cols = box.maxWidth >= MediaQuery.textScalerOf(context).scale(minWidth) * 2 + 8 ? 2 : 1;
+      final theme = Theme.of(context);
+      final grid = Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          for (var i = 0; i < children.length; i += cols)
+            Padding(
+              padding: EdgeInsets.only(top: i == 0 ? 0 : 8),
+              child: IntrinsicHeight(
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    for (var j = 0; j < cols; j++) ...[
+                      if (j > 0) const SizedBox(width: 8),
+                      Expanded(child: i + j < children.length ? children[i + j] : const SizedBox.shrink()),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+        ],
+      );
+      // Less padding at the sides than a lone button, so a label fits a half-width box
+      return Theme(
+        data: theme.copyWith(
+          outlinedButtonTheme: OutlinedButtonThemeData(
+            style: (theme.outlinedButtonTheme.style ?? const ButtonStyle()).copyWith(padding: const WidgetStatePropertyAll(EdgeInsets.symmetric(horizontal: 10, vertical: 8))),
+          ),
+        ),
+        child: grid,
+      );
+    },
+  );
+}
+
 /// A coloured note: grey for information, red for something that needs attention.
 class NoteBox extends StatelessWidget {
   const NoteBox({super.key, required this.text, this.icon = Icons.info_outline, this.attention = false, this.action});
@@ -443,15 +514,17 @@ class _OrdersTabState extends State<OrdersTab> with AutomaticKeepAliveClientMixi
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Expanded(
                   child: Text(
                     label,
-                    maxLines: 1,
+                    maxLines: 2,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontSize: 12.5, color: Brand.muted),
+                    style: const TextStyle(fontSize: 12.5, color: Brand.muted, height: 1.25),
                   ),
                 ),
+                const SizedBox(width: 4),
                 Icon(icon, size: 16, color: Brand.blue),
               ],
             ),
@@ -463,9 +536,9 @@ class _OrdersTabState extends State<OrdersTab> with AutomaticKeepAliveClientMixi
             ),
             Text(
               note,
-              maxLines: 2,
+              maxLines: 3,
               overflow: TextOverflow.ellipsis,
-              style: TextStyle(fontSize: 11.5, color: attention ? Brand.red : Brand.muted),
+              style: TextStyle(fontSize: 11.5, height: 1.3, color: attention ? Brand.red : Brand.muted, fontWeight: attention ? FontWeight.w600 : FontWeight.w400),
             ),
           ],
         ),
@@ -481,7 +554,9 @@ class _OrdersTabState extends State<OrdersTab> with AutomaticKeepAliveClientMixi
         padding: const EdgeInsets.fromLTRB(12, 12, 12, 32),
         children: [
           StoreNotes(store: widget.store),
-          Row(
+          IntrinsicHeight(
+            child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               tile(
                 'Revenue received',
@@ -493,8 +568,11 @@ class _OrdersTabState extends State<OrdersTab> with AutomaticKeepAliveClientMixi
               tile('Orders', '${summary?['total'] ?? '—'}', 'WhatsApp, shop and phone orders', Icons.inventory_2_outlined),
             ],
           ),
+          ),
           const SizedBox(height: 8),
-          Row(
+          IntrinsicHeight(
+            child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               tile('Awaiting customer', '${summary?['awaiting'] ?? '—'}', 'Address or payment not done', Icons.schedule),
               const SizedBox(width: 8),
@@ -506,6 +584,7 @@ class _OrdersTabState extends State<OrdersTab> with AutomaticKeepAliveClientMixi
                 attention: refundDue > 0,
               ),
             ],
+          ),
           ),
           if (AppScope.of(context).can('write'))
             Padding(
@@ -641,7 +720,7 @@ class _OrderRow extends StatelessWidget {
               children: [
                 StatusPill(order['status']),
                 ?flag,
-                if (channelLabel(order) != null) Pill(channelLabel(order)!, icon: Icons.storefront_outlined),
+                if (channelLabel(order) != null) Pill(channelLabel(order)!, icon: channelIcon(order)),
               ],
             ),
           ],
@@ -650,6 +729,13 @@ class _OrderRow extends StatelessWidget {
     );
   }
 }
+
+/// The icon beside "In the shop", "Phone call" or "Website".
+IconData channelIcon(Map order) => switch (order['checkout_type']) {
+  'phone' => Icons.call_outlined,
+  'website' => Icons.language,
+  _ => Icons.storefront_outlined,
+};
 
 /// One order: customer, items and totals, payment, delivery, and the next steps (as the web's side panel).
 class OrderScreen extends StatefulWidget {
@@ -825,6 +911,8 @@ class _OrderScreenState extends State<OrderScreen> {
     Widget section(String title, List<Widget> children, {Widget? trailing}) => Padding(
       padding: const EdgeInsets.only(bottom: 10),
       child: Panel(
+        // A button in the title row is 48 high: less padding above it keeps the title where the others are
+        padding: trailing == null ? const EdgeInsets.all(16) : const EdgeInsets.fromLTRB(16, 2, 8, 16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -866,7 +954,9 @@ class _OrderScreenState extends State<OrderScreen> {
         if (!didPop) Navigator.pop(context, _changed);
       },
       child: Scaffold(
-        appBar: AppBar(title: Text('Order #${order['order_number']}')),
+        appBar: AppBar(
+          title: FittedBox(fit: BoxFit.scaleDown, alignment: Alignment.centerLeft, child: Text('#${order['order_number']}')),
+        ),
         body: RefreshIndicator(
           onRefresh: () => _reload(boxes: true),
           child: ListView(
@@ -881,7 +971,7 @@ class _OrderScreenState extends State<OrderScreen> {
                 children: [
                   StatusPill(order['status']),
                   ?flag,
-                  if (channelLabel(order) != null) Pill(channelLabel(order)!, icon: Icons.storefront_outlined),
+                  if (channelLabel(order) != null) Pill(channelLabel(order)!, icon: channelIcon(order)),
                   Text(formatWhen('${order['created_at']}'), style: const TextStyle(color: Brand.muted, fontSize: 13)),
                 ],
               ),
@@ -895,7 +985,7 @@ class _OrderScreenState extends State<OrderScreen> {
               ),
             section('Customer', [
               Text(customerName(order), style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
-              Text('${(order['contact'] as Map?)?['phone_number'] ?? 'No phone number'}', style: const TextStyle(color: Brand.muted)),
+              Text('${(order['contact'] as Map?)?['phone_number'] ?? ''}'.isEmpty ? 'No phone number' : showPhone((order['contact'] as Map)['phone_number']), style: const TextStyle(color: Brand.muted)),
               if ('${order['customer_note'] ?? ''}'.trim().isNotEmpty) ...[
                 const SizedBox(height: 6),
                 Text('Note with the cart: “${order['customer_note']}”', style: const TextStyle(color: Brand.textSoft)),
