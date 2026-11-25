@@ -34,7 +34,10 @@ void main() {
       await tester.tap(save);
       await settle(tester);
       expect(find.text('Expense added'), findsOneWidget);
-      expect(find.text('Repairs and upkeep'), findsWidgets);
+      // The new row in the month's list (tap it later to change it)
+      // (every box is an InkWell without a tap, and the kind filter chips also show the name: the row is the last tappable one)
+      final rows = find.descendant(of: find.byWidgetPredicate((w) => w is InkWell && w.onTap != null), matching: find.text('Repairs and upkeep'));
+      expect(await reach(tester, rows), findsWidgets);
 
       // The AI review, once a month (near the top: scroll back up)
       await tester.drag(find.descendant(of: find.byType(RefreshIndicator), matching: find.byType(Scrollable)).first, const Offset(0, 3000));
@@ -44,7 +47,12 @@ void main() {
       expect(find.text('Review this month so far'), findsNothing, reason: 'one review while the month is going on');
 
       // Change it, then remove it
-      await tapText(tester, 'Repairs and upkeep');
+      await reach(tester, rows);
+      final row = rows.last;
+      await tester.ensureVisible(row);
+      await tester.pump();
+      await tester.tap(row);
+      await settle(tester);
       expect(find.text('Change expense'), findsOneWidget);
       await tester.tap(find.byTooltip('Remove'));
       await settle(tester);
