@@ -3,6 +3,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../data/app_state.dart';
 import '../screens/more/billing_screen.dart';
+import '../screens/more/delete_account_screen.dart';
 import 'theme.dart';
 import 'whatsapp_lock.dart' show supportWhatsApp;
 import 'widgets.dart';
@@ -171,6 +172,11 @@ class _PlanEndedScreenState extends State<PlanEndedScreen> {
                 'Sign out',
                 style: TextStyle(color: Brand.textSoft),
               ),
+            ),
+            // Leaving after the trial is the commonest reason to delete; More is out of reach here
+            TextButton(
+              onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const DeleteAccountScreen())),
+              child: const Text('Delete my account', style: TextStyle(color: Brand.red)),
             ),
           ],
         ),

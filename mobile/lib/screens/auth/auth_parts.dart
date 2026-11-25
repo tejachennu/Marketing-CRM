@@ -129,10 +129,12 @@ class AuthError extends StatelessWidget {
 
 /// Turns what the server or Supabase said into a short sentence a shop owner understands.
 String friendlyAuthError(Object error) {
-  var text = '$error'.replaceFirst('Exception: ', '').trim();
+  final text = '$error'.replaceFirst('Exception: ', '').trim();
   final lower = text.toLowerCase();
-  if (error is OfflineException || lower.contains('socketexception') || lower.contains('failed host lookup') || lower.contains('connection')) {
-    return error is OfflineException ? text : 'No internet connection. Check your internet and try again.';
+  // The server's own words are already plain (e.g. "Too many wrong tries. Send a new code."): keep them
+  if (error is OfflineException) return text;
+  if (lower.contains('socketexception') || lower.contains('failed host lookup') || lower.contains('handshakeexception')) {
+    return 'No internet connection. Check your internet and try again.';
   }
   if (lower.contains('invalid login credentials') || lower.contains('invalid email or password')) {
     return 'That email and password do not match. Check them, or reset your password.';
@@ -141,7 +143,7 @@ String friendlyAuthError(Object error) {
   if (lower.contains('already registered') || lower.contains('already exists') || lower.contains('already been registered')) {
     return 'There is already an account with this email. Sign in instead, or use another email.';
   }
-  if (lower.contains('rate limit') || lower.contains('too many')) return 'Too many tries. Please wait a minute and try again.';
+  if (lower.contains('rate limit') || lower.contains('for security purposes')) return 'Too many tries. Please wait a minute and try again.';
   if (text.isEmpty || text.startsWith('{') || text.contains('Instance of') || text.length > 220) {
     return 'Something went wrong. Please try again.';
   }
@@ -182,8 +184,11 @@ class TermsLine extends StatelessWidget {
 /// A 6-digit code as six boxes. One hidden text field takes the typing (and the phone's code
 /// suggestion), the boxes show it. Calls [onCompleted] when all six are in.
 class CodeBoxes extends StatefulWidget {
-  const CodeBoxes({super.key, required this.controller, this.onChanged, this.onCompleted, this.enabled = true, this.autofocus = true, this.error = false});
+  const CodeBoxes({super.key, required this.controller, this.focusNode, this.onChanged, this.onCompleted, this.enabled = true, this.autofocus = true, this.error = false});
   final TextEditingController controller;
+
+  /// Pass one to put the keyboard back after a wrong code.
+  final FocusNode? focusNode;
   final ValueChanged<String>? onChanged;
   final ValueChanged<String>? onCompleted;
   final bool enabled;
@@ -198,7 +203,8 @@ class CodeBoxes extends StatefulWidget {
 }
 
 class _CodeBoxesState extends State<CodeBoxes> {
-  final _focus = FocusNode();
+  FocusNode? _own;
+  FocusNode get _focus => widget.focusNode ?? (_own ??= FocusNode());
 
   @override
   void initState() {
@@ -214,12 +220,17 @@ class _CodeBoxesState extends State<CodeBoxes> {
       old.controller.removeListener(_redraw);
       widget.controller.addListener(_redraw);
     }
+    if (old.focusNode != widget.focusNode) {
+      (old.focusNode ?? _own)?.removeListener(_redraw);
+      _focus.addListener(_redraw);
+    }
   }
 
   @override
   void dispose() {
     widget.controller.removeListener(_redraw);
-    _focus.dispose();
+    _focus.removeListener(_redraw);
+    _own?.dispose();
     super.dispose();
   }
 
@@ -238,6 +249,7 @@ class _CodeBoxesState extends State<CodeBoxes> {
           label: 'Six digit code',
           value: code,
           textField: true,
+          onTap: widget.enabled ? _focus.requestFocus : null,
           child: SizedBox(
             height: side * 1.18,
             child: Stack(
@@ -264,7 +276,8 @@ class _CodeBoxesState extends State<CodeBoxes> {
                       autofillHints: const [AutofillHints.oneTimeCode],
                       inputFormatters: [FilteringTextInputFormatter.digitsOnly, LengthLimitingTextInputFormatter(CodeBoxes.length)],
                       showCursor: false,
-                      enableInteractiveSelection: false,
+                      // Long-press → Paste works (a code copied from the email)
+                      enableInteractiveSelection: true,
                       style: const TextStyle(color: Colors.transparent, fontSize: 1),
                       cursorColor: Colors.transparent,
                       decoration: const InputDecoration(

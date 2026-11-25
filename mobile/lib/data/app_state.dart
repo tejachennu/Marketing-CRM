@@ -180,11 +180,16 @@ class AppState extends ChangeNotifier {
     return (data['resendAfterSeconds'] as num?)?.toInt() ?? 60;
   }
 
-  /// Make the account with the code, then sign in.
+  /// Make the account with the code, then sign in. If the account was made but signing in fails (the internet
+  /// dropped), the code is already used: say so, so they sign in instead of trying the code again.
   Future<void> createAccount(Map<String, String> form, String code) async {
     await backend.send('POST', '/api/auth/signup', {...form, if (code.isNotEmpty) 'code': code});
     await store.write('onboarding', {'pending': true});
-    await signIn(form['email']!, form['password']!);
+    try {
+      await signIn(form['email']!, form['password']!);
+    } catch (_) {
+      throw AccountReadyException();
+    }
   }
 
   // ── Things that need the internet now (AI, files) ──
@@ -707,6 +712,12 @@ extension LiveUpdates on AppState {
 class _Unresolved {
   const _Unresolved._();
   static const instance = _Unresolved._();
+}
+
+/// The account was made, but signing in straight after failed: the person should sign in with email and password.
+class AccountReadyException implements Exception {
+  @override
+  String toString() => 'Your account is ready. Please sign in with your email and password.';
 }
 
 /// Makes the app state reachable from any screen: AppScope.of(context).

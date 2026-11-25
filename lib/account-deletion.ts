@@ -1,7 +1,7 @@
 /**
  * "Delete my account" (Google Play asks every app that makes accounts to let people ask for deletion inside the app
  * and on the web). A request is emailed to the team, who check it and delete the data; the person gets a copy.
- * Owners and admins ask for the whole workspace to go; anyone else asks for their own login only.
+ * The owner asks for the whole workspace to go; anyone else (admins too) asks for their own login only.
  * Pure: builds the two emails. The route (app/api/auth/delete-account) sends them.
  */
 import { escapeHtml } from './utils'
@@ -16,7 +16,7 @@ export interface DeletionRequest {
   role?: string | null
   organizationId?: string | null
   organizationName?: string | null
-  /** owner / admin: the workspace and all its data; otherwise only this person's login */
+  /** the owner: the workspace and all its data; otherwise only this person's login */
   wholeWorkspace: boolean
   reason?: string | null
   at: Date

@@ -138,9 +138,11 @@ Email: `HOSTINGER_SMTP_*`, `SENDGRID_*`. Other: `NEXT_PUBLIC_APP_URL`, `CRON_SEC
     `lib/plans.ts`.
   - **Delete my account** (Google Play rule for apps that make accounts): `lib/account-deletion.ts` (pure: emails, scope,
     recipients), `GET/POST /api/auth/delete-account` (under /api/auth so it works after a trial ends; emails the super
-    admins, else support@magnetora.ai, and a copy to the person; owners/admins = whole workspace, staff = own login;
+    admins, else support@magnetora.ai, and a copy to the person; 3 an hour per person; **only the owner** (role `owner`)
+    asks for the whole workspace, other admins and staff only their own login (workspaces with no owner row: admins);
     nothing is deleted automatically: the team checks and deletes), public page `/delete-account` (for the Play Console
-    "delete account URL"), app More → Delete my account (`more/delete_account_screen.dart`).
+    "delete account URL"), app More → Delete my account (`more/delete_account_screen.dart`), also on the Plan ended
+    screen. `AccountReadyException`: the account was made but signing in after it failed → back to sign in.
   - Tests: `test/release_signup_test.dart` (welcome → 3 steps, wrong code then right, onboarding follows),
     `test/release_signin_test.dart`, `release_onboarding_test.dart` follows the two pick steps; `tests/account-deletion.test.cjs`.
     `tapText` (release_helpers) now lays out before tapping (it used to tap where the text was before scrolling).

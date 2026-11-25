@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../data/app_state.dart';
+import '../../data/backend.dart';
 import '../../ui/theme.dart';
 import '../../ui/validate.dart';
 import '../../ui/widgets.dart';
@@ -28,6 +29,7 @@ class _SignupScreenState extends State<SignupScreen> {
   final _code = TextEditingController();
   final _nameFocus = FocusNode();
   final _passwordFocus = FocusNode();
+  final _codeFocus = FocusNode();
   String _phone = '';
   int _step = 0; // 0 business, 1 login, 2 code
   bool _busy = false;
@@ -61,6 +63,7 @@ class _SignupScreenState extends State<SignupScreen> {
     }
     _nameFocus.dispose();
     _passwordFocus.dispose();
+    _codeFocus.dispose();
     super.dispose();
   }
 
@@ -92,10 +95,25 @@ class _SignupScreenState extends State<SignupScreen> {
     try {
       await task();
     } catch (e) {
-      if (mounted) {
-        setState(() {
-          _error = friendlyAuthError(e);
-          _codeWrong = checksCode;
+      if (!mounted) return;
+      if (e is AccountReadyException) {
+        // The account exists; signing in will work once the internet is back
+        final messenger = ScaffoldMessenger.of(context);
+        Navigator.of(context).popUntil((route) => route.isFirst);
+        messenger.showSnackBar(SnackBar(content: Text('$e')));
+        return;
+      }
+      // Only the server's "that code is not right" turns the boxes red (not a dropped connection)
+      final wrongCode = checksCode && e is ApiException && e.status == 400 && e.message.toLowerCase().contains('code');
+      setState(() {
+        _error = friendlyAuthError(e);
+        _codeWrong = wrongCode;
+      });
+      if (wrongCode) {
+        _code.clear();
+        // Put the keyboard back once the boxes are enabled again
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) _codeFocus.requestFocus();
         });
       }
     } finally {
@@ -342,6 +360,7 @@ class _SignupScreenState extends State<SignupScreen> {
     const SizedBox(height: 22),
     CodeBoxes(
       controller: _code,
+      focusNode: _codeFocus,
       enabled: !_busy,
       error: _codeWrong,
       onChanged: (_) => setState(() {

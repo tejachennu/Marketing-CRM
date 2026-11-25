@@ -5,8 +5,8 @@ import '../../ui/theme.dart';
 import '../auth/auth_parts.dart';
 
 /// More → Delete my account (Google Play asks every app that makes accounts for this). Sends a request to the team,
-/// who check it came from the person and then delete the data (app/api/auth/delete-account). Owners and admins
-/// delete the whole workspace; staff only their own login. The same steps are on the website at /delete-account.
+/// who check it came from the person and then delete the data (app/api/auth/delete-account). The owner deletes the
+/// whole workspace; admins and staff only their own login. The same steps are on the website at /delete-account.
 class DeleteAccountScreen extends StatefulWidget {
   const DeleteAccountScreen({super.key});
   @override
@@ -34,6 +34,9 @@ class _DeleteAccountScreenState extends State<DeleteAccountScreen> {
     super.dispose();
   }
 
+  /// The server's /api/mobile/me gives the role as its label ("Owner" for whoever made the workspace).
+  bool _isOwner(AppState app) => '${(app.me?['user'] as Map?)?['role'] ?? ''}' == 'Owner';
+
   Future<void> _load() async {
     final app = AppScope.read(context);
     try {
@@ -44,8 +47,8 @@ class _DeleteAccountScreenState extends State<DeleteAccountScreen> {
         _scope = '${data['scope'] ?? ''}';
       });
     } catch (_) {
-      // Offline or an older server: say it from the person's role
-      if (mounted) setState(() => _wholeWorkspace = app.can('settings'));
+      // Offline or an older server: only the owner deletes the whole workspace
+      if (mounted) setState(() => _wholeWorkspace = _isOwner(app));
     }
   }
 
@@ -77,7 +80,7 @@ class _DeleteAccountScreenState extends State<DeleteAccountScreen> {
   }
 
   Widget _form() {
-    final whole = _wholeWorkspace ?? AppScope.read(context).can('settings');
+    final whole = _wholeWorkspace ?? _isOwner(AppScope.read(context));
     final scope = (_scope?.isNotEmpty ?? false)
         ? _scope!
         : whole

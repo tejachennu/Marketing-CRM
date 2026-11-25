@@ -117,6 +117,23 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
+  /// Out of "Name your business" (the wrong Google account, or just changed their mind): sign that Google account out.
+  Future<void> _leaveBusiness() async {
+    setState(() => _busy = true);
+    try {
+      await AppScope.read(context).signOut();
+    } catch (_) {
+      // Signed out on this phone anyway
+    }
+    if (!mounted) return;
+    setState(() {
+      _busy = false;
+      _newAccount = null;
+      _triedBusiness = false;
+    });
+    _show(_Face.welcome);
+  }
+
   void _openSignup() => Navigator.push(context, MaterialPageRoute(builder: (_) => const SignupScreen()));
 
   @override
@@ -125,7 +142,9 @@ class _LoginScreenState extends State<LoginScreen> {
       // Android back on the sign-in form returns to the welcome page instead of closing the app
       canPop: _face == _Face.welcome,
       onPopInvokedWithResult: (didPop, _) {
-        if (!didPop && _face == _Face.signIn && !_busy) _show(_Face.welcome);
+        if (didPop || _busy) return;
+        if (_face == _Face.signIn) _show(_Face.welcome);
+        if (_face == _Face.business) _leaveBusiness();
       },
       child: Scaffold(
         backgroundColor: Colors.white,
@@ -207,13 +226,14 @@ class _LoginScreenState extends State<LoginScreen> {
         const SizedBox(height: 20),
         const Spacer(),
         if (_error != null) ...[AuthError(_error!), const SizedBox(height: 12)],
-        BigButton(label: 'Create a free account', icon: Icons.arrow_forward, onPressed: _googleBusy ? null : _openSignup),
+        // While Google is open in the browser, everything else stays usable (backing out of Google can take minutes to time out)
+        BigButton(label: 'Create a free account', icon: Icons.arrow_forward, onPressed: _openSignup),
         const SizedBox(height: 10),
         GoogleButton(onPressed: _google, busy: _googleBusy),
         const SizedBox(height: 6),
         Center(
           child: TextButton(
-            onPressed: _googleBusy ? null : () => _show(_Face.signIn),
+            onPressed: () => _show(_Face.signIn),
             style: TextButton.styleFrom(minimumSize: const Size(48, 48)),
             child: const Text.rich(
               TextSpan(
@@ -294,7 +314,7 @@ class _LoginScreenState extends State<LoginScreen> {
         child: TextButton(onPressed: () => openWebsitePage(context, '/forgot-password'), child: const Text('Forgot password?')),
       ),
       if (_error != null) ...[const SizedBox(height: 4), AuthError(_error!), const SizedBox(height: 12)] else const SizedBox(height: 8),
-      BigButton(label: 'Sign in', busy: _busy, onPressed: _googleBusy ? null : _signIn),
+      BigButton(label: 'Sign in', busy: _busy, onPressed: _signIn),
       const SizedBox(height: 18),
       const Row(
         children: [
@@ -308,7 +328,7 @@ class _LoginScreenState extends State<LoginScreen> {
       const SizedBox(height: 14),
       Center(
         child: TextButton(
-          onPressed: _busy || _googleBusy ? null : _openSignup,
+          onPressed: _busy ? null : _openSignup,
           child: const Text.rich(
             TextSpan(
               children: [
@@ -361,6 +381,8 @@ class _LoginScreenState extends State<LoginScreen> {
         if (_error != null) ...[const SizedBox(height: 14), AuthError(_error!)],
         const SizedBox(height: 20),
         BigButton(label: 'Start my free trial', busy: _busy, onPressed: _finishBusiness),
+        const SizedBox(height: 4),
+        Center(child: TextButton(onPressed: _busy ? null : _leaveBusiness, child: const Text('Use another account'))),
         const SizedBox(height: 12),
         const Text('No card needed. You pay only if you choose a plan after the trial.', textAlign: TextAlign.center, style: TextStyle(fontSize: 12.5, color: Brand.muted, height: 1.4)),
       ],

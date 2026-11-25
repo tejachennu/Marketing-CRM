@@ -47,11 +47,12 @@ export default function DeleteAccountPage() {
           <h2 className="text-lg font-bold text-[#0E1B3D]">What is deleted</h2>
           <ul className="mt-3 list-disc space-y-1.5 pl-5 leading-relaxed">
             <li>
-              <strong className="text-[#0E1B3D]">Business owners and admins:</strong> your login and the whole workspace,
-              including customers, chats, bookings, bills, orders, products and settings, for everyone on your team.
+              <strong className="text-[#0E1B3D]">The business owner</strong> (who created the account): your login and the
+              whole workspace, including customers, chats, bookings, bills, orders, products and settings, for everyone on
+              your team.
             </li>
             <li>
-              <strong className="text-[#0E1B3D]">Staff:</strong> only your own login. The business keeps its workspace.
+              <strong className="text-[#0E1B3D]">Admins and staff:</strong> only your own login. The business keeps its workspace.
             </li>
             <li>Some records, like bills and payments, may be kept for as long as the law requires, and then deleted.</li>
           </ul>
