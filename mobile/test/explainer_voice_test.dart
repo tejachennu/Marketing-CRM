@@ -188,10 +188,14 @@ void main() {
     expect(phone.stops, 1);
   });
 
-  test('the words said for a scene: title then line, "×" said as "by"', () {
+  test('the words said for a scene: title then line, "×" said "by", short capital words spelt out', () {
     final scene = grow.scenes[0];
     expect(spokenWords(scene, 'en'), startsWith('Your shop, open on WhatsApp 24 by 7.'));
-    expect(spokenWords(scene, 'te'), contains('24 బై 7'));
-    expect(spokenWords(scene, 'hi'), contains('24 बाय 7'));
+    expect(spokenWords(scene, 'te'), contains('24 by 7'));
+    expect(spokenWords(scene, 'hi'), contains('24 by 7'));
+    final replies = explainers.firstWhere((e) => e.id == 'replies').scenes.last;
+    expect(spokenWords(replies, 'en'), contains('Your A I assistant'));
+    expect(spokenWords(replies, 'te'), contains('A I'));
+    expect(spokenWords(replies, 'en'), isNot(contains(' AI ')));
   });
 }

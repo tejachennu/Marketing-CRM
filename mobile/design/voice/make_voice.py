@@ -7,10 +7,10 @@ saved as a small AAC file (mono, 24 kHz, 32 kbps). Clips that are already there 
 are removed. durations.json (milliseconds per clip) is for the video recorder (test/record_videos.dart).
 
 Needs: ffmpeg, and an OpenAI key that the request can use. In the cloud session the network proxy adds the saved key;
-elsewhere set OPENAI_API_KEY. VOICE_MODEL must name the OpenAI speech model (see OpenAI's docs); VOICE picks the voice.
-No key or model name is kept in this file.
+elsewhere set OPENAI_API_KEY. VOICE_MODEL must name the OpenAI speech model (see OpenAI's docs). No key or model name
+is kept in this file. --all makes every clip again (after changing VOICES or HOW).
 
-    cd mobile && VOICE_MODEL=... python3 design/voice/make_voice.py
+    cd mobile && VOICE_MODEL=... python3 design/voice/make_voice.py [--all]
 """
 import json
 import os
@@ -28,17 +28,40 @@ LINES = HERE / 'lines.json'
 DURATIONS = HERE / 'durations.json'
 
 MODEL = os.environ.get('VOICE_MODEL')
-VOICE = os.environ.get('VOICE', 'coral')
 KEY = os.environ.get('OPENAI_API_KEY', 'proxy-injected')
 
-HOW = {
-    'en': 'Speak in a warm, natural Indian English accent, like a friendly business advisor from Hyderabad talking to '
-          'small shop owners. Lively but clear, at a natural pace, with a smile in the voice.',
-    'te': 'Speak natural, everyday Telugu as people in Hyderabad speak it, warm and friendly, clear pronunciation, at a '
-          'natural pace. English words like WhatsApp, Instagram, AI and website are said the Indian way.',
-    'hi': 'Speak natural, everyday Hindi as people speak it in India, warm and friendly, clear pronunciation, at a '
-          'natural pace. English words like WhatsApp, Instagram, AI and website are said the Indian way.',
+# The voice and the way of speaking for each language, as ChatGPT advised for a natural Indian sound (owner, 25 Nov
+# 2026: "not a natural accent, ask ChatGPT the correct prompt"). VOICE_EN / VOICE_TE / VOICE_HI change the voice.
+VOICES = {
+    'en': os.environ.get('VOICE_EN', 'sage'),
+    'te': os.environ.get('VOICE_TE', 'coral'),
+    'hi': os.environ.get('VOICE_HI', 'alloy'),
 }
+HOW = {
+    'en': "Speak Indian English with a natural Hyderabad/urban sound. Keep a syllable-timed rhythm and a medium, "
+          "conversational pace. Warm, friendly advisor tone; sound confident but not salesy. Keep vowels Indian (no "
+          "American drawl or strong r-colouring), and don't over-reduce unstressed vowels. Use a light tap for t/d "
+          "between vowels, and keep final consonants crisp. Intonation: small rise on the first clause, clean fall at "
+          "sentence ends; avoid sing-song or dramatic swoops. Pronounce brand and tech words in Indian English: "
+          "WhatsApp as whats-app with a clear t and s, Instagram with a short a, A I as the letters A and I. Short "
+          "pause at commas. Avoid a breathy voice, exaggerated smiles, or any US or UK accent cues.",
+    'te': "Speak everyday Hyderabad/Telangana Telugu, like a native Telugu speaker. Syllable-timed rhythm, medium "
+          "pace. Warm, friendly, helpful tone, like guiding a shop owner. Use natural code-mixing: English brand and "
+          "tech words written in English letters (WhatsApp, Instagram, A I, website) are said in Indian English. "
+          "'24 by 7' is said as twenty-four by seven. Avoid any American or UK accent on English words (no "
+          "r-colouring, no drawn-out vowels). Intonation simple and clear: slight rise on the first clause, firm fall "
+          "at full stops. Keep retroflex ట and డ sounds crisp and word endings clear. Short pause at commas and "
+          "between clauses.",
+    'hi': "Speak neutral urban Hindi (light Hinglish, Delhi-Mumbai style), like a native Hindi speaker. "
+          "Syllable-timed rhythm, medium pace. Warm, friendly business-advisor tone. Natural code-mixing: English "
+          "brand and tech words written in English letters (WhatsApp, Instagram, A I, website) are said in Indian "
+          "English. '24 by 7' is said as twenty-four by seven. Avoid American or UK accent features on English words "
+          "(no r-colouring, no heavy vowel reduction). Intonation: gentle emphasis on benefits, clean fall at "
+          "sentence ends; avoid overly dramatic pitch. Keep dental and retroflex contrasts clear (त/ट, द/ड). Short "
+          "pause at commas.",
+}
+# Every clip made again (after changing the voices or HOW): python3 make_voice.py --all
+REDO = '--all' in sys.argv
 
 
 def fnv(text: str, lang: str) -> str:
@@ -52,9 +75,9 @@ def fnv(text: str, lang: str) -> str:
 def speak(line: dict) -> tuple[str, str]:
     name = line['name']
     target = ASSETS / f'{name}.m4a'
-    if target.exists():
+    if target.exists() and not REDO:
         return name, 'kept'
-    body = json.dumps({'model': MODEL, 'voice': VOICE, 'input': line['text'], 'instructions': HOW[line['lang']], 'response_format': 'wav'}).encode()
+    body = json.dumps({'model': MODEL, 'voice': VOICES[line['lang']], 'input': line['text'], 'instructions': HOW[line['lang']], 'response_format': 'wav'}).encode()
     req = urllib.request.Request(
         'https://api.openai.com/v1/audio/speech',
         data=body,

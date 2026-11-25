@@ -160,14 +160,16 @@ class SilentNarrator implements Narrator {
 /// The narrator the player uses; tests put in their own.
 Narrator narrator = !kIsWeb && (Platform.isAndroid || Platform.isIOS) ? RecordedNarrator(PhoneNarrator()) : SilentNarrator();
 
-/// What is said for a scene: its title, then its line, written the way it is spoken ("24 × 7" → "24 by 7").
+/// What is said for a scene: its title, then its line, written the way it is spoken (advice asked of ChatGPT for a
+/// natural Indian voice): "24 × 7" → "24 by 7" in every language, short capital words spelt out ("AI" → "A I",
+/// "GST" → "G S T"), English brand words kept in English letters.
 String spokenWords(Scene scene, String lang) {
-  final by = switch (lang) {
-    'te' => ' బై ',
-    'hi' => ' बाय ',
-    _ => ' by ',
-  };
-  String clean(String text) => text.replaceAll(RegExp(r'\s*×\s*'), by).replaceAll('→', ',').replaceAll(RegExp(r'\s+'), ' ').trim();
+  String clean(String text) => text
+      .replaceAll(RegExp(r'\s*×\s*'), ' by ')
+      .replaceAll('→', ',')
+      .replaceAllMapped(RegExp(r'\b([A-Z]{2,4})\b'), (m) => m[1]!.split('').join(' '))
+      .replaceAll(RegExp(r'\s+'), ' ')
+      .trim();
   final title = clean(scene.title.of(lang));
   final line = clean(scene.line.of(lang));
   final stop = RegExp(r'[.!?।]$').hasMatch(title) ? '' : '.';
