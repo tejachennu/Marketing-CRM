@@ -118,6 +118,42 @@ Email: `HOSTINGER_SMTP_*`, `SENDGRID_*`. Other: `NEXT_PUBLIC_APP_URL`, `CRON_SEC
 
 ## What has been built (recent history, newest first)
 
+- **Front Desk: appointments can be switched off (walk-in shops); website buttons on/off; staff attendance with leave**
+  (owner, 26 Nov 2026: "in some shops they don't need appointment booking, they can hide it", "staff attendance
+  maintenance (staff leave marking)", "website lo call to action button enable or disable").
+  - **"We take appointments"** (`salon_settings.takes_appointments`, default true; lock **724519040**, migration
+    `20261213_front_desk_take_appointments.sql`; rules `lib/salon/appointments-switch.ts` / `appointments-setting.ts`;
+    Setup → Appointments `components/salon/salon-appointments-switch.tsx`, owners/admins). Off = walk-in mode: the counter
+    becomes `components/salon/walk-in-counter.tsx` (Quick bill, today's bills, "Booked earlier for today"), no
+    Appointments tab / Calendar in the phone bottom bar (remembered on the device), Setup hides Booking flow, booking page
+    links, auto-confirm, reminders, payment when booking, and the booking + reminder templates; `/b/<slug>` and `/book`
+    say "No online booking" with Call / WhatsApp, booking + times APIs answer 403 `not_taking_bookings`; the counter and
+    `POST /api/v1/appointments` refuse (409 `appointments_off`, in `spec.ts`); the website has no Book buttons or form and
+    its AI chat does not offer booking; WhatsApp "Book" does not start the flow, old booking / time taps get a kind reply,
+    the assistant never offers times, no reminders. Existing bookings stay. App: `/api/mobile/me` `frontDesk.appointments`;
+    Front Desk shows today's bills without Bookings / Requests / Book; Setup / website / More hide booking items; demo
+    `?walkin=1`; tests `tests/appointments-switch.test.cjs`, `mobile/test/release_walk_in_test.dart`,
+    `walk_in_screens_test.dart`.
+  - **Website buttons**: `salon_settings.website` buttons {call, whatsapp, book, shop, directions} (all on by default),
+    Setup → Website → "Buttons on your website" (web and app); a switched-off button goes from every place (header, hero,
+    quick facts, Visit us, closing band, footer, phone bar, team / service Book, chat hand-off); Book is unavailable while
+    appointments are off; no phone bar when it would be empty; Directions off also removes the map.
+  - **Staff attendance**: table `salon_staff_attendance` (one mark per person per day: present / absent / leave / half_day
+    / week_off, leave kind casual / sick / other, note ≤200; lock **724519039**, migration `20261213_staff_attendance.sql`,
+    `withAttendanceSchema`), rules `lib/salon/attendance.ts` (ranges skip closed days, half day = 0.5, ≤62 days ahead),
+    store `attendance-store.ts`, `GET/POST/PUT/DELETE /api/salon/attendance` (`?day=` or `?month=&staffId=`; `{marks}`,
+    `{all:{day}}` = mark the unmarked present, `{leave:{staff_id,from,to}}`; managers mark (`automation.manage`), notes
+    hidden from others). Web Front Desk → Team → **Performance | Attendance** (`components/salon/salon-attendance.tsx`,
+    `?tab=team&view=attendance`: day list with one-tap marks, Mark all present, Add leave, month grid, a person's calendar
+    with Cancel leave). App More → Attendance / Team → Attendance (`front_desk/attendance_screen.dart`, offline through the
+    outbox, `data/attendance_logic.dart`, demo `data/demo_attendance.dart`). **Bookings follow it**: absent / leave / week
+    off = the whole IST day busy in availability, the WhatsApp assistant (told who is not in), the booking flow, booking
+    page / website ("Anyone" goes to someone who is in) and `/api/v1` free times; half day stays bookable; existing
+    bookings stay with an "on leave" chip on the counter and a warning in New booking; an attendance read error counts
+    everyone as in. Team numbers show "N days in" once attendance is used. Tests `tests/staff-attendance*.test.cjs`,
+    `mobile/test/attendance_test.dart`. **Next free lock: 724519041.**
+  - **Not tried against the real database, WhatsApp or the AI yet** (both new columns / tables set themselves up on first use).
+
 - **Invoices redesigned; editable WhatsApp templates sent for approval; real phone pop-ups; own expense kinds; UI pass on
   E-commerce / Billing / reports; no "Syncing…" flashes** (owner, 25 Nov 2026: "invoice design is not good", "message
   templates ... they can edit it and apply for approval", "its inapp notifications remove it", "ui related issues on
@@ -233,7 +269,7 @@ Email: `HOSTINGER_SMTP_*`, `SENDGRID_*`. Other: `NEXT_PUBLIC_APP_URL`, `CRON_SEC
     "See as a table"), Where the money went, list with kind filters, add / change / remove form. App: More → **Expenses and
     profit** (`screens/more/expenses_screen.dart`, owners/admins), same API, demo answers `data/demo_expenses.dart`, shared
     rules `data/expenses_logic.dart`, test `test/release_expenses_test.dart`. Tests `tests/expenses.test.cjs`.
-  - **Not tried against the real database or AI yet** (needs a deploy). Next free lock: **724519039**.
+  - **Not tried against the real database or AI yet** (needs a deploy). (724519039 and 724519040 are now used: next free 724519041.)
 
 - **App: explainer videos on the welcome pages, in English, Telugu and Hindi; release check of the whole app**
   (owner, 25 Nov 2026: "video presentations ... how they will benefit ... multi language ... ads, chats, auto replies,
