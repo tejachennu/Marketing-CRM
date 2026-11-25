@@ -5,6 +5,7 @@ import '../../data/app_state.dart';
 import '../../data/format.dart' show istNow, showPhone;
 import '../../ui/theme.dart';
 import '../../ui/widgets.dart';
+import '../templates/auto_messages_screen.dart';
 import 'store_logic.dart';
 import 'store_screen.dart' show NoteBox, confirmAction, openLink, plain;
 
@@ -1085,12 +1086,11 @@ class _OfferFormState extends State<_OfferForm> {
 
 // ── Settings: Returns, GST invoices, WhatsApp messages, Delivery partners ───
 
-/// One settings screen that loads from `path` and saves `{settings}` (or `{messages}`) with PUT.
+/// One settings screen that loads from `path` and saves `{settings}` with PUT.
 class _SettingsScreen extends StatefulWidget {
-  const _SettingsScreen({required this.title, required this.path, required this.builder, this.key_ = 'settings', this.intro = ''});
+  const _SettingsScreen({required this.title, required this.path, required this.builder, this.intro = ''});
   final String title;
   final String path;
-  final String key_;
   final String intro;
   final List<Widget> Function(Map values, void Function(VoidCallback) update) builder;
   @override
@@ -1112,7 +1112,7 @@ class _SettingsScreenState extends State<_SettingsScreen> {
     final app = AppScope.read(context);
     try {
       final d = await app.backend.get(widget.path, {'organizationId': app.orgId});
-      if (mounted) setState(() => _values = Map.from((d[widget.key_] as Map?) ?? const {}));
+      if (mounted) setState(() => _values = Map.from((d['settings'] as Map?) ?? const {}));
     } catch (e) {
       if (mounted) setState(() => _error = plain(e));
     }
@@ -1126,8 +1126,8 @@ class _SettingsScreenState extends State<_SettingsScreen> {
   Future<void> _save() async {
     setState(() => _saving = true);
     try {
-      final d = await AppScope.read(context).ask(widget.path, {widget.key_: _values}, method: 'PUT');
-      setState(() => _values = Map.from((d[widget.key_] as Map?) ?? _values!));
+      final d = await AppScope.read(context).ask(widget.path, {'settings': _values}, method: 'PUT');
+      setState(() => _values = Map.from((d['settings'] as Map?) ?? _values!));
       if (mounted) toast(context, 'Saved.');
     } catch (e) {
       if (mounted) toast(context, plain(e));
@@ -1189,34 +1189,13 @@ Widget invoiceSettingsScreen() => _SettingsScreen(
   ],
 );
 
-const _messageInfo = {
-  'cart_reminder': ('Cart reminder', 'An hour after a customer left items in the cart without ordering (once).'),
-  'cod_confirm': ('Cash on Delivery check', 'Right after a Cash on Delivery order, before you ship it.'),
-  'review_ask': ('"How was it?" review ask', 'When the order is delivered.'),
-  'back_in_stock': ('Back in stock', 'When a product someone asked about is back in stock.'),
-  'refund_update': ('Return and refund updates', 'When you accept or decline a return, and when you refund an order.'),
-};
-
-Widget shopMessagesScreen() => _SettingsScreen(
+/// The WhatsApp messages the shop sends by itself: each on / off, with its template (send the suggested wording for
+/// approval, edit it, see where it stands), as on the web.
+Widget shopMessagesScreen() => const AutoMessagesScreen(
   title: 'WhatsApp messages',
   path: '/api/commerce/shop-messages',
-  key_: 'messages',
-  intro: 'Sent as a normal message when the customer wrote in the last 24 hours. Otherwise WhatsApp needs an approved template: make one in Templates (Utility), then type its name here.',
-  builder: (v, update) => [
-    for (final e in _messageInfo.entries)
-      if (v[e.key] is Map)
-        Padding(padding: const EdgeInsets.only(bottom: 10), child: Panel(
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            SwitchListTile(contentPadding: EdgeInsets.zero, value: (v[e.key] as Map)['on'] == true, onChanged: (x) => update(() => (v[e.key] as Map)['on'] = x), title: Text(e.value.$1, style: const TextStyle(fontWeight: FontWeight.w700)), subtitle: Text(e.value.$2)),
-            if ((v[e.key] as Map)['on'] == true)
-              Row(children: [
-                Expanded(child: TextFormField(initialValue: '${(v[e.key] as Map)['template'] ?? ''}', decoration: const InputDecoration(labelText: 'Template name (optional)'), onChanged: (x) => (v[e.key] as Map)['template'] = x.trim())),
-                const SizedBox(width: 8),
-                SizedBox(width: 96, child: TextFormField(initialValue: '${(v[e.key] as Map)['language'] ?? 'en'}', decoration: const InputDecoration(labelText: 'Language'), onChanged: (x) => (v[e.key] as Map)['language'] = x.trim())),
-              ]),
-          ]),
-        )),
-  ],
+  shop: true,
+  intro: 'Sent as a normal message when the customer wrote to you in the last 24 hours. After that WhatsApp needs an approved template: send the suggested wording for approval, or change it first.',
 );
 
 /// Delivery partners: where each stands. Connecting a partner (keys, warehouse) is done on the web.

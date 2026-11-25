@@ -19,6 +19,10 @@ import 'package:wama_mobile/screens/onboarding/onboarding_screen.dart';
 import 'package:wama_mobile/screens/explainers/explainer_content.dart';
 import 'package:wama_mobile/screens/explainers/explainer_player.dart';
 import 'package:wama_mobile/screens/more/expenses_screen.dart';
+import 'package:wama_mobile/data/demo_auto_messages.dart' as demo;
+import 'package:wama_mobile/screens/front_desk/setup_templates.dart';
+import 'package:wama_mobile/screens/store/shop_more.dart' show shopMessagesScreen;
+import 'package:wama_mobile/screens/templates/auto_messages_screen.dart';
 import 'package:wama_mobile/ui/theme.dart';
 
 
@@ -72,6 +76,29 @@ void main() {
     'delete_account': () => const DeleteAccountScreen(),
     'expenses': () => const ExpensesScreen(),
     'expense_new': () => const ExpenseFormScreen(month: '2026-11'),
+    // Templates for the automatic messages: Front Desk, the shop, and editing a rejected one
+    'auto_desk': () => const TemplatesSetup(),
+    'auto_shop': () => shopMessagesScreen(),
+    'auto_edit': () => AutoMessageEditor(
+      path: '/api/salon/templates',
+      languages: [for (final l in demo.autoLanguages) Map<String, dynamic>.from(l)],
+      view: demo.autoView(demo.deskAutoDefs[2], {
+        'name': 'appointment_reminder',
+        'language': 'en',
+        'fields': ['first_name', 'business', 'time'],
+      }, [
+        {
+          'name': 'appointment_reminder',
+          'language': 'en',
+          'status': 'REJECTED',
+          'rejected_reason': 'PROMOTIONAL',
+          'category': 'UTILITY',
+          'components': [
+            {'type': 'BODY', 'text': 'Hi {{1}}, your appointment at {{2}} is today at {{3}}. Book your next visit now and get 10% off!'},
+          ],
+        },
+      ]),
+    ),
     'onb_videos': () => const OnboardingScreen(),
     'video_end': () => const ExplainerScreen(startId: 'grow', autoplay: false, showEnd: true),
     'video_end_te': () => const ExplainerScreen(startId: 'grow', autoplay: false, showEnd: true, lang: 'te'),

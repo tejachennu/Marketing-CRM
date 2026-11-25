@@ -75,7 +75,11 @@ async function chosenTemplate(db: any, organizationId: string, purpose: MessageP
 export async function sendFallbackTemplate(db: any, organization: any, phone: string, template: TemplateFallback): Promise<{ ok: boolean; messageId?: string | null; error?: string }> {
   const choice = await chosenTemplate(db, organization.id, template.purpose)
   if (!choice) return { ok: false, error: `No ${PURPOSES[template.purpose].title.toLowerCase()} template is set up (Front Desk → Setup → Templates).` }
-  return sendWhatsAppMessage(organization, chosenTemplatePayload(choice, phone, template.values))
+  const first = await sendWhatsAppMessage(organization, chosenTemplatePayload(choice, phone, template.values))
+  // A newer wording still waiting for Meta's approval is refused: the earlier approved one goes instead
+  if (first.ok || !choice.previous) return first
+  const fallback = await sendWhatsAppMessage(organization, chosenTemplatePayload(choice.previous, phone, template.values))
+  return fallback.ok ? fallback : first
 }
 
 async function connectedOrganization(db: any, organizationId: string) {

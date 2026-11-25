@@ -34,7 +34,7 @@ import 'screens/instagram/instagram_screen.dart';
 import 'screens/more/connectors_screen.dart';
 import 'screens/more/more_screens.dart';
 import 'screens/store/new_order_screen.dart';
-import 'screens/store/shop_more.dart' show ShopReportsScreen;
+import 'screens/store/shop_more.dart' show ShopReportsScreen, shopMessagesScreen;
 import 'screens/store/store_screen.dart';
 import 'screens/store/website_screen.dart';
 import 'screens/more/chat_tickets_screen.dart';
@@ -229,6 +229,7 @@ class WamaApp extends StatelessWidget {
       'ig_chat' => ChatScreen(conversation: app.chatsOf('instagram').first),
       'ig_chat_closed' => ChatScreen(conversation: app.chatsOf('instagram').last),
       'shop_reports' => const ShopReportsScreen(currency: 'INR'),
+      'shop_messages' => shopMessagesScreen(),
       'knowledge' => const KnowledgeScreen(),
       'members' => const MembersScreen(),
       'website_settings' => const WebsiteSettingsScreen(),

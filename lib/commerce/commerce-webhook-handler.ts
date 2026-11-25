@@ -980,6 +980,18 @@ export async function notifyOrderStatus({
     if (card.ok) return { notified: true, error: null, viaCard: true }
   }
 
+  // The chat has closed: WhatsApp only delivers the shop's approved "Order updates" template (loaded lazily: that
+  // module sends through this one)
+  const templated = await import('./order-update-template')
+    .then((m) => m.sendOrderUpdateTemplate(supabase, organization, order, phone, text))
+    .catch(() => null)
+  if (templated) {
+    if (templated.ok && context.conversationId) {
+      await supabase.from('messages').insert({ organization_id: organization.id, conversation_id: context.conversationId, sender_type: 'user', body: text, twilio_message_sid: templated.messageId ? `FB_${templated.messageId}` : null, status: 'sent' })
+    }
+    return { notified: templated.ok, error: templated.ok ? null : templated.error || 'WhatsApp did not accept the order update template.', viaCard: false }
+  }
+
   const message = await sendAndLog(context, buildTextMessage(phone, text), text)
   return { notified: message.ok, error: message.ok ? null : message.error || 'WhatsApp did not accept the message.', viaCard: false }
 }
