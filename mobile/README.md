@@ -55,7 +55,11 @@ opens one screen, and `&offline=1` shows it with no internet and a few changes w
 - `lib/data/local_store.dart`: the phone's copy and the outbox.
 - `lib/data/app_state.dart`: loading, the outbox and syncing (the offline rules are written there).
 - `lib/screens/*`: Front Desk, Chats, Contacts, Templates, Campaigns, More/Sync/Sign in.
-- `lib/ui/theme.dart`: the WAMA colours (navy, one blue, greys; red only for attention).
+- `lib/screens/explainers/`: the short videos on the welcome pages and in More → How we help your business
+  (7 videos in English, Telugu and Hindi: content, animated scenes, the player). Each scene is read aloud by a
+  recorded voice with a natural Indian accent from `assets/voice/` (`narrator.dart`; the phone's own voice reads any
+  line without a clip). After changing any words, make the voice again: `design/voice/README.md`.
+- `lib/ui/theme.dart`: the app's colours (WhatsApp's palette; red only for attention).
 
 Server endpoints it uses: `/api/mobile/me`, `/api/auth/signup/send-code`, `/api/auth/signup`,
 `/api/conversations` (GET, and PATCH for AI on/off and read), `/api/ai/copilot`, `/api/ai/rephrase`,
