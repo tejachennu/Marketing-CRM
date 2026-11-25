@@ -55,6 +55,7 @@ import 'ui/notice_host.dart';
 import 'ui/splash.dart';
 import 'ui/theme.dart';
 import 'screens/onboarding/onboarding_screen.dart';
+import 'screens/explainers/explainer_player.dart';
 import 'ui/plan_lock.dart';
 import 'ui/whatsapp_lock.dart';
 import 'screens/store/online_payments.dart';
@@ -203,10 +204,14 @@ class WamaApp extends StatelessWidget {
       'connectors' => const ConnectorsScreen(),
       'whatsapp_locked' => const WhatsAppLockedScreen(feature: 'Chats'),
       'onboarding' => const OnboardingScreen(),
-      'onboarding_store' => const OnboardingScreen(startPage: 1),
-      'onboarding_nowa' => const OnboardingScreen(startPage: 2),
-      'onboarding_pick' => const OnboardingScreen(startPage: 3),
-      'onboarding_whatsapp' => const OnboardingScreen(startPage: 4),
+      'onboarding_desk' => const OnboardingScreen(startPage: 1),
+      'onboarding_store' => const OnboardingScreen(startPage: 2),
+      'onboarding_nowa' => const OnboardingScreen(startPage: 3),
+      'onboarding_pick' => const OnboardingScreen(startPage: 4),
+      'onboarding_whatsapp' => const OnboardingScreen(startPage: 5),
+      'video' => const ExplainerScreen(startId: 'grow', autoplay: false),
+      'video_ads' => const ExplainerScreen(startId: 'ads', autoplay: false),
+      'videos' => const ExplainerLibraryScreen(),
       'more' => const HomeShell(tab: 4),
       'chat_ai' => ChatScreen(conversation: app.chatsOf('whatsapp').first, showSuggestions: true),
       'instagram' => const InstagramScreen(),

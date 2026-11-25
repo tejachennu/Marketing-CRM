@@ -62,8 +62,12 @@ void main() {
       'onboarding',
       'onboarding_store',
       'onboarding_nowa',
+      'onboarding_desk',
       'onboarding_pick',
       'onboarding_whatsapp',
+      'video',
+      'video_ads',
+      'videos',
     ],
     flows: [
       ('members', ['Priya Sharma']),

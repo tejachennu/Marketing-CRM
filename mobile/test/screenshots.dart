@@ -16,18 +16,33 @@ import 'package:wama_mobile/screens/auth/login_screen.dart';
 import 'package:wama_mobile/screens/auth/signup_screen.dart';
 import 'package:wama_mobile/screens/more/delete_account_screen.dart';
 import 'package:wama_mobile/screens/onboarding/onboarding_screen.dart';
+import 'package:wama_mobile/screens/explainers/explainer_content.dart';
+import 'package:wama_mobile/screens/explainers/explainer_player.dart';
 import 'package:wama_mobile/ui/theme.dart';
 
-import 'screen_check.dart' show loadFonts;
 
 void main() {
   late AppState app;
   final out = Platform.environment['SHOTS_DIR'] ?? '/tmp/shots';
   setUpAll(() async {
-    await loadFonts();
+    // Material icons, and Telugu / Hindi letters (Noto, from the system fonts) as fallbacks
+    const fonts0 = '/opt/flutter/bin/cache/artifacts/material_fonts';
+    final icons = FontLoader('MaterialIcons')..addFont(Future.value(ByteData.sublistView(File('$fonts0/MaterialIcons-Regular.otf').readAsBytesSync())));
+    await icons.load();
+    for (final (family, files) in [
+      ('NotoSansTelugu', ['NotoSansTelugu-Regular.ttf', 'NotoSansTelugu-Bold.ttf']),
+      ('NotoSansDevanagari', ['NotoSansDevanagari-Regular.ttf', 'NotoSansDevanagari-Bold.ttf']),
+    ]) {
+      final loader = FontLoader(family);
+      for (final f in files) {
+        final file = File('/usr/share/fonts/truetype/noto/$f');
+        if (file.existsSync()) loader.addFont(Future.value(ByteData.sublistView(file.readAsBytesSync())));
+      }
+      await loader.load();
+    }
     // Text with no font family falls back to the test font: show it as Roboto, like a phone
     const fonts = '/opt/flutter/bin/cache/artifacts/material_fonts';
-    for (final family in ['Ahem', '']) {
+    for (final family in ['Roboto', 'Ahem']) {
       final roboto = FontLoader(family);
       for (final f in ['Roboto-Regular.ttf', 'Roboto-Medium.ttf', 'Roboto-Bold.ttf']) {
         roboto.addFont(Future.value(ByteData.sublistView(File('$fonts/$f').readAsBytesSync())));
@@ -54,12 +69,18 @@ void main() {
     'onb_pick': () => const OnboardingScreen(startPage: 3),
     'onb_whatsapp': () => const OnboardingScreen(startPage: 4),
     'delete_account': () => const DeleteAccountScreen(),
+    'onb_videos': () => const OnboardingScreen(),
+    // Every scene of every video, held at 85 %, in each language: video_<id>_<scene>_<lang>
+    for (final ex in explainers)
+      for (var i = 0; i < ex.scenes.length; i++)
+        for (final (lang, _) in videoLanguages) 'video_${ex.id}_${i}_$lang': () => ExplainerScreen(startId: ex.id, startScene: i, holdAt: 0.85, lang: lang),
   };
   final only = (Platform.environment['SHOTS'] ?? '').split(',').where((s) => s.isNotEmpty).toSet();
+  // SHOTS=video_ads picks every screen whose name starts with it
   final sizes = (Platform.environment['SHOTS_SIZES'] ?? '360x780').split(',');
 
   for (final entry in screens.entries) {
-    if (only.isNotEmpty && !only.contains(entry.key)) continue;
+    if (only.isNotEmpty && !only.any((o) => entry.key == o || entry.key.startsWith('${o}_'))) continue;
     for (final size in sizes) {
       final parts = size.split('x');
       final w = double.parse(parts[0]);
@@ -112,7 +133,7 @@ class _Roboto extends StatelessWidget {
     WidgetStateProperty<TextStyle?>? fix(WidgetStateProperty<TextStyle?>? p) => p == null ? null : WidgetStateProperty.resolveWith((s) => p.resolve(s)?.copyWith(fontFamily: 'Roboto'));
     return Theme(
       data: t.copyWith(
-        textTheme: t.textTheme.apply(fontFamily: 'Roboto'),
+        textTheme: t.textTheme.apply(fontFamily: 'Roboto', fontFamilyFallback: const ['NotoSansTelugu', 'NotoSansDevanagari']),
         primaryTextTheme: t.primaryTextTheme.apply(fontFamily: 'Roboto'),
         filledButtonTheme: FilledButtonThemeData(style: t.filledButtonTheme.style?.copyWith(textStyle: fix(t.filledButtonTheme.style?.textStyle))),
         outlinedButtonTheme: OutlinedButtonThemeData(style: t.outlinedButtonTheme.style?.copyWith(textStyle: fix(t.outlinedButtonTheme.style?.textStyle))),
@@ -123,7 +144,7 @@ class _Roboto extends StatelessWidget {
           hintStyle: t.inputDecorationTheme.hintStyle?.copyWith(fontFamily: 'Roboto'),
         ),
       ),
-      child: DefaultTextStyle.merge(style: const TextStyle(fontFamily: 'Roboto'), child: child),
+      child: DefaultTextStyle.merge(style: const TextStyle(fontFamily: 'Roboto', fontFamilyFallback: ['NotoSansTelugu', 'NotoSansDevanagari']), child: child),
     );
   }
 }

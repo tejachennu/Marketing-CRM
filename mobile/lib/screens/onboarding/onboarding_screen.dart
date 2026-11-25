@@ -5,6 +5,8 @@ import '../../ui/front_desk_icon.dart';
 import '../../ui/theme.dart';
 import '../../ui/widgets.dart';
 import '../auth/auth_parts.dart';
+import '../explainers/explainer_content.dart';
+import '../explainers/explainer_player.dart';
 
 /// Right after sign-up (owner, 25 Nov 2026): what the two connectors give with the business's own WhatsApp, that our
 /// team also runs their ads and social media, that both work without WhatsApp for ₹300 a month (confirmations from
@@ -21,7 +23,7 @@ class OnboardingScreen extends StatefulWidget {
 }
 
 class _Slide {
-  const _Slide({required this.picture, required this.pictureLabel, required this.tagIcon, required this.tag, required this.title, required this.intro, required this.points, required this.gain, this.team = false});
+  const _Slide({required this.picture, required this.pictureLabel, required this.tagIcon, required this.tag, required this.title, required this.intro, required this.points, required this.gain, required this.video, this.team = false});
 
   /// The drawing in assets/images, e.g. "desk" (360 × 232)
   final String picture;
@@ -35,11 +37,15 @@ class _Slide {
 
   /// Show "our team runs your ads and social media"
   final bool team;
+
+  /// The explainer video that goes with this slide (explainers/explainer_content.dart)
+  final String video;
 }
 
 const _slides = [
   _Slide(
     picture: 'desk',
+    video: 'automation',
     pictureLabel: "A day's bookings, a reminder on WhatsApp and a paid bill",
     tagIcon: Icons.chat_outlined,
     tag: 'Connector 1 · with your own WhatsApp',
@@ -57,6 +63,7 @@ const _slides = [
   ),
   _Slide(
     picture: 'shop',
+    video: 'ads',
     pictureLabel: 'An online store with products, an order paid by UPI and a parcel on the way',
     tagIcon: Icons.chat_outlined,
     tag: 'Connector 2 · with your own WhatsApp',
@@ -74,6 +81,7 @@ const _slides = [
   ),
   _Slide(
     picture: 'nowa',
+    video: 'grow',
     pictureLabel: 'A booking confirmation, an invoice link and a sales report',
     tagIcon: Icons.bolt_outlined,
     tag: 'No WhatsApp Business yet?',
@@ -97,9 +105,9 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   bool _ownWhatsApp = false;
   bool _busy = false;
 
-  /// After the slides: step 1 (which connector), then step 2 (WhatsApp), the last page.
-  int get _pickConnector => _slides.length;
-  int get _last => _slides.length + 1;
+  /// Page 0: the explainer videos; then the slides; then step 1 (which connector) and step 2 (WhatsApp), the last page.
+  int get _pickConnector => _slides.length + 1;
+  int get _last => _slides.length + 2;
 
   @override
   void dispose() {
@@ -167,7 +175,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                 child: PageView(
                   controller: _pages,
                   onPageChanged: (i) => setState(() => _page = i),
-                  children: [for (final s in _slides) _slideView(s), _connectorView(), _whatsAppView()],
+                  children: [_videosView(), for (final s in _slides) _slideView(s), _connectorView(), _whatsAppView()],
                 ),
               ),
               Container(
@@ -205,6 +213,25 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     );
   }
 
+  /// Page 0: what we do for them, as short videos in English, Telugu or Hindi (owner: "videos on the onboarding itself").
+  Widget _videosView() => ExplainerGallery(
+    padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
+    header: const Padding(
+      padding: EdgeInsets.only(bottom: 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Welcome! Your free trial has started', style: TextStyle(fontSize: 26, fontWeight: FontWeight.w700, height: 1.18, letterSpacing: -0.5, color: Brand.navy)),
+          SizedBox(height: 8),
+          Text(
+            'Watch how we help you get more customers: ads, chats, auto replies and reminders. Each video is under a minute.',
+            style: TextStyle(color: Brand.textSoft, fontSize: 15, height: 1.42),
+          ),
+        ],
+      ),
+    ),
+  );
+
   Widget _slideView(_Slide s) => LayoutBuilder(
     builder: (context, box) => ListView(
       padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
@@ -215,7 +242,9 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
           decoration: BoxDecoration(color: const Color(0xFFF6FBF4), borderRadius: BorderRadius.circular(24)),
           child: AuthPicture(s.picture, aspect: 360 / 232, maxHeight: 250, semantic: s.pictureLabel),
         ),
-        const SizedBox(height: 18),
+        const SizedBox(height: 10),
+        _WatchButton(video: s.video),
+        const SizedBox(height: 14),
         Align(
           alignment: Alignment.centerLeft,
           child: SoftPill(icon: s.tagIcon, label: s.tag),
@@ -588,4 +617,48 @@ class _PlanCard extends StatelessWidget {
       ),
     ),
   );
+}
+
+/// "▶ Watch: Things that happen by themselves · 27 sec" under a slide's picture.
+class _WatchButton extends StatelessWidget {
+  const _WatchButton({required this.video});
+  final String video;
+  @override
+  Widget build(BuildContext context) {
+    final app = AppScope.of(context);
+    final ex = explainers.firstWhere((e) => e.id == video, orElse: () => explainers.first);
+    final lang = videoLanguage(app);
+    return Material(
+      color: const Color(0xFF0B141A),
+      borderRadius: BorderRadius.circular(14),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(14),
+        onTap: () => openExplainer(context, ex.id),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(8, 8, 12, 8),
+          child: Row(
+            children: [
+              Container(
+                width: 34,
+                height: 34,
+                decoration: const BoxDecoration(color: Brand.green, shape: BoxShape.circle),
+                child: const Icon(Icons.play_arrow_rounded, color: Colors.white, size: 24),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  '${VideoWords.watch.of(lang)}: ${ex.title.of(lang)}',
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 14, height: 1.25),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Text('${ex.seconds} ${VideoWords.seconds.of(lang)}', style: const TextStyle(color: Color(0xBFFFFFFF), fontSize: 12, fontWeight: FontWeight.w600)),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }

@@ -17,6 +17,7 @@ import '../front_desk/booking_flow_screen.dart';
 import '../front_desk/logic.dart';
 import '../campaigns/campaigns_screen.dart';
 import '../contacts/contacts_screen.dart';
+import '../explainers/explainer_player.dart';
 import '../front_desk/reviews_team.dart';
 import '../front_desk/setup_screen.dart';
 import '../instagram/instagram_screen.dart';
@@ -84,7 +85,8 @@ class MoreScreen extends StatelessWidget {
                           if (app.trialDaysLeft != null)
                             _Chip(
                               icon: Icons.hourglass_top,
-                              text: app.trialDaysLeft! <= 0 ? 'Free trial ends today' : 'Free trial · ${app.trialDaysLeft} ${app.trialDaysLeft == 1 ? 'day' : 'days'} left',
+                              // Same words as the trial bar and Billing (1 = less than a day left)
+                              text: app.trialDaysLeft! <= 1 ? 'Free trial · last day' : 'Free trial · ${app.trialDaysLeft} days left',
                               onTap: app.can('billing') ? () => open(const BillingScreen()) : null,
                             ),
                         ],
@@ -92,7 +94,15 @@ class MoreScreen extends StatelessWidget {
                     ],
                   ),
                 ),
-                if (!app.whatsappOn) ...[
+                // Starter has no own number by choice (WAMA's number sends its messages): not a problem, so not red
+                if (!app.whatsappOn && app.sharedWhatsApp)
+                  _Row(
+                    icon: Icons.chat_outlined,
+                    title: 'Your own WhatsApp comes with Growth',
+                    subtitle: "Your messages go from WAMA's number. Growth adds chats, AI replies and campaigns.",
+                    onTap: () => open(const WhatsAppLockedScreen(feature: 'WhatsApp')),
+                  )
+                else if (!app.whatsappOn)
                   _Row(
                     icon: Icons.lock_outline,
                     iconColor: Brand.red,
@@ -100,7 +110,6 @@ class MoreScreen extends StatelessWidget {
                     subtitle: 'Chats, campaigns and templates are locked until it is connected. Tap to contact us.',
                     onTap: () => open(const WhatsAppLockedScreen(feature: 'WhatsApp')),
                   ),
-                ],
                 const _Gap(),
                 _Row(
                   icon: app.online ? Icons.cloud_done_outlined : Icons.cloud_off_outlined,
@@ -116,6 +125,13 @@ class MoreScreen extends StatelessWidget {
                   title: 'Grow your business with marketing',
                   subtitle: 'Google and Meta ads, photos, videos, Instagram',
                   onTap: () => open(const GrowScreen()),
+                ),
+                _Row(
+                  icon: Icons.play_circle_outline,
+                  iconColor: Brand.blue,
+                  title: 'How we help your business',
+                  subtitle: 'Short videos in English, తెలుగు, हिंदी',
+                  onTap: () => open(const ExplainerLibraryScreen()),
                 ),
                 const _Gap(),
                 _Row(icon: Icons.people_outline, title: 'Contacts', subtitle: '${(app.cached('contacts')?['contacts'] as List? ?? const []).length} people', onTap: () => open(const ContactsScreen())),
@@ -462,7 +478,28 @@ class _ItemCard extends StatelessWidget {
               Row(
                 children: [
                   Expanded(
-                    child: OutlinedButton(onPressed: () => app.discard(item), child: const Text('Discard')),
+                    child: OutlinedButton(
+                      onPressed: () async {
+                        // Gone for good (with anything that depends on it), and it sits next to Try again: ask first
+                        final ok = await showDialog<bool>(
+                          context: context,
+                          builder: (d) => AlertDialog(
+                            title: const Text('Discard this change?'),
+                            content: const Text('It will not be saved. This cannot be undone.'),
+                            actions: [
+                              TextButton(onPressed: () => Navigator.pop(d, false), child: const Text('Keep')),
+                              TextButton(
+                                onPressed: () => Navigator.pop(d, true),
+                                style: TextButton.styleFrom(foregroundColor: Brand.red),
+                                child: const Text('Discard'),
+                              ),
+                            ],
+                          ),
+                        );
+                        if (ok == true) await app.discard(item);
+                      },
+                      child: const Text('Discard'),
+                    ),
                   ),
                   const SizedBox(width: 10),
                   Expanded(
