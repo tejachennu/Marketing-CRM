@@ -58,6 +58,10 @@ export function normalizePhoneDigits(raw: unknown): string {
   let digits = String(raw ?? '').replace(/\D/g, '')
   // 00 is the international call prefix in many countries
   if (digits.startsWith('00')) digits = digits.slice(2)
+  // An Indian mobile written with the trunk 0 (09876543210), or with it after the country code (91 09876543210),
+  // as the app cleans it too (mobile/lib/screens/campaigns/audience.dart)
+  const trunk = digits.match(/^(?:91)?0([6-9]\d{9})$/)
+  if (trunk) digits = trunk[1]
   if (digits.length === 10 && /^[6-9]/.test(digits)) digits = `91${digits}`
   return digits.length >= 8 && digits.length <= 15 ? digits : ''
 }

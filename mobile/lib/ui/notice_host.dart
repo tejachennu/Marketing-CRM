@@ -45,7 +45,8 @@ void openNotice(AppState app, String payload, {bool waited = false}) {
     nav.push(MaterialPageRoute(builder: (_) => const TicketsScreen()));
   } else if (payload == 'orders' && app.storeOn) {
     nav.push(MaterialPageRoute(builder: (_) => const StoreScreen()));
-  } else if (payload == 'reviews' && app.frontDeskOn) {
+  } else if (payload == 'reviews' && app.frontDeskOn && app.can('manage')) {
+    // Reviews is a managers' screen (low-review alerts go to staff too: they just open the app)
     nav.push(MaterialPageRoute(builder: (_) => const ReviewsScreen()));
   } else if (payload == 'instagram') {
     // A new comment on a post: the Comments tab

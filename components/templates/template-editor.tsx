@@ -430,7 +430,7 @@ export function TemplateEditor({
       )}
 
       <Section title="Body" description={draft.type === 'carousel' ? 'The message above the cards.' : 'Enter the text for your message in the language you selected.'} error={errorsFor('body')}>
-        <RichField value={draft.body} onChange={(body) => set({ body })} max={LIMITS.body} rows={6} placeholder="Hello {{1}}, …" addVariable={() => nextVariable(draft.body, draft.parameterFormat, headerVariables)} />
+        <RichField value={draft.body} onChange={(body) => set({ body })} max={LIMITS.body} rows={6} placeholder="Hello {{1}}, …" addVariable={() => nextVariable(draft.body, draft.parameterFormat, draft.parameterFormat === 'NAMED' ? headerVariables : [])} />
       </Section>
 
       {(bodyVariables.length > 0 || headerVariables.length > 0) && (

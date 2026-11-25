@@ -938,11 +938,21 @@ extension LiveUpdates on AppState {
   /// New booking requests (and bookings confirmed on their own) since last time: notify.
   /// Sends the reminders and feedback questions that are due. Quietly does nothing offline.
   Future<void> runDueJobs() async {
-    if (!backend.signedIn || !frontDeskOn || !online) return;
+    if (!backend.signedIn || !online) return;
+    // Scheduled campaigns start when someone looks: the server has no timer of its own yet
+    // (app/api/campaigns/scheduled). Managers' phones nudge it every few minutes while the app is open.
+    if (can('campaigns') && whatsappOn && DateTime.now().difference(_campaignsNudged).inMinutes >= 5) {
+      _campaignsNudged = DateTime.now();
+      try {
+        await backend.get('/api/campaigns/scheduled', {'organizationId': orgId});
+      } catch (_) {}
+    }
+    if (!frontDeskOn) return;
     try {
       await backend.send('POST', '/api/salon/tick', {'organizationId': orgId});
     } catch (_) {}
   }
+
 
   Future<void> checkBookings() async {
     if (!backend.signedIn || !frontDeskOn || !online) return;
@@ -980,6 +990,9 @@ class _Unresolved {
   const _Unresolved._();
   static const instance = _Unresolved._();
 }
+
+/// When this phone last nudged the server to start due scheduled campaigns (see runDueJobs).
+DateTime _campaignsNudged = DateTime.fromMillisecondsSinceEpoch(0);
 
 /// The account was made, but signing in straight after failed: the person should sign in with email and password.
 class AccountReadyException implements Exception {

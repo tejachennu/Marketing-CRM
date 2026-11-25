@@ -146,7 +146,16 @@ class MoreScreen extends StatelessWidget {
                 _Row(icon: Icons.camera_alt_outlined, title: 'Instagram', subtitle: app.instagramOn ? 'Messages, comments, posts and auto replies' : 'Connect to see messages, comments and posts here', onTap: () => open(const InstagramScreen())),
                 const _Gap(),
                 const _Title('AI'),
-                _Row(icon: Icons.menu_book_outlined, title: 'Knowledge base', subtitle: '${articlesOf(app).length} answers the AI uses', onTap: () => open(const KnowledgeScreen())),
+                // The ₹300 plan has no AI replies: the server refuses the knowledge base there, so it is locked like Campaigns
+                if (app.sharedWhatsApp && !app.whatsappOn)
+                  _Row(
+                    icon: Icons.lock_outline,
+                    title: 'Knowledge base',
+                    subtitle: 'Locked · AI replies come with your own WhatsApp',
+                    onTap: () => open(const WhatsAppLockedScreen(feature: 'Knowledge base')),
+                  )
+                else
+                  _Row(icon: Icons.menu_book_outlined, title: 'Knowledge base', subtitle: '${articlesOf(app).length} answers the AI uses', onTap: () => open(const KnowledgeScreen())),
                 _Row(icon: Icons.smart_toy_outlined, title: 'Try the AI chatbot', subtitle: 'Ask like a customer, see its reply', onTap: () => open(const AssistantScreen())),
                 if (app.frontDeskOn && app.can('manage')) ...[
                   const _Gap(),

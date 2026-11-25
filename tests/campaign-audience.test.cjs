@@ -34,7 +34,7 @@ const filter = (overrides, context = {}) =>
 // ── Phone numbers and emails ────────────────────────────────────────────────
 
 test('Audience: the same number written differently is one recipient', () => {
-  for (const raw of ['9876543210', '+91 98765 43210', '91-98765-43210', '+919876543210', '0091 9876543210', ' 98765 43210 ']) {
+  for (const raw of ['9876543210', '+91 98765 43210', '91-98765-43210', '+919876543210', '0091 9876543210', ' 98765 43210 ', '09876543210', '91 09876543210', '+91 0 98765 43210']) {
     assert.equal(normalizePhoneDigits(raw), '919876543210', raw)
   }
   assert.equal(toDialablePhone('+1 (415) 555-0100'), '+14155550100')

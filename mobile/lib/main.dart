@@ -330,6 +330,9 @@ class HomeShell extends StatefulWidget {
 class _HomeShellState extends State<HomeShell> {
   late int _tab = widget.tab;
 
+  /// The tab by name, so switching a connector or Instagram on or off (which moves the tabs) keeps the same one.
+  String? _tabId;
+
   @override
   Widget build(BuildContext context) {
     final app = AppScope.of(context);
@@ -346,7 +349,15 @@ class _HomeShellState extends State<HomeShell> {
       if (ig) const InstagramScreen(asTab: true),
       const MoreScreen(),
     ];
-    final tab = _tab.clamp(0, pages.length - 1);
+    final ids = [
+      if (desk) ...['desk', 'bills'],
+      if (store) 'store',
+      'chats',
+      if (ig) 'instagram',
+      'more',
+    ];
+    _tabId ??= ids[_tab.clamp(0, ids.length - 1)];
+    final tab = ids.contains(_tabId) ? ids.indexOf(_tabId!) : _tab.clamp(0, pages.length - 1);
     return Scaffold(
       body: IndexedStack(index: tab, children: pages),
       bottomNavigationBar: Column(
@@ -360,7 +371,10 @@ class _HomeShellState extends State<HomeShell> {
             ),
             child: NavigationBar(
           selectedIndex: tab,
-          onDestinationSelected: (i) => setState(() => _tab = i),
+          onDestinationSelected: (i) => setState(() {
+            _tab = i;
+            _tabId = ids[i];
+          }),
           labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
           destinations: [
             if (desk) ...[
