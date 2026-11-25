@@ -118,6 +118,51 @@ Email: `HOSTINGER_SMTP_*`, `SENDGRID_*`. Other: `NEXT_PUBLIC_APP_URL`, `CRON_SEC
 
 ## What has been built (recent history, newest first)
 
+- **Invoices redesigned; editable WhatsApp templates sent for approval; real phone pop-ups; own expense kinds; UI pass on
+  E-commerce / Billing / reports; no "Syncing…" flashes** (owner, 25 Nov 2026: "invoice design is not good", "message
+  templates ... they can edit it and apply for approval", "its inapp notifications remove it", "ui related issues on
+  ecommerse billing analytics", "expenditure lo category ... type search dropdown ... saved", "syncing syncing ani vastundi
+  every time"; and "dont create apk run simulation": app commits stay `[skip ci]` until the owner asks for an APK).
+  - **Invoices**: `/i/<token>` (Front Desk bill) and `/invoice/<token>` (shop GST invoice, credit notes) draw through
+    `components/invoice/invoice-document.tsx` (plain data in; header with logo / GSTIN, title + Paid / Not paid /
+    Cancelled stamp, facts strip, bill to / ship to / payment, table from `sm:` and stacked rows on phones, totals card
+    with a navy Total bar, amount in words, GST summary, credit notes, footer) and `invoice-actions.tsx` (Rate your visit,
+    Share = share sheet or copy link, Print / Save as PDF). A4 print fits one page. Unregistered bills: no Taxable column,
+    no "Prices include GST". Data loading unchanged.
+  - **WhatsApp templates for the automatic messages**: `lib/whatsapp-templates/auto-messages.ts` (suggested wording per
+    purpose, blanks as `{Customer first name}`, names `bill_ready`, `bill_ready_2`… when a name is taken / being deleted)
+    and `auto-submit.ts` (submits through the existing `createTemplate`, Utility). Front Desk (bill, booking, reminder,
+    feedback) and shop (cart reminder, COD check, review ask, back in stock, refund updates, and new **order updates**
+    `lib/commerce/order-update-template.ts`, sent only when the chat window is closed). Shared web card
+    `components/templates/auto-message-templates.tsx` (status Not set up / In review / Approved / Rejected with Meta's reason
+    in plain words / Paused; Send for approval, Edit (tap-to-add blanks, buttons, language, preview, Write with AI on
+    Front Desk), Check status, Use one I already have, Stop using a template); app
+    `mobile/lib/screens/templates/auto_messages_screen.dart` (+ `data/demo_auto_messages.dart`). Kept in the existing
+    `salon_settings.message_templates` / `organizations.shop_messages` (no new columns). An approved one is used by itself;
+    while a new wording is in review the old approved one still goes. Starter sees a note; the server refuses (402).
+    Tests `tests/auto-message-templates.test.cjs`, `mobile/test/auto_messages_test.dart`. **Not tried against Meta yet**
+    (the "name taken" subcodes 2388023–2388025 are from memory).
+  - **App notifications**: no banner inside the app any more (`NoticeHost` only opens what a tapped notification is about).
+    `Notifier.notify` shows the phone's own pop-up also while the app is open (channel by kind), except when the server's
+    push already does it in the background; the open chat still gets none. Foreground pushes (`push.dart` `onMessage`)
+    become pop-ups too.
+  - **Own expense kinds**: `resolveCategory` / `cleanCategoryName` / `ownCategories` / `categoryChoices` in
+    `lib/expenses/rules.ts` (same in `mobile/lib/data/expenses_logic.dart`): a typed kind (2–40 characters) is saved as
+    typed, a built-in name typed out becomes its key, one used before keeps its first spelling. `ownCategoryList` (latest
+    3,000 expenses) → overview `ownCategories`. Web `components/expenses/category-picker.tsx` (combobox: search, "Add …");
+    app `CategoryField` + `CategorySearchSheet` in `expenses_screen.dart`, kinds also kept on the phone (`expense_kinds`).
+  - **UI pass** (web + app) on E-commerce (header tabs on their own row, orders cards below a wide-enough width, products
+    toolbar, reports chart with a ₹ scale and readable dates, palette colours), Billing (plans three across, prices never
+    wrap, ₹145.50, white cards in the app) and shop reports; shared commerce buttons ≥ 44 px and 16 px inputs on phones;
+    app `ButtonGrid` / `PairedFields` in `store_screen.dart`; `PhoneField` country box as tall as the number box.
+  - **"Syncing…"**: the `SyncBanner` stays hidden online unless a change failed or has waited over a minute;
+    `WaitingPill` shows only offline (or "Not saved").
+  - **Simulation instead of an APK**: `flutter build web --dart-define=DEMO=true` (in `mobile/`), served locally and driven
+    with Playwright at 390 × 844 through Flutter's semantics (click `flt-semantics-placeholder` first); CanvasKit and fonts
+    are blocked from the cloud, so route `www.gstatic.com/flutter-canvaskit/*` to `build/web/canvaskit/` and font requests
+    to local Roboto / Noto files. Scripts were scratch (not in the repo). The owner's Claude Desktop **iOS Simulator pane**
+    works only in a local session on their Mac (`flutter run -d "iPhone 17 Pro" --dart-define=DEMO=true`).
+
 - **Videos: a voice in English / Telugu / Hindi, a website video, a new screen after each video** (owner, 25 Nov 2026:
   "for the videos audio is not coming"; "ee screen baledu ... we are also giving a website for ecommerce and frontdesk ...
   all sides nunchi customer attraction ... product sale").
