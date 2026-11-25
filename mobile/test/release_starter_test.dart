@@ -2,7 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'release_helpers.dart';
 
-/// Starter (₹999, no own WhatsApp): Front Desk, bills and reports work; chats ask to move to Growth.
+/// Starter (₹300, no own WhatsApp): Front Desk, bills and reports work; chats ask to move to Growth.
 void main() {
   final r = releaseApp(starter: true);
 

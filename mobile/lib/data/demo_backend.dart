@@ -33,7 +33,7 @@ class DemoBackend implements Backend {
   /// The business's WhatsApp number is connected (false: chats, campaigns, templates and the booking flow lock).
   final bool whatsapp;
 
-  /// On Starter (₹999): Front Desk only, messages from WAMA's number, no own WhatsApp.
+  /// On Starter (₹300): Front Desk or E-commerce, messages from WAMA's number, no own WhatsApp.
   final bool starter;
 
   /// Like the server (lib/billing-gate.ts): once the trial has ended only Billing, sign-in and the profile answer.
