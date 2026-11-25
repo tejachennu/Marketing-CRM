@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseAdminClient } from '@/lib/api-auth-helper'
 import { sendPush } from '@/lib/push'
 import { checkRateLimit } from '@/lib/rate-limiter'
-import { createOnlineBooking, loadBookingPage, parseOnlineBooking, servicesTotal } from '@/lib/salon/booking-page'
+import { createOnlineBooking, loadBookingPage, parseOnlineBooking, servicesTotal, takesBookings } from '@/lib/salon/booking-page'
+import { NOT_TAKING_BOOKINGS } from '@/lib/salon/appointments-switch'
 import { bookingPayOptions } from '@/lib/salon/booking-pay'
 import { expireUnpaidBookings, startBookingPayment } from '@/lib/salon/booking-payments'
 import { bookingMessage, bookingTemplate, sendCustomerText } from '@/lib/salon/whatsapp'
@@ -17,6 +18,7 @@ export const maxDuration = 30
  *   pay 'shop' (or no online payment): booked visits get the WhatsApp confirmation; a request waits for the business.
  *   pay 'online': the visit waits for its payment (holding the time), and the answer carries what the page needs to
  *   open Razorpay's window or go to Stripe's page. It becomes a booking once paid (see /pay and the webhooks).
+ * Refused (403, code not_taking_bookings) while the business has switched appointments off.
  */
 export async function POST(request: NextRequest, { params }: { params: Promise<{ slug: string }> }) {
   const ip = (request.headers.get('x-forwarded-for') || '').split(',')[0].trim() || 'unknown'
@@ -30,6 +32,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   const db = getSupabaseAdminClient()
   const page = await loadBookingPage(db, slug)
   if (!page) return NextResponse.json({ error: 'This booking page is not available.' }, { status: 404 })
+  // The business does not take appointments (Front Desk → Setup → Appointments): nothing is booked
+  if (!takesBookings(page)) return NextResponse.json({ error: NOT_TAKING_BOOKINGS, code: 'not_taking_bookings', phone: page.setup.settings.phone || null }, { status: 403 })
 
   // How this booking is paid: decided here from the business's settings, never by the page
   const total = servicesTotal(page, parsed.serviceIds)
@@ -40,7 +44,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   try {
     await expireUnpaidBookings(db, page.organization.id)
     const result = await createOnlineBooking(db, page, parsed, Date.now(), online ? { awaitingPayment: { amount: options.amount } } : {})
-    if ('error' in result) return NextResponse.json({ error: result.error, taken: (result as any).taken === true }, { status: 409 })
+    if ('error' in result) return NextResponse.json({ error: result.error, taken: (result as any).taken === true }, { status: (result as any).closed ? 403 : 409 })
 
     if (online) {
       try {

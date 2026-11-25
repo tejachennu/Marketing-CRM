@@ -256,7 +256,11 @@ class DemoFrontDesk {
           'languages': autoLanguages,
           'account': accountList(templates),
           'choices': choices,
-          'autoMessages': [for (final def in deskAutoDefs) autoView(def, choices[def.purpose] as Map?, all)],
+          // Like the server: without appointments, the booking and reminder messages are left out
+          'autoMessages': [
+            for (final def in deskAutoDefs)
+              if (settings['takes_appointments'] != false || !['booking', 'reminder'].contains(def.purpose)) autoView(def, choices[def.purpose] as Map?, all),
+          ],
         };
     }
     return null;

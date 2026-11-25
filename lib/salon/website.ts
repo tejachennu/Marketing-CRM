@@ -9,6 +9,20 @@ import { DEFAULT_BOOKING_PAY, readBookingPay, type BookingPay } from './booking-
 export const SITE_COLOURS = ['#1D5BEA', '#0E1B3D', '#7A2E4D', '#0F6E6E', '#8A4B2A', '#111827'] as const
 export const MAX_GALLERY = 12
 
+/**
+ * The call-to-action buttons the website shows, each switched on or off by the business (owner, 25 Nov 2026:
+ * "website lo call to action button enable or disable"). All on by default, so existing sites do not change.
+ */
+export type SiteButton = 'call' | 'whatsapp' | 'book' | 'shop' | 'directions'
+export const SITE_BUTTONS: { key: SiteButton; label: string; hint: string }[] = [
+  { key: 'call', label: 'Call', hint: 'Call buttons and your phone number' },
+  { key: 'whatsapp', label: 'WhatsApp', hint: '"WhatsApp us" buttons' },
+  { key: 'book', label: 'Book now', hint: 'Book buttons and the booking form' },
+  { key: 'shop', label: 'Shop online', hint: 'The link to your online store' },
+  { key: 'directions', label: 'Directions and map', hint: '"Get directions" and the map' },
+]
+export const DEFAULT_BUTTONS: Record<SiteButton, boolean> = { call: true, whatsapp: true, book: true, shop: true, directions: true }
+
 export interface SiteSettings {
   /** The website is on (it needs at least one service to show) */
   enabled: boolean
@@ -33,11 +47,14 @@ export interface SiteSettings {
   bookingPay: BookingPay
   /** When the business has both: the own domain opens the website or the online store */
   domainShows: 'website' | 'store'
+  /** Which call-to-action buttons show (Call, WhatsApp, Book now, Shop online, Directions and map) */
+  buttons: Record<SiteButton, boolean>
 }
 
 export const DEFAULT_SITE: SiteSettings = {
   enabled: true, tagline: '', about: '', cover: '', gallery: [], colour: SITE_COLOURS[0],
   show: { prices: true, team: true, memberships: true, reviews: true }, instagram: '', instagramLive: false, chat: true, bookingPay: DEFAULT_BOOKING_PAY, domainShows: 'website',
+  buttons: DEFAULT_BUTTONS,
 }
 
 const text = (v: unknown, max: number) => String(v ?? '').replace(/\s+/g, ' ').trim().slice(0, max)
@@ -49,6 +66,7 @@ export function readSite(raw: unknown): SiteSettings {
   const v: any = raw && typeof raw === 'object' ? raw : {}
   const colour = String(v.colour || '').toUpperCase()
   const show = v.show && typeof v.show === 'object' ? v.show : {}
+  const buttons = v.buttons && typeof v.buttons === 'object' ? v.buttons : {}
   return {
     enabled: v.enabled !== false,
     tagline: text(v.tagline, 140),
@@ -62,7 +80,35 @@ export function readSite(raw: unknown): SiteSettings {
     chat: v.chat !== false,
     bookingPay: readBookingPay(v.bookingPay),
     domainShows: v.domainShows === 'store' ? 'store' : 'website',
+    buttons: Object.fromEntries(SITE_BUTTONS.map(({ key }) => [key, buttons[key] !== false])) as Record<SiteButton, boolean>,
   }
+}
+
+/** What the website can offer at all: appointments taken, the online store on, a phone number, an address. */
+export interface SiteReach { bookings: boolean; store: boolean; phone: boolean; address: boolean }
+
+/** Why a button cannot show even when it is switched on (for the settings screen); null when it can. */
+export function buttonBlocker(key: SiteButton, reach: SiteReach): string | null {
+  if (key === 'book' && !reach.bookings) return 'Appointments are off (Setup → Appointments), so there is nothing to book.'
+  if (key === 'shop' && !reach.store) return 'Your online store is off.'
+  if ((key === 'call' || key === 'whatsapp') && !reach.phone) return 'Add a phone number in Business details first.'
+  if (key === 'directions' && !reach.address) return 'Add an address in Business details first.'
+  return null
+}
+
+/** The buttons the page shows: switched on by the business and possible (Book now also needs appointments on). */
+export function siteButtons(site: Pick<SiteSettings, 'buttons'>, reach: SiteReach): Record<SiteButton, boolean> {
+  const on = site.buttons || DEFAULT_BUTTONS
+  return Object.fromEntries(SITE_BUTTONS.map(({ key }) => [key, on[key] !== false && !buttonBlocker(key, reach)])) as Record<SiteButton, boolean>
+}
+
+/**
+ * The phone bar at the bottom of the website (phones): Call and WhatsApp, and one big button: Book now, else Shop
+ * online. Empty when every one of them is off (then there is no bar at all).
+ */
+export function phoneBar(buttons: Record<SiteButton, boolean>): { small: ('call' | 'whatsapp')[]; main: 'book' | 'shop' | null } {
+  const small = (['call', 'whatsapp'] as const).filter((key) => buttons[key])
+  return { small, main: buttons.book ? 'book' : buttons.shop ? 'shop' : null }
 }
 
 /**

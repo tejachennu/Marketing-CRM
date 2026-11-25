@@ -9,7 +9,7 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { CalendarCheck, Check, Clock, CreditCard, Loader2, MapPin, Phone, Store, User } from 'lucide-react'
+import { CalendarCheck, Check, Clock, CreditCard, Loader2, MapPin, MessageCircle, Phone, Store, User } from 'lucide-react'
 import { PhoneField } from '@/components/phone-field'
 import type { BookingPageView } from '@/lib/salon/booking-page'
 import { bookingPayOptions } from '@/lib/salon/booking-pay'
@@ -55,11 +55,50 @@ function Step({ number, title, children, done }: { number: number; title: string
   )
 }
 
-export function BookingWizard({ page, days, startService, startPerson, embedded = false, colour }: {
+type WizardProps = {
   page: BookingPageView; days: string[]; startService: string | null; startPerson: string | null
   /** Inside the business website: no business header, the site's colour */
   embedded?: boolean; colour?: string
-}) {
+}
+
+/** The booking form, or, when the business has switched appointments off, a plain note with Call / WhatsApp. */
+export function BookingWizard(props: WizardProps) {
+  return props.page.bookings === false ? <NoBookings page={props.page} colour={props.colour} /> : <Wizard {...props} />
+}
+
+/** The business does not take appointments: say so plainly, with its hours and how to reach it. */
+export function NoBookings({ page, colour }: { page: BookingPageView; colour?: string }) {
+  const digits = String(page.phone || '').replace(/\D/g, '')
+  const reachable = digits.length >= 10
+  return (
+    <div style={{ ['--bk' as any]: colour || '#1D5BEA' }} className="max-w-xl mx-auto px-4 py-6 space-y-3 text-[#0E1B3D]">
+      <header className="bg-white rounded-2xl border border-[#e3e8f2] p-4 sm:p-5 flex items-start gap-3">
+        {page.logo
+          // eslint-disable-next-line @next/next/no-img-element
+          ? <img src={page.logo} alt="" className="h-14 w-14 rounded-xl object-cover border border-[#eef1f6] shrink-0" />
+          : <span className="h-14 w-14 rounded-xl bg-[#0E1B3D] text-white text-[22px] font-bold flex items-center justify-center shrink-0">{page.business.slice(0, 1).toUpperCase()}</span>}
+        <div className="min-w-0">
+          <h1 className="text-[20px] sm:text-[22px] font-extrabold leading-tight break-words">{page.business}</h1>
+          <p className="text-[13.5px] text-[#4a5672] mt-1 flex items-start gap-1.5"><Clock size={14} className="shrink-0 mt-0.5" /> {page.hours}</p>
+          {page.address && <p className="text-[13.5px] text-[#4a5672] mt-0.5 flex items-start gap-1.5"><MapPin size={14} className="shrink-0 mt-0.5" /> <span className="min-w-0">{page.address}</span></p>}
+        </div>
+      </header>
+      <section className="bg-white rounded-2xl border border-[#e3e8f2] p-5 sm:p-6 text-center">
+        <span className="mx-auto h-14 w-14 rounded-full bg-[#f4f6fa] text-[#4a5672] flex items-center justify-center"><Store size={26} /></span>
+        <h2 className="mt-4 text-[21px] font-extrabold">No online booking</h2>
+        <p className="mt-2 text-[15px] text-[#4a5672] max-w-sm mx-auto">{page.business} is not taking online bookings. Just walk in during opening hours{reachable ? ', or call or WhatsApp them.' : '.'}</p>
+        {reachable && (
+          <div className="mt-5 grid grid-cols-1 min-[360px]:grid-cols-2 gap-2 max-w-sm mx-auto">
+            <a href={`tel:+${digits}`} className="h-12 rounded-xl bg-[var(--bk)] text-white text-[15px] font-bold inline-flex items-center justify-center gap-2"><Phone size={17} /> Call</a>
+            <a href={`https://wa.me/${digits}?text=${encodeURIComponent(`Hi ${page.business}`)}`} target="_blank" rel="noreferrer" className="h-12 rounded-xl border border-[#d5ddeb] text-[15px] font-bold inline-flex items-center justify-center gap-2 hover:border-[var(--bk)]"><MessageCircle size={17} /> WhatsApp</a>
+          </div>
+        )}
+      </section>
+    </div>
+  )
+}
+
+function Wizard({ page, days, startService, startPerson, embedded = false, colour }: WizardProps) {
   const [picked, setPicked] = useState<string[]>(startService ? [startService] : [])
   const [person, setPerson] = useState<string | null>(startPerson)
   const [day, setDay] = useState<string>(days[0] || '')

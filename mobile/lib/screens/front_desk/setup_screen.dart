@@ -125,7 +125,10 @@ class SetupScreen extends StatelessWidget {
     final services = allServices(app);
     final staff = allStaff(app);
     final settings = settingsOf(app);
-    final templates = (settings['message_templates'] as Map? ?? const {}).values.where((v) => v != null).length;
+    final takes = app.takesAppointments;
+    // Without appointments only the bill and feedback messages need a template
+    final needed = takes ? 4 : 4 - appointmentPurposes.length;
+    final templates = (settings['message_templates'] as Map? ?? const {}).entries.where((e) => e.value != null && (takes || !appointmentPurposes.contains('${e.key}'))).length;
     Widget tile(IconData icon, String title, String subtitle, Widget screen, {bool attention = false}) => ListTile(
       leading: Icon(icon, color: Brand.navy),
       title: Text(title, style: const TextStyle(fontWeight: FontWeight.w700)),
@@ -166,36 +169,41 @@ class SetupScreen extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 12),
+                const AppointmentsCard(),
+                const SizedBox(height: 12),
                 Card(
                   child: Column(
                     children: [
                       if (app.whatsappOn || app.sharedWhatsApp)
-                        tile(Icons.chat_outlined, 'WhatsApp', 'Assistant, opening hours, reminders, feedback', const WhatsAppSetup())
+                        tile(Icons.chat_outlined, 'WhatsApp', takes ? 'Assistant, opening hours, reminders, feedback' : 'Assistant, opening hours, feedback', const WhatsAppSetup())
                       else
                         tile(Icons.lock_outline, 'WhatsApp', 'Locked · connect WhatsApp first', const WhatsAppLockedScreen(feature: 'WhatsApp')),
                       const Divider(indent: 56),
-                      tile(Icons.language, 'Website and booking', 'Your website, booking and paying online, AI chat', const WebsiteSettingsScreen()),
+                      tile(Icons.language, takes ? 'Website and booking' : 'Website', takes ? 'Your website, booking and paying online, AI chat' : 'Your website, its buttons, AI chat', const WebsiteSettingsScreen()),
                       const Divider(indent: 56),
                       tile(Icons.card_membership_outlined, 'Memberships', 'Cards, plans, sell at the counter', const MembersScreen()),
-                      const Divider(indent: 56),
-                      if (app.whatsappOn)
-                        // With changes still waiting to sync, so a flow saved offline does not read "Off"
-                        tile(
-                          Icons.event_available_outlined,
-                          'Booking flow',
-                          ((FrontDesk(app).settings['booking_flow'] as Map?)?['enabled'] == true) ? 'On · customers book in taps' : 'Off',
-                          const BookingFlowScreen(),
-                        )
-                      else
-                        tile(Icons.lock_outline, 'Booking flow', 'Locked · connect WhatsApp first', const WhatsAppLockedScreen(feature: 'Booking flow')),
+                      // The booking flow is for appointments: hidden while they are off
+                      if (takes) ...[
+                        const Divider(indent: 56),
+                        if (app.whatsappOn)
+                          // With changes still waiting to sync, so a flow saved offline does not read "Off"
+                          tile(
+                            Icons.event_available_outlined,
+                            'Booking flow',
+                            ((FrontDesk(app).settings['booking_flow'] as Map?)?['enabled'] == true) ? 'On · customers book in taps' : 'Off',
+                            const BookingFlowScreen(),
+                          )
+                        else
+                          tile(Icons.lock_outline, 'Booking flow', 'Locked · connect WhatsApp first', const WhatsAppLockedScreen(feature: 'Booking flow')),
+                      ],
                       const Divider(indent: 56),
                       if (app.whatsappOn)
                         tile(
                           Icons.description_outlined,
                           'Message templates',
-                          templates == 4 ? 'All 4 set up' : '$templates of 4 set up · needed after 24 hours',
+                          templates >= needed ? 'All $needed set up' : '$templates of $needed set up · needed after 24 hours',
                           const TemplatesSetup(),
-                          attention: templates < 4,
+                          attention: templates < needed,
                         )
                       else
                         tile(Icons.lock_outline, 'Message templates', 'Locked · connect WhatsApp first', const WhatsAppLockedScreen(feature: 'Message templates')),
@@ -205,6 +213,80 @@ class SetupScreen extends StatelessWidget {
                 const SizedBox(height: 12),
                 Card(child: tile(Icons.history, 'Change history', 'Who changed what, and when', const HistoryScreen())),
               ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// "We take appointments", on or off (Setup → Appointments on the web, same setting). Owners and admins switch it;
+/// shops that only bill walk-ins switch it off, and the Front Desk then shows today's bills without bookings.
+class AppointmentsCard extends StatelessWidget {
+  const AppointmentsCard({super.key});
+
+  Future<void> _switch(BuildContext context, bool on) async {
+    if (!on) {
+      final ok = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Stop taking appointments?'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('These will be hidden:', style: TextStyle(fontWeight: FontWeight.w700)),
+                const SizedBox(height: 6),
+                for (final line in appointmentsHidden) Padding(padding: const EdgeInsets.only(bottom: 4), child: Text('• $line')),
+                const SizedBox(height: 8),
+                const Text(appointmentsKept, style: TextStyle(color: Brand.muted)),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+            TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('Switch off')),
+          ],
+        ),
+      );
+      if (ok != true || !context.mounted) return;
+    }
+    await saveSetup(
+      context,
+      (app) => app.ask('/api/salon/settings', {'takes_appointments': on}, method: 'PATCH'),
+      done: on ? 'Appointments are on. Customers can book again.' : 'Appointments are off. Front Desk shows your walk-in bills.',
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final app = AppScope.of(context);
+    final on = app.takesAppointments;
+    final admin = app.can('settings');
+    return Card(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          SwitchListTile(
+            secondary: const Icon(Icons.event_available_outlined, color: Brand.navy),
+            activeThumbColor: Colors.white,
+            activeTrackColor: Brand.blue,
+            value: on,
+            onChanged: admin ? (v) => _switch(context, v) : null,
+            title: const Text('We take appointments', style: TextStyle(fontWeight: FontWeight.w700)),
+            subtitle: Text(on ? 'On: customers book times at the counter, on your website and on WhatsApp.' : 'Off: Front Desk is for walk-in bills only.'),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
+            child: Text(
+              !admin
+                  ? 'Only the owner or an admin can change this.'
+                  : on
+                  ? 'Switching it off hides bookings, the calendar, requests, the Book buttons, booking on WhatsApp and reminders. Bills, reviews, members and team stay.'
+                  : 'Bookings made before are kept. Switch it on to take bookings again.',
+              style: const TextStyle(fontSize: 13, color: Brand.muted),
             ),
           ),
         ],
@@ -1415,6 +1497,8 @@ class _WhatsAppSetupState extends State<WhatsAppSetup> {
   @override
   Widget build(BuildContext context) {
     const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    // Without appointments: no bookings to accept, no reminders
+    final takes = AppScope.of(context).takesAppointments;
     Widget toggle(String title, String sub, bool value, ValueChanged<bool> on) => SwitchListTile(
       value: value,
       activeThumbColor: Colors.white,
@@ -1433,9 +1517,16 @@ class _WhatsAppSetupState extends State<WhatsAppSetup> {
             Card(
               child: Column(
                 children: [
-                  toggle('WhatsApp assistant', 'Answers questions about services, prices and timings, and books visits, from your menu.', _assistant, (v) => setState(() => _assistant = v)),
-                  const Divider(),
-                  toggle('Accept bookings on their own', 'On: a free time a customer picks is booked at once. Off: you accept each on the Front Desk.', _auto, (v) => setState(() => _auto = v)),
+                  toggle(
+                    'WhatsApp assistant',
+                    takes ? 'Answers questions about services, prices and timings, and books visits, from your menu.' : 'Answers questions about services, prices and timings, from your menu.',
+                    _assistant,
+                    (v) => setState(() => _assistant = v),
+                  ),
+                  if (takes) ...[
+                    const Divider(),
+                    toggle('Accept bookings on their own', 'On: a free time a customer picks is booked at once. Off: you accept each on the Front Desk.', _auto, (v) => setState(() => _auto = v)),
+                  ],
                 ],
               ),
             ),
@@ -1477,8 +1568,10 @@ class _WhatsAppSetupState extends State<WhatsAppSetup> {
             Card(
               child: Column(
                 children: [
-                  toggle('Reminders', 'About 2 hours before each appointment.', _reminders, (v) => setState(() => _reminders = v)),
-                  const Divider(),
+                  if (takes) ...[
+                    toggle('Reminders', 'About 2 hours before each appointment.', _reminders, (v) => setState(() => _reminders = v)),
+                    const Divider(),
+                  ],
                   toggle('Ask for feedback', 'After the bill, a link to rate the visit and the team.', _feedback, (v) => setState(() => _feedback = v)),
                   if (_feedback)
                     Container(

@@ -5,6 +5,7 @@
  */
 
 import { advanceForBill } from './booking-pay'
+import { APPOINTMENTS_OFF_MESSAGE, takesAppointments } from './appointments-switch'
 import { withPaymentsSchema } from '../payments/schema'
 import { randomBytes } from 'crypto'
 import { computeInvoice, formatInvoiceNumber, formatRupees, type Discount } from './invoice'
@@ -321,6 +322,8 @@ export async function executeCounterAction(
 
   switch (action.type) {
     case 'create_appointment': {
+      // Shops that only bill walk-ins switch appointments off (Setup → Appointments): no new bookings at all
+      if (!takesAppointments(ctx.settings)) throw new Error(APPOINTMENTS_OFF_MESSAGE)
       const [loaded, members, customer] = await Promise.all([
         loadServices(db, organizationId, action.service_ids),
         loadStaffMembers(db, organizationId, [action.staff_id, ...(action.staff_ids || [])]),

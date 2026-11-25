@@ -12,6 +12,9 @@ DateTime toIst(DateTime moment) => moment.toUtc().add(istOffset);
 /// Today's India date, like 2026-11-09.
 String istToday() => DateFormat('yyyy-MM-dd').format(istNow());
 
+/// The India date of a moment, like 2026-11-09.
+String istDateOf(DateTime moment) => DateFormat('yyyy-MM-dd').format(toIst(moment));
+
 /// An India date and time as a real moment (UTC).
 DateTime fromIst(DateTime date, int hour, int minute) => DateTime.utc(date.year, date.month, date.day, hour, minute).subtract(istOffset);
 

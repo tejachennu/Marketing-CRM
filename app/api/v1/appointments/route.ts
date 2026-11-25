@@ -4,6 +4,8 @@ import { runCounterAction } from '@/lib/public-api/counter'
 import { availableTimes, dateWindow, toApiAppointment } from '@/lib/public-api/front-desk'
 import { normalizePhone } from '@/lib/public-api/keys'
 import { parseCounterAction } from '@/lib/salon/actions'
+import { APPOINTMENTS_OFF_CODE, takesAppointments } from '@/lib/salon/appointments-switch'
+import { loadSalonSettings } from '@/lib/salon/server'
 import { messageOrigin } from '@/lib/salon/jobs'
 import { withSalonSchema } from '@/lib/salon/schema'
 import { istDate, istTime } from '@/lib/salon/spoken'
@@ -33,12 +35,17 @@ export async function GET(request: Request) {
   return listResponse((data || []).map(toApiAppointment), page)
 }
 
-// POST /api/v1/appointments: book an appointment (checked against free times unless check_availability is false)
+// POST /api/v1/appointments: book an appointment (checked against free times unless check_availability is false).
+// Refused with appointments_off while the business has switched appointments off (Front Desk → Setup → Appointments).
 export async function POST(request: Request) {
   const auth = await apiAuth(request, 'front_desk:write')
   if (!auth.ok) return auth.response
   const off = frontDeskOff(auth.ctx.organization)
   if (off) return off
+  const settings = await loadSalonSettings(auth.ctx.db, auth.ctx.organizationId).catch(() => null)
+  if (settings && !takesAppointments(settings)) {
+    return apiError(409, APPOINTMENTS_OFF_CODE, 'This business has switched appointments off (Front Desk → Setup → Appointments), so no new appointments can be booked. Reading appointments still works.')
+  }
   const read = await jsonBody(request)
   if ('response' in read) return read.response
   const body = read.body

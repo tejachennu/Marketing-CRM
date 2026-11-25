@@ -25,7 +25,8 @@ Future<void> loadFonts() async {
   await icons.load();
 }
 
-void screenChecks({List<String> screens = const [], List<(String, List<String>)> flows = const []}) {
+/// [backend]: the demo workspace to use (default: a salon that takes appointments).
+void screenChecks({List<String> screens = const [], List<(String, List<String>)> flows = const [], DemoBackend Function()? backend}) {
   late AppState app;
   setUpAll(() async {
     await loadFonts();
@@ -33,7 +34,7 @@ void screenChecks({List<String> screens = const [], List<(String, List<String>)>
     final store = LocalStore();
     await store.open(path: dir.path);
     await store.clear();
-    app = AppState(backend: DemoBackend(), store: store);
+    app = AppState(backend: backend?.call() ?? DemoBackend(), store: store);
     await app.refreshAll();
   });
 

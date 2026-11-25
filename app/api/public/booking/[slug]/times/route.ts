@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseAdminClient } from '@/lib/api-auth-helper'
 import { checkRateLimit } from '@/lib/rate-limiter'
-import { bookingTimes, loadBookingPage, parseTimesQuery } from '@/lib/salon/booking-page'
+import { bookingTimes, loadBookingPage, parseTimesQuery, takesBookings } from '@/lib/salon/booking-page'
+import { NOT_TAKING_BOOKINGS } from '@/lib/salon/appointments-switch'
 
 export const runtime = 'nodejs'
 
@@ -16,6 +17,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   const db = getSupabaseAdminClient()
   const page = await loadBookingPage(db, slug)
   if (!page) return NextResponse.json({ error: 'This booking page is not available.' }, { status: 404 })
+  if (!takesBookings(page)) return NextResponse.json({ error: NOT_TAKING_BOOKINGS, code: 'not_taking_bookings' }, { status: 403 })
   const result = await bookingTimes(db, page, query)
   if ('error' in result) return NextResponse.json({ error: result.error }, { status: 400 })
   return NextResponse.json(result, { headers: { 'Cache-Control': 'no-store' } })

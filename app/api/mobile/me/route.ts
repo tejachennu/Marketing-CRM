@@ -8,6 +8,7 @@ import { can, canSeeAll, getRoleDisplay, isReadOnly, isSuperAdmin } from '@/lib/
 import { accountFor } from '@/lib/instagram/store'
 import { igReplyHours } from '@/lib/instagram/rules'
 import { getOrganizationCredentials } from '@/lib/organization-access'
+import { takesAppointments } from '@/lib/salon/appointments-switch'
 
 export const runtime = 'nodejs'
 
@@ -24,6 +25,10 @@ export async function GET(request: NextRequest) {
   const active = isConsularHelpdesk(organization) ? on.filter((key) => key === 'pipeline') : activeConnectors(billingLimits(billing), on)
   // Instagram has its own section in the app (never mixed with WhatsApp chats)
   const instagram = isConsularHelpdesk(organization) ? null : await accountFor(getSupabaseAdminClient(), organization.id).catch(() => null)
+  // Front Desk: does the business take appointments? (Setup → Appointments; the app hides bookings when it does not)
+  const deskSettings = active.includes('salon')
+    ? await getSupabaseAdminClient().from('salon_settings').select('*').eq('organization_id', organization.id).maybeSingle().then((r: any) => r?.data || null, () => null)
+    : null
   return NextResponse.json({
     success: true,
     user: { id: user.id, name: user.full_name || null, email: user.email || null, role: getRoleDisplay(user.role).label },
@@ -37,6 +42,7 @@ export async function GET(request: NextRequest) {
       settings: can(user, 'settings.manage'),
     },
     connectors: { frontDesk: active.includes('salon'), ecommerce: active.includes('ecommerce'), pipeline: active.includes('pipeline') },
+    frontDesk: { appointments: takesAppointments(deskSettings) },
     instagram: { connected: Boolean(instagram), username: instagram?.username || null, replyHours: igReplyHours() },
     // WhatsApp sender connected (Meta or Twilio): until then the app locks chats, campaigns, templates and tickets
     whatsapp: { connected: getOrganizationCredentials(organization).messaging, mode: billing?.whatsapp_mode || 'own' },

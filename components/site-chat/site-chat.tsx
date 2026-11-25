@@ -46,6 +46,13 @@ const QUICK = {
     { icon: CalendarCheck, label: 'My booking', ask: 'I want to check my booking' },
     { icon: MapPin, label: 'Location', ask: 'Where are you located?' },
   ],
+  /** A business that does not take appointments: no booking to check */
+  walkIn: [
+    { icon: IndianRupee, label: 'Services & prices', ask: 'What services do you offer and what are the prices?' },
+    { icon: Clock, label: 'Timings', ask: 'What are your timings? Are you open now?' },
+    { icon: MessageCircle, label: 'Contact us', ask: 'How can I contact you?' },
+    { icon: MapPin, label: 'Location', ask: 'Where are you located?' },
+  ],
 }
 
 const inr = (n: number) => `₹${(Math.round(n * 100) / 100).toLocaleString('en-IN')}`
@@ -136,7 +143,7 @@ function LookupForm({ kind, onSend, busy }: { kind: 'order' | 'booking'; onSend:
   )
 }
 
-export function SiteChat({ kind, endpoint, storageKey, name, logo, whatsapp, phone, raised = false, money = inr, productHref, onAdd, authHeaders }: {
+export function SiteChat({ kind, endpoint, storageKey, name, logo, whatsapp, phone, raised = false, flat = false, bookable = true, money = inr, productHref, onAdd, authHeaders }: {
   kind: 'store' | 'desk'
   endpoint: string
   storageKey: string
@@ -146,6 +153,10 @@ export function SiteChat({ kind, endpoint, storageKey, name, logo, whatsapp, pho
   phone?: string | null
   /** Above the page's phone bottom bar */
   raised?: boolean
+  /** The page has no bottom bar on phones: the button sits at the bottom */
+  flat?: boolean
+  /** Front Desk website: the business takes bookings (services get a Book button; "My booking" is offered) */
+  bookable?: boolean
   money?: (n: number) => string
   productHref?: (id: string) => string
   onAdd?: (id: string) => void
@@ -202,14 +213,14 @@ export function SiteChat({ kind, endpoint, storageKey, name, logo, whatsapp, pho
 
   const lastAsked = [...turns].reverse().find((t) => t.role === 'user')?.content || ''
   const wa = (msg: string) => `https://wa.me/${waDigits}?text=${encodeURIComponent(msg)}`
-  const quick = QUICK[kind]
-  const helloLine = kind === 'store' ? 'Ask me about products, prices, delivery, offers or your order.' : 'Ask me about services, prices, timings, or your booking.'
+  const quick = kind === 'desk' && !bookable ? QUICK.walkIn : QUICK[kind]
+  const helloLine = kind === 'store' ? 'Ask me about products, prices, delivery, offers or your order.' : bookable ? 'Ask me about services, prices, timings, or your booking.' : 'Ask me about services, prices or timings.'
 
   return (
     <>
       {!open && (
         <button type="button" onClick={() => setOpen(true)} aria-label={`Chat with ${name}`}
-          className={`fixed right-4 z-30 h-12 pl-4 pr-5 rounded-full bg-[#0E1B3D] text-white shadow-lg inline-flex items-center gap-2 font-bold text-[14px] cursor-pointer hover:bg-[#1b2a52] ${raised ? 'bottom-[76px] md:bottom-6' : 'bottom-[76px] sm:bottom-6'}`}>
+          className={`fixed right-4 z-30 h-12 pl-4 pr-5 rounded-full bg-[#0E1B3D] text-white shadow-lg inline-flex items-center gap-2 font-bold text-[14px] cursor-pointer hover:bg-[#1b2a52] ${flat ? 'bottom-4 sm:bottom-6' : raised ? 'bottom-[76px] md:bottom-6' : 'bottom-[76px] sm:bottom-6'}`}>
           <Sparkles size={18} /> Ask us
         </button>
       )}
@@ -291,7 +302,7 @@ export function SiteChat({ kind, endpoint, storageKey, name, logo, whatsapp, pho
                             <p className="text-[13.5px] font-bold text-[#0E1B3D] truncate">{s.name}</p>
                             <p className="text-[12px] text-[#6B7894]">{s.category} · {duration(s.minutes)}{s.price > 0 ? <> · <b className="text-[#0E1B3D]">{money(s.price)}</b></> : null}</p>
                           </div>
-                          <button type="button" onClick={() => book(s.id)} className="shrink-0 h-9 px-3.5 rounded-full bg-[var(--c)] text-white text-[12.5px] font-bold cursor-pointer">Book</button>
+                          {bookable && <button type="button" onClick={() => book(s.id)} className="shrink-0 h-9 px-3.5 rounded-full bg-[var(--c)] text-white text-[12.5px] font-bold cursor-pointer">Book</button>}
                         </div>
                       ))}
                     </div>

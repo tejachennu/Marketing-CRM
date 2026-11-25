@@ -34,6 +34,9 @@ class FrontDesk {
   }
 
   String get businessName => (settings['business_name'] ?? app.orgName).toString();
+
+  /// The business takes appointments (Setup → Appointments); off: walk-in bills only.
+  bool get takesAppointments => app.takesAppointments;
   bool get pricesIncludeTax => settings['prices_include_tax'] == true;
   bool get hasGst => (settings['gstin'] ?? '').toString().isNotEmpty;
 
@@ -149,9 +152,21 @@ class FrontDesk {
   /// WhatsApp booking requests still waiting, from today on. Always read from today's list (the one kept up to date),
   /// whatever day is shown, so the Requests tab and the badge on the bottom bar agree.
   List<Map<String, dynamic>> get requests {
+    // No appointments: no requests to answer (and no badge on the bottom bar)
+    if (!app.takesAppointments) return <Map<String, dynamic>>[];
     final status = _pendingStatus;
     final today = app.cached(AppState.dayKey(istToday())) ?? const {};
     return [for (final r in (today['requests'] as List? ?? const [])) Map<String, dynamic>.from(r)].where((r) => !status.containsKey('${r['id']}')).toList();
+  }
+
+  /// Today's bills (India date), newest first, with the ones made on this phone still waiting to sync.
+  List<Map<String, dynamic>> get billsToday {
+    final today = istToday();
+    return invoices.where((i) {
+      if (i['_outbox'] != null) return true;
+      final at = DateTime.tryParse('${i['issued_at'] ?? ''}');
+      return at != null && istDateOf(at) == today;
+    }).toList();
   }
 
   /// Bills: made on the phone first (waiting to sync), then the server's.
@@ -221,6 +236,19 @@ class FrontDesk {
         .fold<num>(0, (s, i) => s + (num.tryParse('${i['total']}') ?? 0));
   }
 }
+
+/// What switching appointments off hides, and what stays (the same words as the web's Setup → Appointments).
+const appointmentsHidden = [
+  'Appointments, the calendar and booking requests on the Front Desk',
+  'The New booking and Book buttons',
+  'Your booking page, and booking on your website',
+  'Booking on WhatsApp: the booking flow, and the assistant offering times',
+  'Appointment reminders',
+];
+const appointmentsKept = 'Walk-in bills, invoices, reviews, memberships, team and reports stay as they are. Bookings already made are kept.';
+
+/// The automatic messages only bookings send (their templates are not needed without appointments).
+const appointmentPurposes = ['booking', 'reminder'];
 
 const statusLabels = {
   'booked': 'Booked',

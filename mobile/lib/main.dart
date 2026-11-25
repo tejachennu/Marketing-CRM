@@ -77,7 +77,7 @@ Future<void> main() async {
 
   final Backend backend;
   if (AppConfig.demo) {
-    backend = DemoBackend(billing: preview['billing'] ?? 'trial', staff: preview['staff'] == '1', whatsapp: preview['nowa'] != '1', starter: preview['starter'] == '1');
+    backend = DemoBackend(billing: preview['billing'] ?? 'trial', staff: preview['staff'] == '1', whatsapp: preview['nowa'] != '1', starter: preview['starter'] == '1', appointments: preview['walkin'] != '1');
   } else {
     final config = await loadSignInConfig(store);
     if (config == null) {

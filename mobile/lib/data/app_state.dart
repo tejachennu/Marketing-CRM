@@ -290,6 +290,18 @@ class AppState extends ChangeNotifier {
   bool get frontDeskOn => me?['connectors']?['frontDesk'] == true;
   bool get storeOn => me?['connectors']?['ecommerce'] == true;
 
+  /// Front Desk: the business takes appointments (Setup → Appointments). Off for shops that only bill walk-ins: the
+  /// app then shows no Bookings / Requests tabs, no Book button and no booking setup. A change still waiting to be
+  /// sent wins, then the setup copy on the phone, then the profile; an older server that does not say counts as on.
+  bool get takesAppointments {
+    for (final item in pending('settings').reversed) {
+      if (item.body.containsKey('takes_appointments')) return item.body['takes_appointments'] != false;
+    }
+    final settings = cached('setup')?['settings'];
+    if (settings is Map && settings.containsKey('takes_appointments')) return settings['takes_appointments'] != false;
+    return me?['frontDesk']?['appointments'] != false;
+  }
+
   /// The business's WhatsApp number is connected. Until it is, chats, campaigns, templates, tickets and the
   /// booking flow are locked (an older server that does not say counts as connected).
   bool get whatsappOn => me?['whatsapp']?['connected'] != false;

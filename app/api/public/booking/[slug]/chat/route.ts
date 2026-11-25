@@ -28,8 +28,12 @@ function factsFor(data: SiteData): string {
     services: data.view.services, staff: data.view.staff, approval: data.view.approval, pay: data.view.pay,
     plans: data.site.show.memberships ? data.plans.map((p: any) => ({ name: p.name, price: Number(p.price) || 0, validity_days: Number(p.validity_days) || 0, discount_percent: Number(p.discount_percent) || 0, credit: Number(p.credit) || 0, sessions: Array.isArray(p.sessions) ? p.sessions : [] })) : [],
     about: data.site.about, rating: data.count ? { average: data.average, count: data.count } : undefined, showPrices: data.site.show.prices,
+    bookings: data.view.bookings !== false, bookOnSite: data.site.buttons.book !== false,
   })
 }
+
+/** Services can be booked from this website (appointments on, and its Book buttons switched on). */
+const bookableOnSite = (data: SiteData) => data.view.bookings !== false && data.site.buttons.book !== false
 
 /** A customer's upcoming visits, by the phone they booked with and their first name (both must match). */
 async function upcomingVisits(db: any, data: SiteData, phone: string, name: string) {
@@ -47,8 +51,9 @@ const reply = (body: Record<string, unknown>) => NextResponse.json({ services: [
  * POST { message, history }: the Front Desk website's AI chat (Front Desk → Setup → Website and booking → AI chat).
  *   - "My booking": answered from the bookings themselves (phone + first name must match), never by the AI.
  *   - Anything else: answered from every service with its price and length, hours, team, memberships, how booking
- *     and paying work, and the Knowledge Base; services it talks about come as cards with Book. Amounts are checked
- *     against the data.
+ *     and paying work, and the Knowledge Base; services it talks about come as cards with Book (no Book, and no
+ *     booking talk, when the business takes no appointments or its website's Book button is off). Amounts are
+ *     checked against the data.
  * Limits: 20 messages per 10 minutes from one address, 600 a day per business, 10 booking look-ups an hour.
  */
 export async function POST(request: NextRequest, context: { params: Promise<{ slug: string }> }) {
@@ -73,7 +78,7 @@ export async function POST(request: NextRequest, context: { params: Promise<{ sl
     if (given.phone && given.name) {
       if (!checkRateLimit(`site-chat-visits:${ip}`, 10, 60 * 60_000).allowed) return reply({ reply: 'You have checked many times. Please wait a little, or call us.', handoff: true })
       const visits = await upcomingVisits(db, data, given.phone, given.name).catch(() => [])
-      if (!visits.length) return reply({ reply: `I could not find an upcoming booking for ${given.name} with that phone number. Please check both (the ones you booked with), or tap Book to make a new booking.`, form: 'booking' })
+      if (!visits.length) return reply({ reply: `I could not find an upcoming booking for ${given.name} with that phone number. Please check both (the ones you booked with)${bookableOnSite(data) ? ', or tap Book to make a new booking' : ''}.`, form: 'booking' })
       const today = istDate()
       const staff = new Map(data.view.staff.map((m) => [m.id, m.name]))
       const bookings: { id: string; when: string; services: string[]; staff: string | null; status: string; paid: string }[] = visits.map((a: any) => ({
@@ -103,7 +108,7 @@ export async function POST(request: NextRequest, context: { params: Promise<{ sl
   const answer = await answerFromKnowledge({
     db, ai, org: { ...org, name: data.view.business }, message, history, channel: 'website', feature: 'website_chat',
     where: 'website chat', facts: factsFor(data), strictAmounts: true,
-    products: (search) => serviceHits(data.view.services, search, 4, showPrices),
+    products: (search) => serviceHits(data.view.services, search, 4, showPrices, bookableOnSite(data)),
   })
   if (!answer) return NextResponse.json({ error: 'The chat could not answer just now. Please try again, or message us on WhatsApp.' }, { status: 502 })
   if (answer.handoff && answer.reason === 'not_answered') await recordKnowledgeGap(db, org.id, message, null)

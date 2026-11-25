@@ -6,9 +6,14 @@
  * confirmation on WhatsApp (the business's own number, or WAMA's number on Starter).
  *
  * Links and QR codes can point at one person (?p=<id>) or one service (?s=<id>).
+ *
+ * A business that has switched appointments off (Setup → Appointments) still has the page (the website uses the
+ * same data), but `bookings` is false: the page says plainly it is not taking online bookings and offers Call /
+ * WhatsApp, and no booking or free times are given out.
  */
 
 import { isConnectorOn } from '../connectors'
+import { NOT_TAKING_BOOKINGS, takesAppointments } from './appointments-switch'
 import { resolveCustomer } from './actions'
 import { type Busy, describeHours, freeTimes, holdsTime, isTimeFree, istWeekday, type OpeningHours } from './availability'
 import { AWAITING_PAYMENT, HOLD_MINUTES, readBookingPay, type BookingPay } from './booking-pay'
@@ -30,7 +35,12 @@ export interface BookingPage {
   setup: ChatSetup
   /** Paying while booking: the business's choice, and its connected online payment (if any) */
   pay?: { settings: BookingPay; gateway: Gateway | null }
+  /** The business takes appointments (Setup → Appointments); false: nothing can be booked here */
+  bookings?: boolean
 }
+
+/** Can this page take a booking? (No when the business has switched appointments off.) */
+export const takesBookings = (page: Pick<BookingPage, 'bookings'> | null | undefined): boolean => page?.bookings !== false
 
 /** The workspace behind a booking page, when Front Desk is on and there is something to book. */
 export async function loadBookingPage(db: any, slug: string): Promise<BookingPage | null> {
@@ -43,6 +53,7 @@ export async function loadBookingPage(db: any, slug: string): Promise<BookingPag
     organization: { id: organization.id, name: organization.name, slug: organization.slug, currency: String(organization.currency || 'INR').toUpperCase(), domain: organization.store_domain || null },
     setup,
     pay: { settings: readBookingPay((setup.settings as any)?.website?.bookingPay), gateway: onlineGateway(organization) },
+    bookings: takesAppointments(setup.settings),
   }
 }
 
@@ -57,6 +68,8 @@ export function publicView(page: BookingPage) {
     phone: settings.phone || null,
     hours: describeHours(settings as OpeningHours),
     approval: settings.auto_approve_bookings !== true,
+    /** Takes appointments: false shows "not taking online bookings" with Call / WhatsApp instead of the form */
+    bookings: takesBookings(page),
     services: services.map((s) => ({ id: s.id, name: s.name, category: s.category || 'General', price: Number(s.price) || 0, minutes: Number(s.duration_minutes) || 30 })),
     staff: staff.map((m) => ({ id: m.id, name: m.name, service_ids: m.service_ids })),
     // How the customer can pay; the amount is worked out on the page for the services picked (bookingPayOptions)
@@ -111,6 +124,7 @@ export function servicesTotal(page: BookingPage, serviceIds: string[]): number {
 
 /** Free start times on a day for these services and person. */
 export async function bookingTimes(db: any, page: BookingPage, query: TimesQuery, now = Date.now()): Promise<{ times: string[] } | { error: string }> {
+  if (!takesBookings(page)) return { error: NOT_TAKING_BOOKINGS }
   const pick = chosen(page.setup, query)
   if ('error' in pick) return { error: pick.error as string }
   const today = istDate(now)
@@ -142,6 +156,8 @@ export function parseOnlineBooking(body: any): OnlineBooking | { error: string }
  * same phone and time. Returns the appointment and whether it is booked or waits as a request.
  */
 export async function createOnlineBooking(db: any, page: BookingPage, booking: OnlineBooking, now = Date.now(), options: { awaitingPayment?: { amount: number } } = {}) {
+  // Appointments switched off: nothing is saved (the route answers 403)
+  if (!takesBookings(page)) return { error: NOT_TAKING_BOOKINGS, closed: true }
   const pick = chosen(page.setup, booking)
   if ('error' in pick) return { error: pick.error as string }
   const startsAt = fromIst(booking.date, booking.time)

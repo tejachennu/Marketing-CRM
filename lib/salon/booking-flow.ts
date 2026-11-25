@@ -11,10 +11,12 @@
  *      (or confirmed, when the business approves free slots automatically)
  *
  * Each step's choices ride in the button ids ("bf:…"), so nothing has to be remembered between
- * messages. The business sets it up in Front Desk → Setup → Booking flow.
+ * messages. The business sets it up in Front Desk → Setup → Booking flow. While the business has switched
+ * appointments off (Setup → Appointments) the flow never starts, and a tap on an old list gets a kind "no bookings".
  */
 
 import { sendWhatsAppMessage } from '../commerce/commerce-webhook-handler'
+import { noBookingsReply, takesAppointments } from './appointments-switch'
 import { freeTimes, isClosedOn } from './availability'
 import { groupByCategory } from './categories'
 import { busyOn, loadChatSetup, logMessage, salonChatReady, sendFreeTimes, sendText, staffFor, type ChatLanguage, type ChatService, type ChatSetup, type SalonChatInput } from './chat'
@@ -67,6 +69,17 @@ const say = (key: keyof typeof words, language: ChatLanguage, fill: Record<strin
   Object.entries(fill).reduce((text, [k, v]) => text.replaceAll(`{${k}}`, v), words[key][language] || words[key].en)
 
 const clip = (value: string, max: number) => (value.length > max ? `${value.slice(0, max - 1)}…` : value)
+
+/**
+ * Appointments switched off (Setup → Appointments): a booking in progress is dropped and the customer is told,
+ * kindly, to walk in or call. Null while appointments are on.
+ */
+async function stopWhenOff(input: SalonChatInput, setup: ChatSetup, language: ChatLanguage, sessionId?: string | null): Promise<FlowResult | null> {
+  if (takesAppointments(setup.settings)) return null
+  if (sessionId) await input.supabase.from('salon_booking_sessions').delete().eq('id', sessionId).eq('organization_id', input.organization.id)
+  await sendText(input, noBookingsReply(language, String(setup.settings.business_name || input.organization.name || ''), setup.settings.phone))
+  return { handled: true, step: 'closed' }
+}
 
 /** A WhatsApp list: up to 10 rows, each with an id that carries the choice. */
 export function buildList(phone: string, body: string, button: string, rows: { id: string; title: string; description?: string }[]) {
@@ -287,6 +300,8 @@ export async function startStatelessFlow(input: SalonChatInput, setupIn?: ChatSe
   const setup = setupIn || await loadChatSetup(input.supabase, input.organization.id)
   const flow = parseBookingFlow(setup.settings.booking_flow)
   if (!flow.enabled) return { handled: false, reason: 'flow_off' }
+  // No appointments: "Book" goes on to the assistant, which says there is no booking
+  if (!takesAppointments(setup.settings)) return { handled: false, reason: 'appointments_off' }
   if (!setup.services.length) {
     await sendText(input, say('noServices', flow.language))
     return { handled: true, step: 'closed' }
@@ -305,6 +320,8 @@ export async function handleBookingFlowButton(input: SalonChatInput & { buttonId
   if (!salonChatReady(input.organization)) return { handled: false, reason: 'not_ready' }
   const setup = await loadChatSetup(input.supabase, input.organization.id)
   const flow = parseBookingFlow(setup.settings.booking_flow)
+  const off = await stopWhenOff(input, setup, flow.language)
+  if (off) return off
   const expired = async () => {
     await sendText(input, say('expired', flow.language))
     return { handled: true as const, step: 'expired' as const }
@@ -551,11 +568,9 @@ export async function handleServicesForm(input: SalonChatInput & { token: string
   if (!sessionId) return { handled: false, reason: 'not_a_booking_form' }
   if (!salonChatReady(input.organization)) return { handled: false, reason: 'not_ready' }
   const run = await loadRun(input, sessionId)
-  if (!run) {
-    const flow = parseBookingFlow((await loadChatSetup(input.supabase, input.organization.id)).settings.booking_flow)
-    await sendText(input, say('expired', flow.language))
-    return { handled: true, step: 'expired' }
-  }
+  if (!run) return expiredOrOff(input)
+  const stopped = await stopWhenOff(input, run.setup, run.flow.language, run.session.id)
+  if (stopped) return stopped
   const { flow, session } = run
   const lang = flow.language
   // A form sent before the customer moved on (or switched to the list)
@@ -579,12 +594,24 @@ async function loadRun(input: SalonChatInput, sessionId: string): Promise<Run | 
   return { input, setup, flow, session: { ...session, service_ids: session.service_ids || [], answers: Array.isArray(session.answers) ? session.answers : [] } }
 }
 
+/** A tap on a list whose booking is gone: "start again", or "no bookings" while appointments are off. */
+async function expiredOrOff(input: SalonChatInput): Promise<FlowResult> {
+  const setup = await loadChatSetup(input.supabase, input.organization.id)
+  const flow = parseBookingFlow(setup.settings.booking_flow)
+  const off = await stopWhenOff(input, setup, flow.language)
+  if (off) return off
+  await sendText(input, say('expired', flow.language))
+  return { handled: true, step: 'expired' }
+}
+
 /** Start the flow: a new booking in progress, then its first step with the welcome. */
 export async function startBookingFlow(input: SalonChatInput, setupIn?: ChatSetup): Promise<FlowResult> {
   if (!salonChatReady(input.organization)) return { handled: false, reason: 'not_ready' }
   const setup = setupIn || await loadChatSetup(input.supabase, input.organization.id)
   const flow = parseBookingFlow(setup.settings.booking_flow)
   if (!flow.enabled) return { handled: false, reason: 'flow_off' }
+  // No appointments: "Book" goes on to the assistant, which says there is no booking
+  if (!takesAppointments(setup.settings)) return { handled: false, reason: 'appointments_off' }
   if (!setup.services.length) {
     await sendText(input, say('noServices', flow.language))
     return { handled: true, step: 'closed' }
@@ -611,11 +638,9 @@ export async function handleBookingStepButton(input: SalonChatInput & { buttonId
   if (!tap) return { handled: false, reason: 'not_a_step_button' }
   if (!salonChatReady(input.organization)) return { handled: false, reason: 'not_ready' }
   const run = await loadRun(input, tap.sessionId)
-  if (!run) {
-    const flow = parseBookingFlow((await loadChatSetup(input.supabase, input.organization.id)).settings.booking_flow)
-    await sendText(input, say('expired', flow.language))
-    return { handled: true, step: 'expired' }
-  }
+  if (!run) return expiredOrOff(input)
+  const stopped = await stopWhenOff(input, run.setup, run.flow.language, run.session.id)
+  if (stopped) return stopped
   const { setup, flow, session } = run
   if (tap.step !== session.step || session.waiting === 'text') return runStep(run, say('oldList', flow.language))
   const step = flow.steps[session.step]
@@ -700,6 +725,12 @@ export function looksLikeQuestion(message: unknown): boolean {
   return /\b(unda|untaya|untara|hai kya|milega|kitna|entha)\b$/.test(text)
 }
 
+/** Appointments switched off while a booking was in progress: it is dropped quietly (the assistant answers). */
+async function dropWhenOff(run: Run): Promise<FlowResult> {
+  await run.input.supabase.from('salon_booking_sessions').delete().eq('id', run.session.id).eq('organization_id', run.session.organization_id)
+  return { handled: false, reason: 'appointments_off' }
+}
+
 /** The customer's booking in progress, if they moved in it lately (for carrying on after an answer). */
 export async function activeBookingSession(db: any, organizationId: string, phone: string, now = Date.now(), withinMinutes = 60): Promise<string | null> {
   const { data } = await withSalonSchema(() => db.from('salon_booking_sessions').select('id, updated_at, customer_phone').eq('organization_id', organizationId).order('updated_at', { ascending: false }).limit(20))
@@ -711,6 +742,7 @@ export async function activeBookingSession(db: any, organizationId: string, phon
 export async function resumeBooking(input: SalonChatInput & { sessionId: string }): Promise<FlowResult> {
   const run = await loadRun(input, input.sessionId)
   if (!run) return { handled: false, reason: 'no_booking' }
+  if (!takesAppointments(run.setup.settings)) return dropWhenOff(run)
   if (run.session.waiting === 'form') await saveSession(run, { waiting: null })
   return runStep(run, say('carryOn', run.flow.language))
 }
@@ -736,6 +768,8 @@ export async function waitingForAnswer(db: any, organizationId: string, phone: s
 export async function handleBookingText(input: SalonChatInput & { sessionId: string }): Promise<FlowResult> {
   const run = await loadRun(input, input.sessionId)
   if (!run || !['text', 'form'].includes(run.session.waiting || '')) return { handled: false, reason: 'not_waiting' }
+  // Appointments switched off meanwhile: the words go to the assistant (which never books)
+  if (!takesAppointments(run.setup.settings)) return dropWhenOff(run)
   const text = String(input.message || '').trim()
   if (!text) return { handled: false, reason: 'empty' }
   if (run.session.waiting === 'form') {

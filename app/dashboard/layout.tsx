@@ -11,7 +11,7 @@ import { useEffect, useState, Suspense } from 'react'
 import { AssistantDrawer } from '@/components/assistant-drawer'
 import { TicketsDrawer } from '@/components/tickets-drawer'
 import { DialogProvider } from '@/lib/dialog-context'
-import { BADGES_EVENT, CONNECTOR_APPS, connectorAppAt, connectorTabFromSearch, onConnectorEvent, openConnectorTab, TAB_SHOWN_EVENT } from '@/lib/connector-nav'
+import { BADGES_EVENT, CONNECTOR_APPS, connectorAppAt, connectorTabFromSearch, HIDDEN_TABS_EVENT, onConnectorEvent, openConnectorTab, rememberedHiddenTabs, TAB_SHOWN_EVENT } from '@/lib/connector-nav'
 import { CONSULAR_HIDDEN_PAGES, isConsularHelpdesk } from '@/lib/workspace-modules'
 import { activeConnectors, FEATURE_NAMES, type PlanFeature, type PlanLimits } from '@/lib/plans'
 import type { ConnectorKey } from '@/lib/connectors'
@@ -106,14 +106,18 @@ export default function DashboardLayout({
   const connectorApp = connectorAppAt(pathname)
   const [connectorTab, setConnectorTab] = useState<string>('')
   const [connectorBadges, setConnectorBadges] = useState<Record<string, number>>({})
+  // Tabs the connector does not use right now (Front Desk without appointments: no Calendar)
+  const [hiddenConnectorTabs, setHiddenConnectorTabs] = useState<string[]>([])
 
   useEffect(() => {
     if (!connectorApp) return
     setConnectorTab(connectorTabFromSearch(connectorApp, window.location.search) || CONNECTOR_APPS[connectorApp].first)
     setConnectorBadges({})
+    setHiddenConnectorTabs(rememberedHiddenTabs(connectorApp))
     const stopShown = onConnectorEvent(TAB_SHOWN_EVENT, connectorApp, (tab: string) => setConnectorTab(tab))
     const stopBadges = onConnectorEvent(BADGES_EVENT, connectorApp, (badges: Record<string, number>) => setConnectorBadges((current) => ({ ...current, ...badges })))
-    return () => { stopShown(); stopBadges() }
+    const stopHidden = onConnectorEvent(HIDDEN_TABS_EVENT, connectorApp, (tabs: string[]) => setHiddenConnectorTabs(Array.isArray(tabs) ? tabs : []))
+    return () => { stopShown(); stopBadges(); stopHidden() }
   }, [connectorApp])
 
   useEffect(() => {
@@ -860,7 +864,7 @@ export default function DashboardLayout({
 
   // Inside a connector, its own tabs in the bottom bar (phones); the rest of the app is under More
   const canManageConnector = can(currentUser, 'automation.manage')
-  const connectorBarItems: { tab: string; label: string; short?: string; icon: typeof Menu; badge: number }[] =
+  const connectorBarItems: { tab: string; label: string; short?: string; icon: typeof Menu; badge: number }[] = (
     connectorApp === 'front-desk' ? [
       { tab: 'counter', label: 'Front Desk', short: 'Desk', icon: FrontDeskIcon, badge: connectorBadges.counter || 0 },
       { tab: 'appointments', label: 'Calendar', icon: CalendarDays, badge: 0 },
@@ -879,6 +883,7 @@ export default function DashboardLayout({
         { tab: 'settings', label: 'Store', icon: Settings, badge: 0 },
       ] : [{ tab: 'reports', label: 'Reports', icon: BarChart3, badge: 0 }]),
     ] : []
+  ).filter((item) => !hiddenConnectorTabs.includes(item.tab))
   const mobileDrawerItems = [
     ...filteredNavItems.filter((item) => !mobileBarLinks.includes(item.href)),
     { href: '/dashboard/profile', label: 'My Profile', icon: User },

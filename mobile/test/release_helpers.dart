@@ -16,8 +16,9 @@ class Release {
   late DemoBackend backend;
 }
 
-/// Makes the file's app once, before its tests: [billing] 'trial' (10 days left), 'trial2', 'ended', 'paid'.
-Release releaseApp({String billing = 'trial', bool staff = false, bool whatsapp = true, bool starter = false, bool newSignup = false}) {
+/// Makes the file's app once, before its tests: [billing] 'trial' (10 days left), 'trial2', 'ended', 'paid';
+/// [appointments] false: a shop that only bills walk-ins (Front Desk → Setup → Appointments off).
+Release releaseApp({String billing = 'trial', bool staff = false, bool whatsapp = true, bool starter = false, bool newSignup = false, bool appointments = true}) {
   final r = Release();
   setUpAll(() async {
     await loadFonts();
@@ -25,7 +26,7 @@ Release releaseApp({String billing = 'trial', bool staff = false, bool whatsapp 
     final store = LocalStore();
     await store.open(path: dir.path);
     await store.clear();
-    r.backend = DemoBackend(billing: billing, staff: staff, whatsapp: whatsapp, starter: starter);
+    r.backend = DemoBackend(billing: billing, staff: staff, whatsapp: whatsapp, starter: starter, appointments: appointments);
     r.app = AppState(backend: r.backend, store: store);
     await r.app.refreshAll();
     if (newSignup) await store.write('onboarding', {'pending': true});

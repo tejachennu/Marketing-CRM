@@ -10,6 +10,8 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
   const { slug } = await params
   const page = await loadBookingPage(getSupabaseAdminClient(), slug).catch(() => null)
   const name = page ? page.setup.settings.business_name || page.organization.name : 'Book online'
+  // A business that has switched appointments off: the page says so (with Call / WhatsApp), so no "Book" in the title
+  if (page && page.bookings === false) return { title: name, description: `${name} is not taking online bookings. Walk in during opening hours, or call or WhatsApp them.` }
   return { title: `Book at ${name}`, description: `Book your visit at ${name} online. Pick a service, a time, and you are done.` }
 }
 
