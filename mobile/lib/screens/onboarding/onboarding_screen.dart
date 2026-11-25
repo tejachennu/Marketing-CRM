@@ -629,7 +629,8 @@ class _WatchButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final app = AppScope.of(context);
     final ex = explainers.firstWhere((e) => e.id == video, orElse: () => explainers.first);
-    final lang = videoLanguage(app);
+    // The videos' words are in English (the voice follows the language picked)
+    const lang = 'en';
     return Material(
       color: const Color(0xFF0B141A),
       borderRadius: BorderRadius.circular(14),

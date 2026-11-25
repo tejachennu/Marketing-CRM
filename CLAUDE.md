@@ -126,8 +126,11 @@ Email: `HOSTINGER_SMTP_*`, `SENDGRID_*`. Other: `NEXT_PUBLIC_APP_URL`, `CRON_SEC
     flow ledu"): the voice says a **spoken script**, not the captions: `lib/screens/explainers/explainer_narration.dart`
     (one `Tx` per scene: natural Hyderabad Tenglish, Hinglish with everyday English words in English letters, simple
     Indian English; flows scene to scene; written with ChatGPT from the videos' content, checked here; no app name, no
-    made-up numbers). Clips in `mobile/assets/voice/` (105, 4.0 MB, AAC mono 32 kbps) made with **Sarvam AI** (speaker
-    `kavitha`, `ENGINE=sarvam`; OpenAI is the other engine) by `mobile/design/voice/make_voice.py` (lines from
+    made-up numbers). **The videos are English on screen; the language buttons pick only the voice** (owner: "only English
+    video with 3 different language voices ... remove the Telugu and Hindi videos"; the picker has a voice icon; the
+    captions' te/hi texts are kept in the content but not shown). Clips in `mobile/assets/voice/` (105, 3.6 MB, AAC mono
+    32 kbps) made with **Sarvam AI** (speaker `kavitha`, pace 1.15 = a little quicker, owner: "voice slow ga undi
+    kuncham"; `ENGINE=sarvam`; OpenAI is the other engine) by `mobile/design/voice/make_voice.py` (lines from
     `test/voice_lines.dart`; steps in `design/voice/README.md`; keys from the environment / command line and the model
     from `VOICE_MODEL`, never in the repo). `assets/voice/durations.json`: each scene lasts as long as its clip + 250 ms
     (no gaps; the animation stretches to it). `RecordedNarrator` (just_audio) plays the clip named

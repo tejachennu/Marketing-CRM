@@ -540,7 +540,7 @@ const explainers = <Explainer>[
 class VideoWords {
   static const watch = Tx('Watch', 'చూడండి', 'देखें');
   static const seeHow = Tx('See how it helps your business', 'ఇది మీ బిజినెస్‌కి ఎలా ఉపయోగపడుతుందో చూడండి', 'देखिए यह आपके बिज़नेस में कैसे मदद करता है');
-  static const pickLanguage = Tx('Short videos, in your language', 'చిన్న వీడియోలు, మీ భాషలో', 'छोटे वीडियो, आपकी भाषा में');
+  static const pickLanguage = Tx('Short videos, with a voice in your language', 'చిన్న వీడియోలు, మీ భాషలో వాయిస్‌తో', 'छोटे वीडियो, आपकी भाषा में आवाज़ के साथ');
   static const seconds = Tx('sec', 'సెకన్లు', 'सेकंड');
   static const next = Tx('Next video', 'తర్వాతి వీడియో', 'अगला वीडियो');
   static const again = Tx('Watch again', 'మళ్ళీ చూడండి', 'फिर से देखें');

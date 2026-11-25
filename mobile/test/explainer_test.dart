@@ -13,7 +13,7 @@ import 'release_helpers.dart';
 void main() {
   final r = releaseApp();
 
-  testWidgets('play a video: next scene, Telugu, the end, next video (320 × 640)', (tester) async {
+  testWidgets('play a video: next scene, Telugu voice (words stay English), the end, next video (320 × 640)', (tester) async {
     final problems = <String>[];
     final old = FlutterError.onError;
     FlutterError.onError = (d) => problems.add(d.exceptionAsString().split('\n').first);
@@ -31,19 +31,20 @@ void main() {
 
     await tester.tap(find.text('తెలుగు'));
     await settle(tester);
-    expect(find.text(grow.scenes[1].title.te), findsOneWidget, reason: 'the words switch to Telugu');
+    expect(find.text(grow.scenes[1].title.en), findsOneWidget, reason: 'the words on screen stay in English: the buttons pick the voice');
+    expect(find.text(grow.scenes[1].title.te), findsNothing);
     expect(r.app.store.read('videos')?['lang'], 'te');
 
     for (var i = 1; i < grow.scenes.length; i++) {
-      await tester.tap(find.byTooltip(VideoWords.forward.te));
+      await tester.tap(find.byTooltip(VideoWords.forward.en));
       await settle(tester);
     }
-    expect(find.text(VideoWords.again.te), findsOneWidget, reason: 'the end shows Watch again');
+    expect(find.text(VideoWords.again.en), findsOneWidget, reason: 'the end shows Watch again');
     expect(watchedVideos(r.app), contains('grow'));
 
-    await tester.tap(find.textContaining(VideoWords.next.te));
+    await tester.tap(find.textContaining(VideoWords.next.en));
     await settle(tester);
-    expect(find.text(explainers[1].scenes[0].title.te), findsOneWidget, reason: 'the next video starts');
+    expect(find.text(explainers[1].scenes[0].title.en), findsOneWidget, reason: 'the next video starts');
 
     await tester.pumpWidget(const SizedBox());
     await settle(tester);

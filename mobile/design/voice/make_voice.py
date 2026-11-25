@@ -37,7 +37,8 @@ KEY = os.environ.get('OPENAI_API_KEY', 'proxy-injected')
 ENGINE = os.environ.get('ENGINE', 'openai')
 SARVAM_KEY = os.environ.get('SARVAM_API_KEY', '')
 SARVAM_SPEAKER = os.environ.get('SARVAM_SPEAKER', 'kavitha')
-SARVAM_PACE = float(os.environ.get('SARVAM_PACE', '1.0'))
+# A little quicker than Sarvam's normal pace (owner: "voice slow ga undi kuncham")
+SARVAM_PACE = float(os.environ.get('SARVAM_PACE', '1.15'))
 SARVAM_LANG = {'en': 'en-IN', 'te': 'te-IN', 'hi': 'hi-IN'}
 
 # The voice and the way of speaking for each language, as ChatGPT advised for a natural Indian sound (owner, 25 Nov

@@ -286,7 +286,10 @@ class _ExplainerScreenState extends State<ExplainerScreen> with SingleTickerProv
   @override
   Widget build(BuildContext context) {
     final app = AppScope.of(context);
-    final lang = _lang ?? videoLanguage(app);
+    // Everything on screen is in English; the language buttons pick the voice (owner, 25 Nov 2026: "only English video
+    // with 3 different language voices ... remove the Telugu and Hindi videos")
+    final voice = _lang ?? videoLanguage(app);
+    const lang = 'en';
     final still = MediaQuery.disableAnimationsOf(context);
     final scene = _scenes[_scene];
     return Scaffold(
@@ -362,7 +365,7 @@ class _ExplainerScreenState extends State<ExplainerScreen> with SingleTickerProv
               if (_india)
                 Padding(
                   padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
-                  child: LanguagePicker(lang: lang, onPick: _setLang, dark: true),
+                  child: LanguagePicker(lang: voice, onPick: _setLang, dark: true, voice: true),
                 )
               else
                 const SizedBox(height: 8),
@@ -445,14 +448,14 @@ class _ExplainerScreenState extends State<ExplainerScreen> with SingleTickerProv
                     ),
                   ),
                 ),
-              if (!_ended && _sound && _noVoice == lang)
+              if (!_ended && _sound && _noVoice == voice)
                 Padding(
                   padding: const EdgeInsets.fromLTRB(20, 2, 20, 2),
                   child: Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       const Padding(padding: EdgeInsets.only(top: 1, right: 8), child: Icon(Icons.volume_off_rounded, color: Color(0xB3FFFFFF), size: 17)),
-                      Expanded(child: Text(VideoWords.noVoice.of(lang), style: const TextStyle(color: Color(0xB3FFFFFF), fontSize: 12.5, height: 1.35))),
+                      Expanded(child: Text(VideoWords.noVoice.of(voice), style: const TextStyle(color: Color(0xB3FFFFFF), fontSize: 12.5, height: 1.35))),
                     ],
                   ),
                 ),
@@ -786,14 +789,24 @@ class ExplainerLibraryScreen extends StatelessWidget {
 
 /// English | తెలుగు | हिंदी
 class LanguagePicker extends StatelessWidget {
-  const LanguagePicker({super.key, required this.lang, required this.onPick, this.dark = false});
+  const LanguagePicker({super.key, required this.lang, required this.onPick, this.dark = false, this.voice = false});
   final String lang;
   final ValueChanged<String> onPick;
   final bool dark;
 
+  /// It picks the voice (the videos' words on screen are in English): a speaking icon in front
+  final bool voice;
+
   @override
   Widget build(BuildContext context) => Row(
     children: [
+      if (voice) ...[
+        Semantics(
+          label: 'Voice',
+          child: Icon(Icons.record_voice_over_outlined, size: 20, color: dark ? Colors.white : Brand.textSoft),
+        ),
+        const SizedBox(width: 8),
+      ],
       for (final (code, name) in videoLanguages) ...[
         if (code != videoLanguages.first.$1) const SizedBox(width: 8),
         Expanded(
@@ -871,7 +884,9 @@ class _ExplainerGalleryState extends State<ExplainerGallery> with SingleTickerPr
   @override
   Widget build(BuildContext context) {
     final app = AppScope.of(context);
-    final lang = _lang ?? videoLanguage(app);
+    // English on screen; the buttons pick the voice
+    final voice = _lang ?? videoLanguage(app);
+    const lang = 'en';
     final seen = watchedVideos(app);
     final first = explainers.first;
     final india = indianLanguagesOn(app);
@@ -887,7 +902,8 @@ class _ExplainerGalleryState extends State<ExplainerGallery> with SingleTickerPr
           ),
           const SizedBox(height: 8),
           LanguagePicker(
-            lang: lang,
+            lang: voice,
+            voice: true,
             onPick: (l) async {
               setState(() => _lang = l);
               await _saveVideos(app, lang: l);
