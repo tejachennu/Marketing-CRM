@@ -118,6 +118,31 @@ Email: `HOSTINGER_SMTP_*`, `SENDGRID_*`. Other: `NEXT_PUBLIC_APP_URL`, `CRON_SEC
 
 ## What has been built (recent history, newest first)
 
+- **App: explainer videos on the welcome pages, in English, Telugu and Hindi; release check of the whole app**
+  (owner, 25 Nov 2026: "video presentations ... how they will benefit ... multi language ... ads, chats, auto replies,
+  automation ... on the onboarding itself").
+  - `mobile/lib/screens/explainers/`: `explainer_content.dart` (5 videos × 4–5 scenes; every word a `Tx(en, te, hi)`,
+    reviewed by native-language reviewers; no brand name, no made-up numbers), `explainer_scenes.dart` (animated scenes on
+    a fixed 360 × 420 canvas from `t` 0→1: phone chat with typing dots, Telugu/Hinglish replies, inbox with assignees,
+    lock-screen notifications, an ad tapped into a chat, a flow line that draws itself, growing bars, end card; flat
+    WhatsApp colours; scene text ignores the phone's text size because the canvas is scaled as a whole),
+    `explainer_player.dart` (story-style player: bars, tap left/right/middle, captions, English | తెలుగు | हिंदी,
+    next video at the end, pauses when the app goes to the background, screen readers start paused; language and
+    watched videos in the phone store `videos`; `ExplainerGallery`, `ExplainerLibraryScreen`, `openExplainer`).
+    Built-in animations, not video files: tiny, sharp, offline, instant language switch. No voice-over (made to be
+    watched without sound, like reels).
+  - Welcome pages now start with the videos (page 0), each slide has a Watch button, More → How we help your business.
+  - Release check of the whole app (7 areas, each file read in full, every problem confirmed by a second reader before
+    fixing): 158 found, 141 confirmed, 137 fixed (data layer, Front Desk counter and setup, Store, Chats / AI /
+    Instagram, Templates / Campaigns, More / Billing). Tests: `explainer_test.dart` and the older suites.
+  - **Server items the check found, not done yet** (need a decision or a deploy): a scheduler for
+    `GET /api/campaigns/scheduled` (scheduled campaigns only start while someone has Campaigns open; the app nudges it
+    every 5 min for managers), and `/api/cron/shop` likewise; `client_ref` dedupe on `/api/messages/send`, tickets,
+    campaigns, knowledge, contacts (the app already avoids most repeats); a campaign scheduled in the past should start
+    at once; returns route `via` and `refundable()` left after a full refund; the web orders tab's "I have refunded it"
+    (the app now refunds only through Returns and refunds); after an upgrade paid via webhook only, create the new
+    auto-pay (`lib/billing-service.ts`); signed upload URLs for chat files; Instagram posting as a job.
+
 - **App: sign-up and welcome pages redesigned with pictures; "Delete my account"; release check of the whole app**
   (owner, 25 Nov 2026: "redesign mobile signup and onboarding screens ... use some images ... attractive ... production
   ready", then "make it two steps and explain more about it" for the pick page).
