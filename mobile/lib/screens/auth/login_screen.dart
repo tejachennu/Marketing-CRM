@@ -207,7 +207,7 @@ class _LoginScreenState extends State<LoginScreen> {
           'welcome',
           aspect: 360 / 250,
           maxHeight: (height * (height < 700 ? 0.28 : 0.34)).clamp(130.0, 300.0),
-          semantic: 'A WhatsApp chat offering bookings, orders, AI answers, bills, order tracking and the team',
+          semantic: 'A WhatsApp chat offering bookings, orders, AI answers, bills and order tracking, with ads, an edited reel and photos bringing new customers',
         ),
         const SizedBox(height: 14),
         const Text(
@@ -216,7 +216,7 @@ class _LoginScreenState extends State<LoginScreen> {
         ),
         const SizedBox(height: 8),
         const Text(
-          'Bookings, bills, your online store and customer chats, for salons, clinics, shops and any business.',
+          'Bookings, orders, bills and AI chat for any business. Our team also runs your ads and edits your videos and photos, so more customers find you.',
           style: TextStyle(color: Brand.textSoft, fontSize: 15, height: 1.42),
         ),
         const SizedBox(height: 14),

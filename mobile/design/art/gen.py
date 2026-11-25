@@ -158,24 +158,22 @@ def welcome():
     scr += rect(130, 216, 86, 16, 8, W) + text(138, 227, 'Message', 6.5, 400, F)
     scr += circle(223, 224, 8, G) + rect(221, 219.5, 4, 6.5, 2, W) + f'<path d="M219.5 224 a3.5 3.5 0 0 0 7 0" fill="none" stroke="{W}" stroke-width="1"/>'
     b += f'<g clip-path="url(#scr)">{scr}</g>'
-    # Bill paid
-    bill = circle(18, 18, 10, L2)
-    bill += f'<path d="M13.5 12 h9 v12 l-1.5 -1 l-1.5 1 l-1.5 -1 l-1.5 1 l-1.5 -1 l-1.5 1 Z" fill="{G}"/>' + line(15.5, 15.5, 5, 1.4, W) + line(15.5, 18.5, 5, 1.4, W)
-    bill += text(34, 16, 'Bill paid', 7.8, 700) + text(34, 26, 'GST invoice sent', 6.2, 400, M)
-    bill += text(10, 52, '₹1,250', 15, 700) + rect(10, 59, 30, 11, 5.5, L) + text(25, 66.8, 'PAID', 5.8, 700, G, 'middle')
-    bill += circle(80, 63, 7, B) + check(76.8, 59.8, 6.4, W, 1.5)
-    b += card(14, 46, 98, 78, 12, W, bill)
-    # New order
-    order = rect(10, 10, 26, 26, 7, L2) + bag(14, 13, 18)
-    order += text(42, 20, 'New order', 7.8, 700) + text(42, 30, '#1024 · 2 items', 6.2, 400, M)
-    order += text(10, 58, '₹899', 13, 700) + rect(54, 49, 32, 13, 6.5, G) + text(70, 58, 'UPI', 6.5, 700, W, 'middle')
-    b += card(250, 30, 96, 72, 12, W, order)
-    # Review
-    rev = ''.join(star(14 + i * 11, 16, 4.6) for i in range(5)) + text(10, 35, '"Loved it!"', 7, 400, T2)
-    b += card(254, 152, 88, 46, 12, W, rev)
-    # Reminder
-    rem = circle(17, 17, 11, G) + bell(17, 17, 12) + text(34, 15, 'Reminder sent', 7, 700) + text(34, 25, 'Tomorrow, 10 am', 6.2, 400, M)
-    b += card(16, 156, 100, 34, 17, W, rem)
+    # Around the phone: what our team does for the owner (ads, videos, photos) and what it brings (customers, sales)
+    ads = circle(18, 18, 10, L2) + glyph('megaphone', 18, 18, 12, G)
+    ads += text(34, 16, 'Ads running', 7.8, 700) + text(34, 26, 'Instagram · Google', 6.2, 400, M)
+    ads += text(10, 53, '+38', 16, 700) + text(44, 49, 'new', 6.6, 500, M) + text(44, 57.5, 'customers', 6.6, 500, M)
+    ads += rect(10, 61, 40, 11, 5.5, L) + text(30, 68.8, 'THIS WEEK', 5.4, 700, G, 'middle')
+    b += card(14, 46, 98, 78, 12, W, ads)
+    reel = rect(10, 10, 26, 26, 7, G) + glyph('play', 23, 23, 12, W)
+    reel += text(42, 20, 'Reel edited', 7.8, 700) + text(42, 30, 'By our team', 6.2, 400, M)
+    reel += text(10, 58, '0:30', 12, 700) + rect(48, 49, 38, 13, 6.5, G) + text(67, 58, 'POSTED', 6.2, 700, W, 'middle')
+    b += card(250, 30, 96, 72, 12, W, reel)
+    sales = f'<path d="M10 27 L26 21 L40 23 L58 13 L74 8" fill="none" stroke="{G}" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>'
+    sales += f'<path d="M68 6.5 L76 7 L74 14.5" fill="none" stroke="{G}" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>'
+    sales += text(10, 39, 'Sales going up', 7, 700)
+    b += card(254, 152, 88, 46, 12, W, sales)
+    photos = circle(17, 17, 11, G) + glyph('photo', 17, 17, 12, W) + text(34, 15, 'Photos edited', 7, 700) + text(34, 25, 'For your offers', 6.2, 400, M)
+    b += card(16, 156, 100, 34, 17, W, photos)
     return w, h, b
 
 
@@ -424,6 +422,12 @@ def glyph(kind, cx, cy, s, c=W):
         return circle(cx, cy - u * 2, u * 2.2, c) + f'<path d="M{cx - u * 4} {cy + u * 4} a{u * 4} {u * 3.6} 0 0 1 {u * 8} 0 Z" fill="{c}"/>'
     if kind == 'translate':
         return text(cx - u * 2.4, cy + u * 0.6, 'A', s * 0.55, 700, c, 'middle') + text(cx + u * 2.2, cy + u * 3.4, 'अ', s * 0.5, 700, c, 'middle')
+    if kind == 'megaphone':
+        return f'<path d="M{cx - u * 4.4} {cy - u * 1.6} h{u * 2.2} l{u * 5.4} -{u * 3} v{u * 9.2} l-{u * 5.4} -{u * 3} h-{u * 2.2} Z" fill="{c}"/>' + rect(cx - u * 3.4, cy + u * 1.4, u * 1.8, u * 3.4, u * 0.5, c)
+    if kind == 'play':
+        return f'<path d="M{cx - u * 2.6} {cy - u * 3.8} v{u * 7.6} l{u * 6.4} -{u * 3.8} Z" fill="{c}"/>'
+    if kind == 'photo':
+        return rect(cx - u * 4.6, cy - u * 3.6, u * 9.2, u * 7.2, u * 1.2, c) + f'<path d="M{cx - u * 3.4} {cy + u * 2.6} l{u * 2.6} -{u * 3} l{u * 2} {u * 2} l{u * 1.4} -{u * 1.4} l{u * 2.2} {u * 2.4} Z" fill="{G}"/>' + circle(cx + u * 1.8, cy - u * 1.4, u * 0.9, G)
     return calendar(cx - s / 2, cy - s / 2, s, top=G, body=L2, dots=G)
 
 
