@@ -8,6 +8,7 @@ import '../../ui/theme.dart';
 import '../../ui/widgets.dart';
 import 'bill_parts.dart';
 import 'logic.dart';
+import 'setup_screen.dart';
 
 /// Who the customer is: mobile with country code and a name. Matches come from the server (with
 /// how many visits and what they had last time, for "Same as last time") and, offline, from the
@@ -212,6 +213,34 @@ class _ServicePickerState extends State<ServicePicker> {
     String cat(Map s) => '${s['category'] ?? 'General'}'.toLowerCase();
     final categories = ['All', ...widget.desk.categories.where((c) => list.any((s) => cat(s) == c.toLowerCase()))];
     final shown = list.where((s) => _category == 'All' || cat(s) == _category.toLowerCase()).toList();
+    // A new business has no services yet: say where to add them instead of an empty list
+    if (list.isEmpty) {
+      final manage = AppScope.of(context).can('manage');
+      return Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(color: Brand.page, borderRadius: BorderRadius.circular(12)),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              widget.desk.services.isEmpty
+                  ? 'No services yet. Add them in Front Desk → Setup → Services.'
+                  : 'No services can go on a bill yet. In Setup → Services, switch on "Use in bills" for them.',
+              style: const TextStyle(fontSize: 14, color: Brand.textSoft, height: 1.35),
+            ),
+            if (!manage) const Padding(padding: EdgeInsets.only(top: 6), child: Text('Ask a manager to add them.', style: TextStyle(fontSize: 13, color: Brand.muted))),
+            if (manage) ...[
+              const SizedBox(height: 10),
+              OutlinedButton.icon(
+                onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SetupScreen())),
+                icon: const Icon(Icons.tune, size: 18),
+                label: const Text('Open Setup'),
+              ),
+            ],
+          ],
+        ),
+      );
+    }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [

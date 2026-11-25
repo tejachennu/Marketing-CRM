@@ -34,8 +34,11 @@ class Notifier {
 
   final _plugin = FlutterLocalNotificationsPlugin();
   final _notices = StreamController<Notice>.broadcast();
-  final _taps = StreamController<String>.broadcast();
+  late final _taps = StreamController<String>.broadcast(onListen: _handOverTap);
   bool _ready = false;
+
+  /// A tap that came before the app's screens were listening (the notification opened the app): handed to the first listener.
+  String? _pendingTap;
   int _id = 0;
   bool inForeground = true;
 
@@ -43,8 +46,21 @@ class Notifier {
   /// local one is added on top.
   bool pushOn = false;
 
-  /// A push notification was tapped: open what it is about.
-  void tapped(String payload) => _taps.add(payload);
+  /// A notification was tapped: open what it is about.
+  void tapped(String payload) {
+    if (payload.isEmpty) return;
+    if (_taps.hasListener) {
+      _taps.add(payload);
+    } else {
+      _pendingTap = payload;
+    }
+  }
+
+  void _handOverTap() {
+    final payload = _pendingTap;
+    _pendingTap = null;
+    if (payload != null) scheduleMicrotask(() => _taps.add(payload));
+  }
 
   /// In-app banners (shown by the app shell).
   Stream<Notice> get notices => _notices.stream;
@@ -57,11 +73,11 @@ class Notifier {
     try {
       await _plugin.initialize(
         settings: const InitializationSettings(android: AndroidInitializationSettings('ic_notification'), iOS: DarwinInitializationSettings()),
-        onDidReceiveNotificationResponse: (response) {
-          final payload = response.payload ?? '';
-          if (payload.isNotEmpty) _taps.add(payload);
-        },
+        onDidReceiveNotificationResponse: (response) => tapped(response.payload ?? ''),
       );
+      // The app was closed and one of its own notifications opened it: open what it is about too
+      final launch = await _plugin.getNotificationAppLaunchDetails();
+      if (launch?.didNotificationLaunchApp == true) tapped(launch?.notificationResponse?.payload ?? '');
       final android = _plugin.resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
       await android?.requestNotificationsPermission();
       // The kinds of notification, so the phone's settings list them and push notifications land in the right one

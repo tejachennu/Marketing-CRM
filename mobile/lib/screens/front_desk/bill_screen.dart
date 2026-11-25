@@ -12,7 +12,7 @@ import '../../ui/widgets.dart';
 import 'logic.dart';
 
 /// One bill: what was done, the total, and Mark paid / Send on WhatsApp.
-class BillScreen extends StatelessWidget {
+class BillScreen extends StatefulWidget {
   const BillScreen({super.key, required this.invoiceId, this.invoicesKey = 'invoices'});
   final String invoiceId;
 
@@ -20,10 +20,17 @@ class BillScreen extends StatelessWidget {
   final String invoicesKey;
 
   @override
+  State<BillScreen> createState() => _BillScreenState();
+}
+
+class _BillScreenState extends State<BillScreen> {
+  bool _sending = false;
+
+  @override
   Widget build(BuildContext context) {
     final app = AppScope.of(context);
-    final desk = FrontDesk(app, invoicesKey: invoicesKey);
-    final i = desk.invoices.cast<Map<String, dynamic>?>().firstWhere((x) => '${x!['id']}' == invoiceId, orElse: () => null);
+    final desk = FrontDesk(app, invoicesKey: widget.invoicesKey);
+    final i = desk.invoices.cast<Map<String, dynamic>?>().firstWhere((x) => '${x!['id']}' == widget.invoiceId, orElse: () => null);
     if (i == null) {
       return Scaffold(
         appBar: AppBar(),
@@ -32,6 +39,9 @@ class BillScreen extends StatelessWidget {
     }
     final status = '${i['status']}';
     final items = [for (final x in (i['items'] as List? ?? const [])) Map<String, dynamic>.from(x)];
+    // Card credit or money paid online when booking already paid part of it: only the rest is asked for
+    final due = FrontDesk.dueOf(i);
+    final write = app.can('write');
 
     Future<void> pay() async {
       final method = await showModalBottomSheet<String>(
@@ -44,7 +54,7 @@ class BillScreen extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Text('Paid ${formatRupees(i['total'])} by', style: const TextStyle(fontSize: 19, fontWeight: FontWeight.w700)),
+                Text('Paid ${formatRupees(due)} by', style: const TextStyle(fontSize: 19, fontWeight: FontWeight.w700)),
                 const SizedBox(height: 14),
                 for (final m in ['upi', 'cash', 'card'])
                   Padding(
@@ -65,14 +75,35 @@ class BillScreen extends StatelessWidget {
     final itemsTotal = items.fold<num>(0, (sum, x) => sum + n(x['price']) * (n(x['quantity']) == 0 ? 1 : n(x['quantity'])));
     final subtotal = i['subtotal'] == null ? itemsTotal : n(i['subtotal']);
     final discount = n(i['discount']);
+    final fromCard = n(i['membership_paid']), fromAdvance = n(i['advance_paid']);
     final cgst = n(i['cgst']), sgst = n(i['sgst']), igst = n(i['igst']);
     final changing = i['_changing'] == true;
     final phone = '${i['customer_phone'] ?? ''}';
     final link = i['public_token'] == null ? null : '${AppConfig.apiBase}/i/${i['public_token']}';
 
-    void send() {
-      app.counterAction(kind: 'send', label: 'Send ${i['number']} on WhatsApp', action: {'type': 'send_invoice', 'invoice_id': i['id']});
-      toast(context, app.online ? 'Sending the bill on WhatsApp.' : 'It will be sent when you are online.');
+    // Sent straight away (not queued), so the person hears whether it really went
+    Future<void> send() async {
+      if (_sending) return;
+      if (!app.online) return toast(context, 'Sending on WhatsApp needs the internet. Try again when you are online.');
+      setState(() => _sending = true);
+      try {
+        final r = await app.ask('/api/salon/act', {
+          'action': {'type': 'send_invoice', 'invoice_id': i['id']},
+        });
+        final whatsapp = r['whatsapp'] as Map?;
+        final error = '${whatsapp?['error'] ?? ''}'.trim();
+        if (!context.mounted) return;
+        toast(
+          context,
+          whatsapp == null || whatsapp['sent'] == true
+              ? 'Bill sent on WhatsApp.'
+              : (error.isEmpty ? 'The bill could not be sent on WhatsApp. Copy the link and send it yourself.' : 'Not sent on WhatsApp: $error'),
+        );
+      } catch (e) {
+        if (context.mounted) toast(context, '$e');
+      } finally {
+        if (mounted) setState(() => _sending = false);
+      }
     }
 
     Future<void> cancel() async {
@@ -99,7 +130,7 @@ class BillScreen extends StatelessWidget {
     final (statusText, statusBg, statusFg, statusIcon) = switch (status) {
       'paid' => ('Paid${paymentLabels[i['payment_method']] == null ? '' : ' · ${paymentLabels[i['payment_method']]}'}', Brand.bubble, const Color(0xFF15603E), Icons.check_circle),
       'void' => ('Cancelled', Brand.page, Brand.muted, Icons.block),
-      _ => ('Not paid yet', Brand.redSoft, Brand.red, Icons.schedule),
+      _ => (due < n(i['total']) ? '${formatRupees(due)} still to pay' : 'Not paid yet', Brand.redSoft, Brand.red, Icons.schedule),
     };
 
     Widget amountRow(String label, String value, {bool strong = false, Color? color}) => Padding(
@@ -291,6 +322,9 @@ class BillScreen extends StatelessWidget {
                             if (sgst > 0) amountRow('SGST', formatRupees(sgst)),
                             if (igst > 0) amountRow('IGST', formatRupees(igst)),
                             amountRow('Total', formatRupees(i['total']), strong: true),
+                            if (fromCard > 0) amountRow('Paid from membership', '− ${formatRupees(fromCard)}', color: const Color(0xFF15603E)),
+                            if (fromAdvance > 0) amountRow('Paid online when booking', '− ${formatRupees(fromAdvance)}', color: const Color(0xFF15603E)),
+                            if (status == 'unpaid' && fromCard + fromAdvance > 0) amountRow('To pay', formatRupees(due), strong: true),
                           ],
                         ),
                       ),
@@ -304,11 +338,11 @@ class BillScreen extends StatelessWidget {
                   ),
                 const SizedBox(height: 18),
                 // What to do next: the main step first
-                if (status == 'unpaid' && !changing) ...[FilledButton.icon(onPressed: pay, icon: const Icon(Icons.payments_outlined), label: const Text('Mark paid')), const SizedBox(height: 10)],
-                if (status != 'void' && phone.isNotEmpty) ...[
+                if (status == 'unpaid' && !changing && write) ...[FilledButton.icon(onPressed: pay, icon: const Icon(Icons.payments_outlined), label: const Text('Mark paid')), const SizedBox(height: 10)],
+                if (status != 'void' && phone.isNotEmpty && write) ...[
                   status == 'unpaid'
-                      ? OutlinedButton.icon(onPressed: send, icon: const Icon(Icons.send_outlined), label: const Text('Send on WhatsApp'))
-                      : FilledButton.icon(onPressed: send, icon: const Icon(Icons.send_outlined), label: const Text('Send on WhatsApp')),
+                      ? OutlinedButton.icon(onPressed: _sending ? null : send, icon: const Icon(Icons.send_outlined), label: Text(_sending ? 'Sending…' : 'Send on WhatsApp'))
+                      : FilledButton.icon(onPressed: _sending ? null : send, icon: const Icon(Icons.send_outlined), label: Text(_sending ? 'Sending…' : 'Send on WhatsApp')),
                   const SizedBox(height: 10),
                 ],
                 if (status != 'void' && link != null)

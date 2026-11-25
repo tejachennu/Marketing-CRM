@@ -10,6 +10,19 @@ import 'range_bar.dart';
 
 String _key(String what, DateRangeChoice r) => '$what:${r.preset}${r.preset == 'custom' ? ':${r.from}:${r.to}' : ''}';
 
+/// Nothing on the phone and the last try to load it failed: why (managers only, no internet, or the server's words),
+/// with Try again, instead of loading shapes for ever.
+Widget _loadFailed(AppState app, String what, VoidCallback retry) => EmptyState(
+  icon: app.can('manage') ? Icons.cloud_off : Icons.lock_outline,
+  title: app.can('manage') ? 'Could not load $what' : 'For managers',
+  text: !app.can('manage')
+      ? 'Only managers and admins see $what.'
+      : !app.online
+      ? 'No internet. Connect and try again.'
+      : (app.lastError ?? 'Something went wrong. Try again.'),
+  action: app.can('manage') ? TextButton(onPressed: retry, child: const Text('Try again')) : null,
+);
+
 Widget _stars(num rating, {double size = 16}) => Row(
   mainAxisSize: MainAxisSize.min,
   children: [for (var i = 1; i <= 5; i++) Icon(i <= rating.round() ? Icons.star_rounded : Icons.star_outline_rounded, size: size, color: i <= rating.round() ? Brand.navy : Brand.border)],
@@ -53,7 +66,15 @@ class _ReviewsTabState extends State<ReviewsTab> {
   DateRangeChoice _range = const DateRangeChoice('month');
   bool _toCallOnly = false;
 
-  void _load() => AppScope.read(context).load(_key('reviews', _range), '/api/salon/reviews', query: _range.query, force: true);
+  /// Lists whose load has finished (well or not), to tell "still loading" from "could not load".
+  final Set<String> _tried = {};
+
+  Future<void> _load() async {
+    final key = _key('reviews', _range);
+    setState(() => _tried.remove(key));
+    await AppScope.read(context).load(key, '/api/salon/reviews', query: _range.query, force: true);
+    if (mounted) setState(() => _tried.add(key));
+  }
 
   @override
   void initState() {
@@ -76,13 +97,15 @@ class _ReviewsTabState extends State<ReviewsTab> {
       children: [
         RangeBar(
           value: _range,
-          onChanged: (r) => setState(() {
-            _range = r;
+          onChanged: (r) {
+            setState(() => _range = r);
             _load();
-          }),
+          },
         ),
         const SizedBox(height: 10),
-        if (data == null)
+        if (data == null && _tried.contains(key))
+          _loadFailed(app, 'reviews', _load)
+        else if (data == null)
           const SizedBox(height: 420, child: SkeletonCards(cards: 3))
         else ...[
           Panel(
@@ -229,7 +252,15 @@ class TeamTab extends StatefulWidget {
 class _TeamTabState extends State<TeamTab> {
   DateRangeChoice _range = const DateRangeChoice('month');
 
-  void _load() => AppScope.read(context).load(_key('team', _range), '/api/salon/performance', query: _range.query, force: true);
+  /// Lists whose load has finished (well or not), to tell "still loading" from "could not load".
+  final Set<String> _tried = {};
+
+  Future<void> _load() async {
+    final key = _key('team', _range);
+    setState(() => _tried.remove(key));
+    await AppScope.read(context).load(key, '/api/salon/performance', query: _range.query, force: true);
+    if (mounted) setState(() => _tried.add(key));
+  }
 
   @override
   void initState() {
@@ -240,7 +271,8 @@ class _TeamTabState extends State<TeamTab> {
   @override
   Widget build(BuildContext context) {
     final app = AppScope.of(context);
-    final data = app.cached(_key('team', _range));
+    final key = _key('team', _range);
+    final data = app.cached(key);
     final totals = Map<String, dynamic>.from(data?['totals'] as Map? ?? const {});
     final staff = [for (final s in (data?['staff'] as List? ?? const [])) Map<String, dynamic>.from(s)]..sort((a, b) => ((b['revenue'] as num?) ?? 0).compareTo((a['revenue'] as num?) ?? 0));
     final top = staff.isEmpty ? 1 : ((staff.first['revenue'] as num?) ?? 1).clamp(1, double.infinity);
@@ -249,13 +281,15 @@ class _TeamTabState extends State<TeamTab> {
       children: [
         RangeBar(
           value: _range,
-          onChanged: (r) => setState(() {
-            _range = r;
+          onChanged: (r) {
+            setState(() => _range = r);
             _load();
-          }),
+          },
         ),
         const SizedBox(height: 10),
-        if (data == null)
+        if (data == null && _tried.contains(key))
+          _loadFailed(app, 'team numbers', _load)
+        else if (data == null)
           const SizedBox(height: 420, child: SkeletonCards(cards: 3))
         else ...[
           Panel(

@@ -64,10 +64,12 @@ String formatAgo(DateTime? at) {
   return '${gap.inDays} day${gap.inDays == 1 ? '' : 's'} ago';
 }
 
+/// "RK" for "Ravi Kumar". Whole letters, never half an emoji ("Ravi 🙏" is a WhatsApp name too), which would not draw.
 String initials(String name) {
   final parts = name.trim().split(RegExp(r'\s+')).where((p) => p.isNotEmpty).toList();
   if (parts.isEmpty) return '?';
-  return (parts.first[0] + (parts.length > 1 ? parts.last[0] : '')).toUpperCase();
+  String first(String part) => String.fromCharCode(part.runes.first);
+  return (first(parts.first) + (parts.length > 1 ? first(parts.last) : '')).toUpperCase();
 }
 
 String contactName(Map? contact) {

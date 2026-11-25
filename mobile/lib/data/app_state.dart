@@ -48,12 +48,20 @@ class AppState extends ChangeNotifier {
   Timer? _bookingSoon;
   Timer? _jobsTimer;
   StreamSubscription? _connectivity;
+  StreamSubscription? _auth;
+
+  /// Signing out is under way (the sign-in's own "signed out" news is then expected, not a surprise).
+  bool _signingOut = false;
+
+  /// Goes up at each sign-out, so answers still on their way for the old sign-in are dropped, not saved.
+  int _session = 0;
 
   // ── Start up ──
 
   Future<void> start() async {
     _connectivity = Connectivity().onConnectivityChanged.listen((results) {
       final hasNetwork = results.any((r) => r != ConnectivityResult.none);
+      if (hasNetwork) unawaited(Push.instance.dropOldAddress(store));
       if (hasNetwork && !online) {
         online = true;
         notifyListeners();
@@ -63,11 +71,12 @@ class AppState extends ChangeNotifier {
         notifyListeners();
       }
     });
-    // Every 30 seconds: send what is waiting, or check whether the internet is back.
+    // Every 30 seconds: send what is waiting (that also checks the internet), or else check whether the internet is
+    // back. Refused changes (and ones waiting on them) cannot be sent, so they never keep the app looking offline.
     // Every 5 minutes: bring the lists up to date.
     _timer = Timer.periodic(const Duration(seconds: 30), (_) {
       if (!backend.signedIn) return;
-      if (waitingCount > 0) {
+      if (_hasSendable) {
         unawaited(flush());
       } else if (!online) {
         unawaited(load('me', '/api/mobile/me', force: true));
@@ -80,6 +89,13 @@ class AppState extends ChangeNotifier {
     _bookingTimer = Timer.periodic(const Duration(seconds: 30), (_) => checkBookings());
     // As on the web counter: every 2 minutes, send what is due (reminders, feedback questions)
     _jobsTimer = Timer.periodic(const Duration(minutes: 2), (_) => unawaited(runDueJobs()));
+    // The server ended the sign-in (password changed on the web, removed from the team): back to the sign-in screen
+    if (backend case final HttpBackend http) {
+      _auth = http.whenSignedOut(() {
+        if (!_signingOut && me != null) unawaited(_sessionEnded());
+      });
+    }
+    unawaited(Push.instance.dropOldAddress(store));
     unawaited(Notifier.instance.init());
     if (signedIn) {
       startLive();
@@ -96,6 +112,7 @@ class AppState extends ChangeNotifier {
     _jobsTimer?.cancel();
     backend.stopLive();
     _connectivity?.cancel();
+    _auth?.cancel();
     super.dispose();
   }
 
@@ -114,7 +131,7 @@ class AppState extends ChangeNotifier {
   }
 
   /// Pop-up notifications when the app is closed (needs the server's Firebase settings).
-  Future<void> startPush() => Push.instance.start(backend, store.read('config')?['firebase'] as Map?);
+  Future<void> startPush() => Push.instance.start(backend, store.read('config')?['firebase'] as Map?, store: store);
 
   /// "Continue with Google". Returns null when signed in, or the name and email to start the
   /// "Name your business" step (a first-time Google account with no workspace yet).
@@ -194,12 +211,16 @@ class AppState extends ChangeNotifier {
 
   // ── Things that need the internet now (AI, files) ──
 
-  /// Ask the server and wait for the answer. Offline: says it needs the internet.
-  Future<Map<String, dynamic>> ask(String path, Map<String, dynamic> body, {String method = 'POST'}) async {
+  /// Ask the server and wait for the answer. Offline: says it needs the internet. [timeout]: when the route needs
+  /// longer than usual (the usual waits per route are in HttpBackend.timeoutFor).
+  Future<Map<String, dynamic>> ask(String path, Map<String, dynamic> body, {String method = 'POST', Duration? timeout}) async {
     try {
-      final data = await backend.send(method, path, {if (orgId.isNotEmpty) 'organizationId': orgId, ...body});
+      final data = await backend.send(method, path, {if (orgId.isNotEmpty) 'organizationId': orgId, ...body}, timeout: timeout);
       _markOnline();
       return data;
+    } on SlowServerException {
+      // The server is still at it (publishing a post, writing with AI): not offline, and better not tapped again at once
+      rethrow;
     } on OfflineException {
       _markOffline();
       throw OfflineException('This needs the internet. Try again when you are online.');
@@ -214,19 +235,50 @@ class AppState extends ChangeNotifier {
       final data = await backend.upload(path, bytes, filename, fields: fields);
       _markOnline();
       return data;
+    } on SlowServerException {
+      throw SlowServerException('The file is taking too long to send. Try again on a better connection.');
     } on OfflineException {
       _markOffline();
       throw OfflineException('Sending a file needs the internet.');
     }
   }
 
+  /// Sign out, with or without internet: the phone's copy and queue always go, and answers still on their way are dropped.
   Future<void> signOut() async {
+    _signingOut = true;
+    _session++;
     backend.stopLive();
     _knownBookings = null;
-    await Push.instance.stop(backend);
-    await backend.signOut();
-    await store.clear();
-    notifyListeners();
+    try {
+      await Push.instance.stop(backend, store);
+      await backend.signOut();
+    } finally {
+      await store.clear();
+      _signingOut = false;
+      notifyListeners();
+    }
+  }
+
+  /// The server ended the sign-in (it could not be renewed, or the account is no longer in a workspace): back to the
+  /// sign-in screen. Customer lists leave the phone; changes still waiting stay for that same person's next sign-in.
+  Future<void> _sessionEnded() async {
+    if (_signingOut) return;
+    _signingOut = true;
+    _session++;
+    backend.stopLive();
+    _knownBookings = null;
+    try {
+      final userId = me?['user']?['id'];
+      await Push.instance.stop(backend, store);
+      if (backend.signedIn) await backend.signOut();
+      if (userId != null) {
+        await store.clear(keepOutbox: true);
+        await store.write('outbox_owner', {'userId': '$userId'});
+      }
+    } finally {
+      _signingOut = false;
+      notifyListeners();
+    }
   }
 
   // ── Who and where ──
@@ -306,17 +358,30 @@ class AppState extends ChangeNotifier {
   /// Fetch a list from the server into the phone. Offline: keep the copy already there.
   Future<void> load(String key, String path, {Map<String, String>? query, bool force = false, bool rethrowErrors = false}) async {
     if (!force && !online && store.read(key) != null) return;
+    final session = _session;
     _loading.add(key);
+    if (path == '/api/salon/invoices') _billLists[key] = query ?? const {};
+    final seq = _loadSeq[key] = (_loadSeq[key] ?? 0) + 1;
     try {
       final data = await backend.get(path, {if (orgId.isNotEmpty) 'organizationId': orgId, ...?query});
+      if (session != _session) return; // signed out meanwhile: nothing of it stays on the phone
+      // A newer fetch of this list started meanwhile (say, after a change was sent): its answer counts, not this older one
+      if (_loadSeq[key] != seq) return;
+      if (chatLists.containsValue(key)) _shortenChatMedia(data['conversations']);
       await store.write(key, data);
       _markOnline();
       notifyListeners();
     } on OfflineException {
-      _markOffline();
+      if (session == _session) _markOffline();
       if (rethrowErrors) rethrow;
     } on ApiException catch (e) {
+      if (session != _session) {
+        if (rethrowErrors) rethrow;
+        return;
+      }
       lastError = e.message;
+      // "Your account is not part of a workspace" (removed from the team): nothing here can work, so sign out
+      if (key == 'me' && e.status == 403) unawaited(_sessionEnded());
       if (key != 'me') _onPaused(e);
       notifyListeners();
       if (rethrowErrors) rethrow;
@@ -327,10 +392,32 @@ class AppState extends ChangeNotifier {
 
   final Set<String> _loading = {};
 
+  /// The newest fetch started for each list.
+  final Map<String, int> _loadSeq = {};
+
+  /// The bills lists (date ranges) fetched this session, to fetch again after a bill changes.
+  final Map<String, Map<String, String>> _billLists = {};
+
   /// Nothing on the phone yet and it is being fetched: show the loading shapes.
   bool isLoading(String key) => store.read(key) == null && (_loading.contains(key) || (refreshing && online));
 
   static String dayKey(String date) => 'day:$date';
+
+  /// Customer photos and files arrive as data: links of several MB. A chat list only needs to know there is one (and
+  /// what kind), so the copy kept on the phone holds just the start of the link; the chat itself keeps the whole file.
+  static Object? _shortMedia(Object? url) {
+    if (url is! String || !url.startsWith('data:')) return url;
+    final comma = url.indexOf(',');
+    return comma < 0 ? 'data:' : url.substring(0, comma + 1);
+  }
+
+  static void _shortenChatMedia(Object? conversations) {
+    if (conversations is! List) return;
+    for (final c in conversations) {
+      final last = c is Map ? c['last_message'] : null;
+      if (last is Map && last['media_url'] != null) last['media_url'] = _shortMedia(last['media_url']);
+    }
+  }
 
   Future<void>? _refreshRun;
 
@@ -380,6 +467,12 @@ class AppState extends ChangeNotifier {
     await Future.wait([
       for (final c in stale) load('messages:${c['id']}', '/api/messages', query: {'conversationId': '${c['id']}', 'limit': '60'}, force: true),
     ]);
+    // Only the latest chats' messages stay on the phone (old chats' photos and files would slowly fill it up)
+    final keep = {
+      for (final c in [...chatsOf('whatsapp').take(30), ...chatsOf('instagram').take(15)]) 'messages:${c['id']}',
+      'messages:$openChatId',
+    };
+    await store.removeWhere((key) => key.startsWith('messages:') && !keep.contains(key));
   }
 
   /// Send what is waiting, then bring every list up to date.
@@ -478,60 +571,151 @@ class AppState extends ChangeNotifier {
 
   Future<void>? _flushRun;
 
+  /// The changes already tried in the send that is running (each is tried once per run).
+  final Set<String> _tried = {};
+
   /// Send the outbox, oldest first. Stops at the first sign of no internet. A call while one is
-  /// running waits for that one.
+  /// running waits for that one, and what was queued meanwhile is sent in that same run.
   Future<void> flush() {
-    if (!backend.signedIn) return Future.value();
+    if (!signedIn) return Future.value();
     return _flushRun ??= _flush().whenComplete(() => _flushRun = null);
   }
 
+  /// Can go now: not refused, not tried in this run, and not waiting on something that has not synced yet.
+  bool _sendable(OutboxItem item) => item.state != OutboxState.failed && !_tried.contains(item.id) && _resolve(item.body) != _Unresolved.instance;
+  bool get _hasSendable => store.outbox().any(_sendable);
+
+  /// Counter actions carry a client reference, so the server does each once.
+  static const _doneOnce = {'/api/salon/act'};
+
+  /// Sending this again does no harm: the server does it once, or it only sets something (PATCH, PUT, DELETE).
+  /// Anything else (a chat message, a new ticket) might be done twice, so after an unclear failure it waits for the person.
+  static bool _safeToRepeat(OutboxItem item) => item.method != 'POST' || _doneOnce.contains(item.path);
+
+  static const _notSure = 'Not sure it was sent. Check before you try again.';
+
+  Future<void> _fail(OutboxItem item, String why) {
+    item.state = OutboxState.failed;
+    item.error = why;
+    return store.putOutbox(item);
+  }
+
+  /// Changes kept from a sign-in the server ended are sent only for that same person; anyone else starts clean.
+  Future<void> _claimOutbox() async {
+    final owner = store.read('outbox_owner');
+    if (owner == null) return;
+    if ('${owner['userId'] ?? ''}' != '${me?['user']?['id'] ?? ''}') await store.clearOutbox();
+    await store.remove('outbox_owner');
+  }
+
   Future<void> _flush() async {
+    final session = _session;
     syncing = true;
     notifyListeners();
     var sent = 0;
+    _tried.clear();
+    // Counter actions sent in this run stay in the outbox (laid over the lists) until the lists they change have been
+    // fetched again, so an approved request, a new bill or a visit marked arrived never flips back for a moment.
+    // Sending one again is safe: the server does each counter action once (client_ref).
+    final settled = <OutboxItem>[];
+    final days = <String>{};
+    var bills = false;
     try {
-      for (final item in store.outbox()) {
-        if (item.state == OutboxState.failed) continue;
-        final body = _resolve(item.body);
-        if (body == _Unresolved.instance) continue; // waits for what it depends on
-        item.state = OutboxState.sending;
-        item.attempts++;
-        await store.putOutbox(item);
-        notifyListeners();
-        try {
-          final result = await backend.send(item.method, item.path, Map<String, dynamic>.from(body as Map));
-          final serverId = item.resultIdPath == null ? null : _at(result, item.resultIdPath!);
-          if (item.localId != null && serverId != null) await store.mapId(item.localId!, serverId.toString());
-          await store.removeOutbox(item.id);
-          sent++;
-          _markOnline();
-        } on OfflineException {
-          item.state = OutboxState.waiting;
-          await store.putOutbox(item);
-          _markOffline();
-          break;
-        } on ApiException catch (e) {
-          // Paused workspace: keep it waiting (it is sent once a plan is chosen), and show the plan screen
-          if (e.status == 402) {
-            item.state = OutboxState.waiting;
-            item.attempts--;
-            item.error = e.message;
-            await store.putOutbox(item);
-            _onPaused(e);
-            break;
+      await _claimOutbox();
+      var stopped = false;
+      // Changes queued while this runs (a second chat message, Try again) go in this same run, not after the 30-second wait
+      while (!stopped && session == _session && _hasSendable) {
+        for (final item in store.outbox()) {
+          if (!_sendable(item)) continue; // refused, or waits for what it depends on
+          _tried.add(item.id);
+          // Cut off while sending last time (the app was closed): it may have reached the server already
+          if (item.state == OutboxState.sending && !_safeToRepeat(item)) {
+            await _fail(item, _notSure);
+            continue;
           }
-          if (e.retryable && item.attempts < 6) {
-            item.state = OutboxState.waiting;
-            item.error = e.message;
-            await store.putOutbox(item);
-            break;
-          }
-          item.state = OutboxState.failed;
-          item.error = e.message;
+          final body = _resolve(item.body);
+          item.state = OutboxState.sending;
+          item.attempts++;
           await store.putOutbox(item);
+          notifyListeners();
+          try {
+            final result = await backend.send(item.method, item.path, Map<String, dynamic>.from(body as Map));
+            if (session != _session) return; // signed out meanwhile
+            final serverId = item.resultIdPath == null ? null : _at(result, item.resultIdPath!);
+            if (item.localId != null && serverId != null) await store.mapId(item.localId!, serverId.toString());
+            if (item.path == '/api/salon/act') {
+              settled.add(item);
+              final starts = DateTime.tryParse('${_at(result, 'appointment.starts_at') ?? ''}');
+              if (starts != null) days.add(toIst(starts).toIso8601String().substring(0, 10));
+              if (_at(result, 'invoice') != null) bills = true;
+            } else {
+              await store.removeOutbox(item.id);
+            }
+            sent++;
+            _markOnline();
+          } on SlowServerException {
+            if (session != _session) return;
+            // No answer in time, but the server may have done it: only what is safe to send again waits for the next try
+            if (_safeToRepeat(item)) {
+              item.state = OutboxState.waiting;
+              await store.putOutbox(item);
+            } else {
+              await _fail(item, _notSure);
+            }
+            stopped = true;
+            break;
+          } on OfflineException {
+            if (session != _session) return;
+            item.state = OutboxState.waiting;
+            await store.putOutbox(item);
+            _markOffline();
+            stopped = true;
+            break;
+          } on ApiException catch (e) {
+            if (session != _session) return;
+            // The sign-in ran out and could not be renewed just now: keep it waiting (it goes once the sign-in is renewed)
+            if (e.status == 401) {
+              item.state = OutboxState.waiting;
+              item.attempts--;
+              await store.putOutbox(item);
+              stopped = true;
+              break;
+            }
+            if (e.status == 402) {
+              item.attempts--;
+              await load('me', '/api/mobile/me', force: true);
+              if (session != _session) return;
+              // Paused workspace: keep it waiting (it is sent once a plan is chosen), and show the plan screen
+              if (paused || !online) {
+                item.state = OutboxState.waiting;
+                item.error = e.message;
+                await store.putOutbox(item);
+                stopped = true;
+                break;
+              }
+              // Only this is not in the plan: it stops with the server's words, and the rest carries on
+              await _fail(item, e.message);
+              continue;
+            }
+            // The server broke while doing it: it may be done already, so a chat message is not sent twice on its own
+            if (e.status >= 500 && !_safeToRepeat(item)) {
+              await _fail(item, _notSure);
+              continue;
+            }
+            if (e.retryable && item.attempts < 6) {
+              item.state = OutboxState.waiting;
+              item.error = e.message;
+              await store.putOutbox(item);
+              stopped = true;
+              break;
+            }
+            await _fail(item, e.message);
+          }
         }
       }
+      if (settled.isNotEmpty && session == _session) await _settle(settled, days, bills);
     } finally {
+      _tried.clear();
       syncing = false;
       notifyListeners();
     }
@@ -541,10 +725,26 @@ class AppState extends ChangeNotifier {
     }
   }
 
+  /// After counter actions were sent: fetch again what they changed (today's visits and requests, the days they are
+  /// on, the bills lists), then take them out of the outbox.
+  Future<void> _settle(List<OutboxItem> settled, Set<String> days, bool bills) async {
+    final today = istToday();
+    await Future.wait([
+      for (final day in {today, ...days})
+        if (day == today || store.read(AppState.dayKey(day)) != null) load(AppState.dayKey(day), '/api/salon/appointments', query: {'date': day}, force: true),
+      if (bills)
+        for (final entry in {'invoices': const {'preset': 'week'}, ..._billLists}.entries) load(entry.key, '/api/salon/invoices', query: entry.value, force: true),
+    ]);
+    for (final item in settled) {
+      await store.removeOutbox(item.id);
+    }
+  }
+
   Future<void> retry(OutboxItem item) async {
     item.state = OutboxState.waiting;
     item.error = null;
     item.attempts = 0;
+    _tried.remove(item.id);
     await store.putOutbox(item);
     notifyListeners();
     await flush();
@@ -620,7 +820,7 @@ extension LiveUpdates on AppState {
       unawaited(loadChats('instagram'));
     } else {
       final conv = convs.removeAt(index);
-      conv['last_message'] = {'body': row['body'], 'sender_type': row['sender_type'], 'created_at': row['created_at'], 'media_url': row['media_url']};
+      conv['last_message'] = {'body': row['body'], 'sender_type': row['sender_type'], 'created_at': row['created_at'], 'media_url': AppState._shortMedia(row['media_url'])};
       conv['last_message_at'] = row['created_at'];
       if (fromCustomer && openChatId != convId) conv['unread_count'] = ((conv['unread_count'] as num?) ?? 0) + 1;
       convs.insert(0, conv);
@@ -688,7 +888,7 @@ extension LiveUpdates on AppState {
     final requests = [for (final r in (day['requests'] as List? ?? const [])) Map<String, dynamic>.from(r)];
     final booked = [
       for (final a in (day['appointments'] as List? ?? const []))
-        if (a['source'] == 'chat') Map<String, dynamic>.from(a),
+        if (a['source'] == 'chat' || a['source'] == 'online') Map<String, dynamic>.from(a),
     ];
     final ids = {
       for (final r in [...requests, ...booked]) '${r['id']}',
@@ -696,6 +896,8 @@ extension LiveUpdates on AppState {
     final known = _knownBookings;
     _knownBookings = {...?known, ...ids};
     if (known == null) return; // the first look only remembers what is there
+    // Pop-ups from the server announce every booking (shown at the top while the app is open), so nothing shows twice
+    if (Push.instance.ready) return;
     for (final r in [...requests, ...booked]) {
       if (known.contains('${r['id']}')) continue;
       final services = ((r['services'] as List?) ?? const []).map((x) => x['name']).join(', ');

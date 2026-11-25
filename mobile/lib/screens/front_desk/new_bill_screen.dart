@@ -23,7 +23,20 @@ class _NewBillScreenState extends State<NewBillScreen> {
   Map<String, String?> _who = {};
   Map<String, num>? _discount;
 
-  num _total(FrontDesk desk) => desk.estimate(_services, discountPercent: _discount?['type'] == 0 ? _discount!['value']! : 0, discountAmount: _discount?['type'] == 1 ? _discount!['value']! : 0);
+  /// The customer's membership card used on this bill (the server takes its sessions, discount and credit).
+  Map<String, dynamic>? _card;
+
+  /// The lines as billed: the card's free sessions and discount taken off first, as the server does.
+  ({List<Map<String, dynamic>> lines, int free, num discount}) _billed(FrontDesk desk) {
+    final lines = _services.map(desk.service).whereType<Map<String, dynamic>>().toList();
+    return _card == null ? (lines: lines, free: 0, discount: 0) : applyMemberCard(_card!, lines);
+  }
+
+  num _total(FrontDesk desk) =>
+      desk.estimateLines(_billed(desk).lines, discountPercent: _discount?['type'] == 0 ? _discount!['value']! : 0, discountAmount: _discount?['type'] == 1 ? _discount!['value']! : 0);
+
+  /// Paid from the card's credit (up to the bill's total).
+  num _fromCard(num total) => _card == null ? 0 : (num.tryParse('${_card!['credit_balance'] ?? ''}') ?? 0).clamp(0, total);
   String? _payment = 'upi';
   bool _whatsapp = true;
   bool _saving = false;
@@ -36,9 +49,14 @@ class _NewBillScreenState extends State<NewBillScreen> {
     if (_services.isEmpty) return toast(context, 'Choose at least one service.');
     setState(() => _saving = true);
     final name = '${_customer['name'] ?? ''}'.trim();
+    final phone = '${_customer['phone'] ?? ''}'.trim();
     final total = _total(desk);
+    final fromCard = _fromCard(total);
+    final covered = fromCard > 0 && total - fromCard <= 0;
+    final known = [for (final id in _services) if (desk.service(id) != null) id];
+    final billed = _billed(desk).lines;
     final items = [
-      for (final id in _services) {...?desk.service(id), 'staff_name': desk.staffName(_who[id])},
+      for (var i = 0; i < billed.length; i++) {...billed[i], 'staff_name': desk.staffName(_who[known[i]])},
     ];
     final staffIds = [for (final id in _services) _who[id]];
     final oneStaff = staffIds.toSet().length == 1 ? staffIds.first : null;
@@ -50,20 +68,23 @@ class _NewBillScreenState extends State<NewBillScreen> {
       resultIdPath: 'invoice.id',
       action: {
         'type': 'walk_in_bill',
-        'customer': {'contact_id': _customer['contact_id'], 'name': name, 'phone': _customer['phone']},
+        // The server needs a name or a phone: an empty walk-in goes as "Walk-in customer", as on the web
+        'customer': {'contact_id': _customer['contact_id'], 'name': name.isEmpty ? 'Walk-in customer' : name, 'phone': phone.isEmpty ? null : phone},
         'service_ids': _services,
         'staff_id': oneStaff,
         'staff_ids': staffIds,
         'discount': ?discountBody(_discount),
         'payment_method': _payment,
+        'membership_id': ?_card?['id'],
         'send_whatsapp': _whatsapp,
       },
       preview: {
         'customer_name': name.isEmpty ? 'Walk-in customer' : name,
-        'customer_phone': _customer['phone'],
+        'customer_phone': phone.isEmpty ? null : phone,
         'total': total,
-        'status': _payment == null ? 'unpaid' : 'paid',
-        'payment_method': _payment,
+        'membership_paid': fromCard,
+        'status': covered || _payment != null ? 'paid' : 'unpaid',
+        'payment_method': covered ? 'membership' : _payment,
         'issued_at': DateTime.now().toUtc().toIso8601String(),
         'items': items,
       },
@@ -77,8 +98,10 @@ class _NewBillScreenState extends State<NewBillScreen> {
   Widget build(BuildContext context) {
     final app = AppScope.of(context);
     final desk = FrontDesk(app);
+    final billed = _billed(desk);
     final total = _total(desk);
-    final subtotal = desk.estimate(_services);
+    final fromCard = _fromCard(total);
+    final toCollect = (total - fromCard).clamp(0, double.infinity);
     return Scaffold(
       backgroundColor: Brand.page,
       appBar: AppBar(title: const Text('New bill')),
@@ -116,15 +139,25 @@ class _NewBillScreenState extends State<NewBillScreen> {
                     hint: 'It counts for their commission.',
                     child: WhoDidIt(desk: desk, serviceIds: _services, value: _who, onChanged: (v) => setState(() => _who = v)),
                   ),
+                MembershipCards(
+                  contactId: _customer['contact_id'] == null ? null : '${_customer['contact_id']}',
+                  phone: '${_customer['phone'] ?? ''}',
+                  value: _card,
+                  onChanged: (c) => setState(() => _card = c),
+                  effect: cardEffect(free: billed.free, discount: billed.discount, credit: fromCard),
+                ),
                 BillStep(
                   number: _services.isNotEmpty && desk.staff.isNotEmpty ? 4 : 3,
                   title: 'Discount',
-                  child: DiscountPicker(value: _discount, max: subtotal, onChanged: (v) => setState(() => _discount = v)),
+                  // Prices before GST: the server never takes off more than that
+                  child: DiscountPicker(value: _discount, max: desk.discountRoom(billed.lines), onChanged: (v) => setState(() => _discount = v)),
                 ),
                 BillStep(
                   number: _services.isNotEmpty && desk.staff.isNotEmpty ? 5 : 4,
                   title: 'Paid by',
-                  child: PaymentTiles(value: _payment, onChanged: (v) => setState(() => _payment = v)),
+                  child: fromCard > 0 && toCollect <= 0
+                      ? const Text('Nothing to collect. The membership card pays it.', style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.w600, color: Brand.blue))
+                      : PaymentTiles(value: _payment, onChanged: (v) => setState(() => _payment = v)),
                 ),
                 WhatsAppSwitch(
                   value: _whatsapp,
@@ -133,10 +166,11 @@ class _NewBillScreenState extends State<NewBillScreen> {
                 ),
                 BillSummary(
                   desk: desk,
-                  lines: [for (final id in _services) ?desk.service(id)],
+                  lines: billed.lines,
                   who: [for (final id in _services) if (desk.service(id) != null) _who[id]],
                   discount: _discount,
                   total: total,
+                  paid: [('Paid from membership', fromCard)],
                 ),
               ],
             ),
@@ -145,7 +179,8 @@ class _NewBillScreenState extends State<NewBillScreen> {
       ),
       bottomNavigationBar: BillBar(
         count: _services.length,
-        total: total,
+        total: toCollect,
+        caption: fromCard <= 0 ? null : (toCollect <= 0 ? 'Paid by the membership card' : '${_services.length} service${_services.length == 1 ? '' : 's'} · to collect'),
         label: 'Save bill',
         icon: Icons.check,
         onPressed: _saving || _services.isEmpty ? null : () => _save(desk),

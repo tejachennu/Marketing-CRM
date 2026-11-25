@@ -24,6 +24,10 @@ class LocalStore {
   }
 
   // ── Cache ──
+
+  /// When each list was saved, kept in memory too, so checking it does not read the whole list again.
+  final _savedAt = <String, DateTime?>{};
+
   Map<String, dynamic>? read(String key) {
     final raw = _cache.get(key);
     if (raw == null) return null;
@@ -34,9 +38,27 @@ class LocalStore {
     }
   }
 
-  Future<void> write(String key, Map<String, dynamic> value) => _cache.put(key, jsonEncode({...value, '_savedAt': DateTime.now().toIso8601String()}));
+  Future<void> write(String key, Map<String, dynamic> value) {
+    final now = DateTime.now();
+    _savedAt[key] = now;
+    return _cache.put(key, jsonEncode({...value, '_savedAt': now.toIso8601String()}));
+  }
 
-  DateTime? savedAt(String key) => DateTime.tryParse(read(key)?['_savedAt']?.toString() ?? '');
+  DateTime? savedAt(String key) => _savedAt.putIfAbsent(key, () => DateTime.tryParse(read(key)?['_savedAt']?.toString() ?? ''));
+
+  Future<void> remove(String key) {
+    _savedAt.remove(key);
+    return _cache.delete(key);
+  }
+
+  /// Remove every saved list whose key matches (old chats' messages, so the phone does not fill up).
+  Future<void> removeWhere(bool Function(String key) test) async {
+    final keys = [for (final key in _cache.keys) if (key is String && test(key)) key];
+    for (final key in keys) {
+      _savedAt.remove(key);
+    }
+    if (keys.isNotEmpty) await _cache.deleteAll(keys);
+  }
 
   // ── Outbox ──
   List<OutboxItem> outbox() {
@@ -52,11 +74,26 @@ class LocalStore {
   String? serverId(String localId) => _ids.get(localId);
   Future<void> mapId(String localId, String serverId) => _ids.put(localId, serverId);
 
-  /// Signing out: everything goes except where to sign in (so the next sign-in works offline-first).
-  Future<void> clear() async {
-    final config = _cache.get('config');
+  /// Kept when signing out: where to sign in (so the next sign-in works offline-first), and a notification address
+  /// still to be dropped (see Push.dropOldAddress).
+  static const _keep = ['config', 'push_drop'];
+
+  /// Signing out: everything goes except [_keep]. [keepOutbox]: the server ended the sign-in, so changes still waiting
+  /// stay (with who made them, in 'outbox_owner') for that person's next sign-in.
+  Future<void> clear({bool keepOutbox = false}) async {
+    final kept = {
+      for (final key in [..._keep, if (keepOutbox) 'outbox_owner']) key: _cache.get(key),
+    };
     await _cache.clear();
-    if (config != null) await _cache.put('config', config);
+    _savedAt.clear();
+    for (final entry in kept.entries) {
+      if (entry.value != null) await _cache.put(entry.key, entry.value!);
+    }
+    if (!keepOutbox) await clearOutbox();
+  }
+
+  /// Drop every change waiting to be sent (someone else signed in on this phone).
+  Future<void> clearOutbox() async {
     await _outbox.clear();
     await _ids.clear();
   }

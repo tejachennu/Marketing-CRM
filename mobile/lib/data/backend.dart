@@ -27,14 +27,21 @@ class OfflineException implements Exception {
   String toString() => message;
 }
 
+/// The server got the request but did not answer in time: it may still be doing it (so do not simply send it again).
+class SlowServerException extends OfflineException {
+  SlowServerException([super.message = 'It is taking longer than usual. Check in a minute before trying again.']);
+}
+
 /// How the app talks to the WAMA CRM server. The real one goes over HTTP; the demo one answers
 /// from sample data, so every screen can be seen without an account.
 abstract class Backend {
   Future<Map<String, dynamic>> get(String path, [Map<String, String>? query]);
-  Future<Map<String, dynamic>> send(String method, String path, Map<String, dynamic> body);
+
+  /// [timeout]: how long to wait for the answer (by default, longer for the routes that take longer, see HttpBackend).
+  Future<Map<String, dynamic>> send(String method, String path, Map<String, dynamic> body, {Duration? timeout});
 
   /// Send a file (a photo or document for a chat). Returns the server's reply ({ url, filename }).
-  Future<Map<String, dynamic>> upload(String path, List<int> bytes, String filename, {Map<String, String> fields = const {}});
+  Future<Map<String, dynamic>> upload(String path, List<int> bytes, String filename, {Map<String, String> fields = const {}, Duration? timeout});
 
   /// Put a big file straight into storage with a one-time upload pass the server handed out
   /// (/api/knowledge/upload-url), so it does not go through the server's size limit.
@@ -57,20 +64,75 @@ class HttpBackend implements Backend {
   final SupabaseClient client;
   static const _timeout = Duration(seconds: 25);
 
-  Map<String, String> _headers() {
-    final token = client.auth.currentSession?.accessToken;
-    return {'Content-Type': 'application/json', if (token != null) 'Authorization': 'Bearer $token'};
+  /// Routes that take longer than most (publishing an Instagram post, switching a connector on, AI writing,
+  /// a counter action that sends the bill on WhatsApp). Checked in order, so the longer, exact ones come first.
+  static const _slowRoutes = {
+    '/api/instagram/posts': 90,
+    '/api/instagram/': 65,
+    '/api/connectors': 65,
+    '/api/billing': 65,
+    '/api/salon/tick': 65,
+    '/api/commerce/products/import': 65,
+    '/api/commerce/shipping/ship': 65,
+    '/api/ai/': 40,
+    '/api/whatsapp-templates/ai-draft': 40,
+    '/api/salon/booking-flow/': 40,
+    '/api/knowledge/gaps': 40,
+    '/api/commerce/products/describe': 40,
+    '/api/salon/act': 40,
+    '/api/salon/templates': 40,
+    '/api/messages/send': 40,
+  };
+
+  /// How long to wait for this route's answer.
+  static Duration timeoutFor(String path) {
+    for (final route in _slowRoutes.entries) {
+      if (path.startsWith(route.key)) return Duration(seconds: route.value);
+    }
+    return _timeout;
   }
 
-  Future<Map<String, dynamic>> _read(Future<http.Response> request) async {
-    final http.Response res;
+  /// A file has to go up over the phone's connection first: allow more time for a bigger one (a few MB on slow mobile data).
+  static Duration uploadTimeout(int bytes) => Duration(seconds: (45 + bytes ~/ 40000).clamp(45, 300));
+
+  /// The sign-in, renewed first when it has run out (the phone was away for more than an hour).
+  Future<Map<String, String>> _headers() async {
+    String? token;
     try {
-      res = await request.timeout(_timeout);
-    } on TimeoutException {
-      throw OfflineException('The server took too long to answer.');
+      token = (await client.auth.getSession())?.accessToken;
+    } on AuthRetryableFetchException {
+      throw OfflineException();
+    } on AuthException {
+      token = null; // could not be renewed: the server answers "sign in again"
     } catch (_) {
       throw OfflineException();
     }
+    return {'Content-Type': 'application/json', if (token != null) 'Authorization': 'Bearer $token'};
+  }
+
+  /// Renew the sign-in once after the server said it has run out. False when it cannot be renewed.
+  Future<bool> _renewSession() async {
+    if (client.auth.currentSession == null) return false;
+    try {
+      await client.auth.refreshSession();
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<Map<String, dynamic>> _read(Future<http.Response> Function(Map<String, String> headers) request, Duration timeout, {bool renewed = false}) async {
+    final headers = await _headers();
+    final http.Response res;
+    try {
+      res = await request(headers).timeout(timeout);
+    } on TimeoutException {
+      throw SlowServerException();
+    } catch (_) {
+      throw OfflineException();
+    }
+    // The sign-in ran out between the check and the answer: renew it and ask once more
+    if (res.statusCode == 401 && !renewed && await _renewSession()) return _read(request, timeout, renewed: true);
     Map<String, dynamic> data = {};
     try {
       final decoded = jsonDecode(res.body);
@@ -85,27 +147,35 @@ class HttpBackend implements Backend {
   }
 
   @override
-  Future<Map<String, dynamic>> get(String path, [Map<String, String>? query]) => _read(http.get(Uri.parse('${AppConfig.apiBase}$path').replace(queryParameters: query), headers: _headers()));
+  Future<Map<String, dynamic>> get(String path, [Map<String, String>? query]) =>
+      _read((headers) => http.get(Uri.parse('${AppConfig.apiBase}$path').replace(queryParameters: query), headers: headers), timeoutFor(path));
 
   @override
-  Future<Map<String, dynamic>> send(String method, String path, Map<String, dynamic> body) {
+  Future<Map<String, dynamic>> send(String method, String path, Map<String, dynamic> body, {Duration? timeout}) {
     final uri = Uri.parse('${AppConfig.apiBase}$path');
     final payload = jsonEncode(body);
-    return _read(switch (method) {
-      'PUT' => http.put(uri, headers: _headers(), body: payload),
-      'PATCH' => http.patch(uri, headers: _headers(), body: payload),
-      'DELETE' => http.delete(uri, headers: _headers(), body: payload),
-      _ => http.post(uri, headers: _headers(), body: payload),
-    });
+    return _read(
+      (headers) => switch (method) {
+        'PUT' => http.put(uri, headers: headers, body: payload),
+        'PATCH' => http.patch(uri, headers: headers, body: payload),
+        'DELETE' => http.delete(uri, headers: headers, body: payload),
+        _ => http.post(uri, headers: headers, body: payload),
+      },
+      timeout ?? timeoutFor(path),
+    );
   }
 
   @override
-  Future<Map<String, dynamic>> upload(String path, List<int> bytes, String filename, {Map<String, String> fields = const {}}) {
-    final request = http.MultipartRequest('POST', Uri.parse('${AppConfig.apiBase}$path'))
-      ..headers.addAll({..._headers()}..remove('Content-Type'))
-      ..fields.addAll(fields)
-      ..files.add(http.MultipartFile.fromBytes('file', bytes, filename: filename));
-    return _read(request.send().then(http.Response.fromStream));
+  Future<Map<String, dynamic>> upload(String path, List<int> bytes, String filename, {Map<String, String> fields = const {}, Duration? timeout}) {
+    Future<http.Response> request(Map<String, String> headers) {
+      final request = http.MultipartRequest('POST', Uri.parse('${AppConfig.apiBase}$path'))
+        ..headers.addAll({...headers}..remove('Content-Type'))
+        ..fields.addAll(fields)
+        ..files.add(http.MultipartFile.fromBytes('file', bytes, filename: filename));
+      return request.send().then(http.Response.fromStream);
+    }
+
+    return _read(request, timeout ?? uploadTimeout(bytes.length));
   }
 
   @override
@@ -170,8 +240,17 @@ class HttpBackend implements Backend {
   @override
   Future<void> signOut() async {
     stopLive();
-    await client.auth.signOut();
+    try {
+      await client.auth.signOut();
+    } catch (_) {
+      // No internet: the sign-in is already gone from this phone; the server forgets it when it runs out
+    }
   }
+
+  /// The sign-in ended without the app asking (it could not be renewed: password changed on the web, removed from the team).
+  StreamSubscription<AuthState> whenSignedOut(void Function() then) => client.auth.onAuthStateChange.listen((state) {
+    if (state.event == AuthChangeEvent.signedOut) then();
+  }, onError: (Object _) {});
 
   RealtimeChannel? _channel;
 

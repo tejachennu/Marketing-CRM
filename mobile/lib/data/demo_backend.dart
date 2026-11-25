@@ -743,7 +743,7 @@ class DemoBackend implements Backend {
   }
 
   @override
-  Future<Map<String, dynamic>> upload(String path, List<int> bytes, String filename, {Map<String, String> fields = const {}}) async {
+  Future<Map<String, dynamic>> upload(String path, List<int> bytes, String filename, {Map<String, String> fields = const {}, Duration? timeout}) async {
     await _wait();
     if (path == '/api/whatsapp-templates/upload') return {'handle': '4::demo-sample-$filename'};
     if (path == '/api/salon/logo') {
@@ -754,7 +754,7 @@ class DemoBackend implements Backend {
   }
 
   @override
-  Future<Map<String, dynamic>> send(String method, String path, Map<String, dynamic> body) async {
+  Future<Map<String, dynamic>> send(String method, String path, Map<String, dynamic> body, {Duration? timeout}) async {
     await _wait();
     _refuseWhenPaused(method, path);
     // Paying in the demo opens the workspace again

@@ -6,6 +6,7 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 
 import 'backend.dart';
+import 'local_store.dart';
 import 'notifier.dart';
 
 /// Pop-up notifications when the app is closed or in the background (Firebase Cloud Messaging).
@@ -47,8 +48,10 @@ class Push {
   }
 
   /// Start once someone is signed in. [config] is the `firebase` part of the server's answer.
-  Future<void> start(Backend backend, Map? config) async {
+  Future<void> start(Backend backend, Map? config, {LocalStore? store}) async {
     if (kIsWeb || backend is! HttpBackend) return;
+    // An address left from a sign-out without internet goes first, so this person gets a fresh one
+    if (store != null) await dropOldAddress(store);
     if (config == null) {
       status = 'Pop-ups are not set up on the server yet.';
       return;
@@ -67,15 +70,18 @@ class Push {
         // A notification was tapped: open what it is about
         _opened = FirebaseMessaging.onMessageOpenedApp.listen(_open);
         // With the app open, Android shows nothing for a push: show it as the banner at the top.
-        // Messages and bookings already arrive through the live updates, so only the others.
+        // Chat messages already arrive through the live updates, so not those. Bookings show from here
+        // (the app's own booking check stays quiet while pop-ups work, so nothing shows twice).
         _foreground = FirebaseMessaging.onMessage.listen((message) {
           final kind = '${message.data['kind'] ?? ''}';
+          final open = '${message.data['open'] ?? ''}';
           final note = message.notification;
-          if (note == null || kind == 'message' || kind == 'booking') return;
-          Notifier.instance.notify(Notice(title: note.title ?? 'WAMA CRM', body: note.body ?? '', open: '${message.data['open'] ?? ''}'));
+          if (note == null || (kind == 'message' && open.startsWith('chat:'))) return;
+          Notifier.instance.notify(Notice(title: note.title ?? 'WAMA CRM', body: note.body ?? '', open: open));
         });
+        // The app was closed and a notification opened it (the tap waits until the screens are ready)
         final first = await messaging.getInitialMessage();
-        if (first != null) Timer(const Duration(milliseconds: 600), () => _open(first));
+        if (first != null) _open(first);
         // The server sends to the phone's FCM token (FCM HTTP v1 `token`), which these two give
         // ignore: deprecated_member_use
         _refresh = messaging.onTokenRefresh.listen((token) => unawaited(_register(backend, token)));
@@ -89,7 +95,7 @@ class Push {
         await _register(backend, token);
       }
     } catch (e) {
-      status = 'Pop-ups could not start on this phone: $e';
+      status = 'Pop-ups could not start on this phone. Check the internet and Google Play services, then open the app again.';
       debugPrint('Push notifications are not available: $e');
     }
   }
@@ -117,19 +123,42 @@ class Push {
     } catch (e) {
       _ready = false;
       Notifier.instance.pushOn = false;
-      status = 'This phone could not be registered for pop-ups: $e';
+      status = 'This phone could not be registered for pop-ups. Check the internet, then open the app again.';
       debugPrint('This phone could not be registered for notifications: $e');
     }
   }
 
-  /// Before signing out: this phone stops getting that person's notifications.
-  Future<void> stop(Backend backend) async {
+  /// Before signing out: this phone stops getting that person's notifications. When the server cannot be told
+  /// (no internet), Google is asked to forget this phone's address instead, now or once the internet is back.
+  Future<void> stop(Backend backend, LocalStore store) async {
     final token = _token;
     _token = null;
     if (token == null) return;
     try {
       await backend.send('DELETE', '/api/mobile/devices', {'token': token}).timeout(const Duration(seconds: 6));
+      return;
     } catch (_) {}
+    await store.write('push_drop', {'pending': true});
+    unawaited(dropOldAddress(store));
+  }
+
+  Future<void>? _dropping;
+
+  /// After a sign-out the server could not be told about, Google forgets this phone's notification address,
+  /// so the old workspace's customer messages stop coming. Kept on the phone until it works.
+  Future<void> dropOldAddress(LocalStore store) => _dropping ??= _dropOldAddress(store).whenComplete(() => _dropping = null);
+
+  Future<void> _dropOldAddress(LocalStore store) async {
+    if (store.read('push_drop')?['pending'] != true) return;
+    try {
+      if (!await ensureFirebase(store.read('config')?['firebase'] as Map?)) return;
+      // The server sends to the FCM token (see getToken above), so that is what goes
+      // ignore: deprecated_member_use
+      await FirebaseMessaging.instance.deleteToken().timeout(const Duration(seconds: 10));
+      await store.write('push_drop', {'pending': false});
+    } catch (e) {
+      debugPrint('The old notification address could not be dropped yet: $e');
+    }
   }
 
   void dispose() {

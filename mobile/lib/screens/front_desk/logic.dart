@@ -70,16 +70,48 @@ class FrontDesk {
   /// The same, for lines already on a visit (each with its own price and GST rate).
   num estimateLines(List<Map<String, dynamic>> items, {num discountPercent = 0, num discountAmount = 0}) {
     final subtotal = items.fold<num>(0, (sum, s) => sum + (num.tryParse('${s['price']}') ?? 0));
+    if (hasGst && pricesIncludeTax) return _includedGstTotal(items, discountPercent: discountPercent, discountAmount: discountAmount);
     final discount = discountPercent > 0 ? subtotal * discountPercent / 100 : discountAmount.clamp(0, subtotal);
     final taxable = subtotal - discount;
-    if (!hasGst || pricesIncludeTax || subtotal == 0) return taxable;
+    if (!hasGst || subtotal == 0) return taxable;
     final tax = items.fold<num>(0, (sum, s) => sum + (num.tryParse('${s['price']}') ?? 0) * (taxable / subtotal) * (num.tryParse('${s['tax_rate']}') ?? 0) / 100);
     return ((taxable + tax) * 100).round() / 100;
+  }
+
+  /// The most a rupee discount can take off these lines: their prices before GST (the server never takes off more).
+  num discountRoom(List<Map<String, dynamic>> items) => items.fold<num>(0, (sum, s) {
+    final price = num.tryParse('${s['price']}') ?? 0;
+    final rate = (num.tryParse('${s['tax_rate']}') ?? 0).clamp(0, 28);
+    return sum + (hasGst && pricesIncludeTax ? ((price / (1 + rate / 100)) * 100).floor() / 100 : price);
+  });
+
+  /// Prices that include GST, worked out as the server does (computeInvoice): GST comes out of each price first,
+  /// the discount comes off what is left (shared by price), then GST goes back on. So ₹100 off a ₹1,180 service at
+  /// 18% comes to ₹1,062, not ₹1,080.
+  num _includedGstTotal(List<Map<String, dynamic>> items, {num discountPercent = 0, num discountAmount = 0}) {
+    num round2(num v) => (v * 100).round() / 100;
+    num rate(Map s) => (num.tryParse('${s['tax_rate']}') ?? 0).clamp(0, 28);
+    final bases = [for (final s in items) (num.tryParse('${s['price']}') ?? 0) / (1 + rate(s) / 100)];
+    final base = bases.fold<num>(0, (sum, b) => sum + b);
+    final discount = discountPercent > 0 ? base * discountPercent.clamp(0, 100) / 100 : discountAmount.clamp(0, base);
+    num total = 0;
+    for (var i = 0; i < items.length; i++) {
+      final share = base > 0 ? discount * bases[i] / base : 0;
+      final taxable = round2(bases[i] - share);
+      total += taxable + round2(taxable * rate(items[i]) / 100);
+    }
+    return round2(total);
   }
 
   // ── Today ──
 
   Map<String, dynamic> get _day => app.cached(AppState.dayKey(date)) ?? const {};
+
+  /// Made on this phone, sent, and already in the server's list: shown once, as the server's.
+  bool _inList(String? localId, Set<String> serverIds) {
+    final id = localId == null ? null : app.store.serverId(localId);
+    return id != null && serverIds.contains(id);
+  }
 
   /// Pending status changes, laid over the appointment they are about.
   Map<String, String> get _pendingStatus {
@@ -97,10 +129,12 @@ class FrontDesk {
   /// Today's appointments: the server's, plus bookings made on the phone, in time order.
   List<Map<String, dynamic>> get appointments {
     final status = _pendingStatus;
+    final server = [for (final a in (_day['appointments'] as List? ?? const [])) Map<String, dynamic>.from(a)];
+    final serverIds = {for (final a in server) '${a['id']}'};
     final list = <Map<String, dynamic>>[
-      for (final a in (_day['appointments'] as List? ?? const [])) Map<String, dynamic>.from(a),
+      ...server,
       for (final item in app.pending('booking'))
-        if (item.body['_preview'] is Map && '${item.body['_preview']['day']}' == date)
+        if (item.body['_preview'] is Map && '${item.body['_preview']['day']}' == date && !_inList(item.localId, serverIds))
           {...Map<String, dynamic>.from(item.body['_preview']), 'id': item.localId, '_outbox': item.id, '_failed': item.error != null && item.state.name == 'failed'},
     ];
     for (final a in list) {
@@ -112,32 +146,72 @@ class FrontDesk {
     return list;
   }
 
+  /// WhatsApp booking requests still waiting, from today on. Always read from today's list (the one kept up to date),
+  /// whatever day is shown, so the Requests tab and the badge on the bottom bar agree.
   List<Map<String, dynamic>> get requests {
     final status = _pendingStatus;
-    return [for (final r in (_day['requests'] as List? ?? const [])) Map<String, dynamic>.from(r)].where((r) => !status.containsKey('${r['id']}')).toList();
+    final today = app.cached(AppState.dayKey(istToday())) ?? const {};
+    return [for (final r in (today['requests'] as List? ?? const [])) Map<String, dynamic>.from(r)].where((r) => !status.containsKey('${r['id']}')).toList();
   }
 
   /// Bills: made on the phone first (waiting to sync), then the server's.
   List<Map<String, dynamic>> get invoices {
+    // Payments and cancellations still waiting to sync (both go in the outbox as 'payment')
     final pendingPay = <String, String>{};
+    final pendingVoid = <String>{};
     for (final item in app.pending('payment')) {
       final action = item.body['action'] as Map? ?? const {};
-      pendingPay['${action['invoice_id']}'] = '${action['payment_method']}';
+      if (action['type'] == 'pay_invoice') pendingPay['${action['invoice_id']}'] = '${action['payment_method']}';
+      if (action['type'] == 'void_invoice') pendingVoid.add('${action['invoice_id']}');
     }
+    final server = [for (final i in ((app.cached(invoicesKey) ?? const {})['invoices'] as List? ?? const [])) Map<String, dynamic>.from(i)];
+    final serverIds = {for (final i in server) '${i['id']}'};
     final local = [
       for (final item in [...app.pending('bill'), ...app.pending('checkout')])
-        if (item.body['_preview'] is Map) {...Map<String, dynamic>.from(item.body['_preview']), 'id': item.localId ?? item.id, '_outbox': item.id, '_failed': item.state.name == 'failed'},
+        if (item.body['_preview'] is Map && !_inList(item.localId, serverIds))
+          {...Map<String, dynamic>.from(item.body['_preview']), 'id': item.localId ?? item.id, '_outbox': item.id, '_failed': item.state.name == 'failed'},
     ];
-    final server = [for (final i in ((app.cached(invoicesKey) ?? const {})['invoices'] as List? ?? const [])) Map<String, dynamic>.from(i)];
     for (final i in server) {
-      final method = pendingPay['${i['id']}'];
-      if (method != null) {
+      final id = '${i['id']}';
+      final method = pendingPay[id];
+      if (pendingVoid.contains(id)) {
+        i['status'] = 'void';
+        i['_changing'] = true;
+      } else if (method != null) {
         i['status'] = 'paid';
         i['payment_method'] = method;
         i['_changing'] = true;
       }
     }
     return [...local.reversed, ...server];
+  }
+
+  /// What a bill still asks the customer for: its total less what a membership card's credit or an online advance
+  /// (paid when booking) already paid, as on the customer's bill page.
+  static num dueOf(Map invoice) {
+    num n(Object? v) => num.tryParse('${v ?? ''}') ?? 0;
+    final due = n(invoice['total']) - n(invoice['membership_paid']) - n(invoice['advance_paid']);
+    return due <= 0 ? 0 : (due * 100).round() / 100;
+  }
+
+  /// Still to collect in the shown dates (bills not paid yet). A long range lists only the latest bills (hidden > 0):
+  /// then the server's total for the whole range is used, with the listed bills counted as the phone shows them.
+  ({num amount, int count, int hidden}) get toCollect {
+    final unpaid = invoices.where((i) => i['status'] == 'unpaid').toList();
+    var amount = unpaid.fold<num>(0, (sum, i) => sum + dueOf(i));
+    var count = unpaid.length;
+    final saved = app.cached(invoicesKey) ?? const {};
+    final hidden = (saved['more'] as num?)?.toInt() ?? 0;
+    final summary = billsSummary;
+    if (hidden > 0 && summary['unpaidAmount'] is num) {
+      final listed = [
+        for (final i in (saved['invoices'] as List? ?? const []))
+          if ((i as Map)['status'] == 'unpaid') i,
+      ];
+      amount += (summary['unpaidAmount'] as num) - listed.fold<num>(0, (sum, i) => sum + (num.tryParse('${i['total']}') ?? 0));
+      count += ((summary['unpaidCount'] as num?)?.toInt() ?? listed.length) - listed.length;
+    }
+    return (amount: amount < 0 ? 0 : amount, count: count < 0 ? 0 : count, hidden: hidden);
   }
 
   num get collectedToday {
@@ -159,4 +233,33 @@ const statusLabels = {
   'declined': 'Declined',
 };
 
-const paymentLabels = {'cash': 'Cash', 'upi': 'UPI', 'card': 'Card'};
+const paymentLabels = {'cash': 'Cash', 'upi': 'UPI', 'card': 'Card', 'online': 'Online', 'membership': 'Membership'};
+
+/// What a membership card does to a bill's lines, as the server does it (applyCard): a service it has free sessions
+/// left for costs nothing, then the card's discount comes off the rest. Its credit is used later, on the total.
+({List<Map<String, dynamic>> lines, int free, num discount}) applyMemberCard(Map card, List<Map<String, dynamic>> lines) {
+  num n(Object? v) => num.tryParse('${v ?? ''}') ?? 0;
+  final left = <String, num>{
+    for (final s in (card['sessions'] as List? ?? const [])) '${(s as Map)['service_id']}': n(s['total']) - n(s['used']),
+  };
+  final pct = n((card['plan'] as Map?)?['discount_percent']).clamp(0, 100);
+  var free = 0;
+  num discount = 0;
+  final out = <Map<String, dynamic>>[];
+  for (final line in lines) {
+    final id = '${line['service_id'] ?? line['id'] ?? ''}';
+    final price = n(line['price']);
+    if (id.isNotEmpty && (left[id] ?? 0) > 0 && price > 0) {
+      left[id] = left[id]! - 1;
+      free++;
+      out.add({...line, 'name': '${line['name']} (membership)', 'price': 0});
+    } else if (pct > 0 && id.isNotEmpty && price > 0) {
+      final cut = (price * (1 - pct / 100) * 100).round() / 100;
+      discount += price - cut;
+      out.add({...line, 'price': cut});
+    } else {
+      out.add(line);
+    }
+  }
+  return (lines: out, free: free, discount: (discount * 100).round() / 100);
+}

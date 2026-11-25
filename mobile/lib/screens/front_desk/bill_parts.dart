@@ -1,5 +1,8 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
+import '../../data/app_state.dart';
 import '../../data/format.dart';
 import '../../ui/theme.dart';
 import '../../ui/widgets.dart';
@@ -10,8 +13,11 @@ import 'logic.dart';
 
 /// One step of the bill on a white card: a number, a title, an optional line under it, then the content.
 class BillStep extends StatelessWidget {
-  const BillStep({super.key, required this.number, required this.title, required this.child, this.hint, this.trailing});
+  const BillStep({super.key, required this.number, required this.title, required this.child, this.hint, this.trailing, this.icon});
   final int number;
+
+  /// Shown in the circle instead of the number (for a step that only some bills have).
+  final IconData? icon;
   final String title;
   final String? hint;
   final Widget? trailing;
@@ -31,7 +37,7 @@ class BillStep extends StatelessWidget {
               height: 26,
               alignment: Alignment.center,
               decoration: const BoxDecoration(color: Brand.blueSoft, shape: BoxShape.circle),
-              child: Text('$number', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Brand.blue)),
+              child: icon != null ? Icon(icon, size: 15, color: Brand.blue) : Text('$number', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Brand.blue)),
             ),
             const SizedBox(width: 10),
             Expanded(child: Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700))),
@@ -91,7 +97,7 @@ class PaymentTiles extends StatelessWidget {
 
 /// The bill as it will be: each service with who did it and its price, then subtotal, discount, GST and the total.
 class BillSummary extends StatelessWidget {
-  const BillSummary({super.key, required this.desk, required this.lines, required this.who, required this.discount, required this.total});
+  const BillSummary({super.key, required this.desk, required this.lines, required this.who, required this.discount, required this.total, this.paid = const []});
   final FrontDesk desk;
 
   /// The services on the bill (name, price)
@@ -102,11 +108,20 @@ class BillSummary extends StatelessWidget {
   final Map<String, num>? discount;
   final num total;
 
+  /// Already paid before this bill (a membership card's credit, money paid online when booking): taken off what is
+  /// still to pay.
+  final List<(String, num)> paid;
+
   @override
   Widget build(BuildContext context) {
     final subtotal = lines.fold<num>(0, (t, s) => t + (num.tryParse('${s['price'] ?? 0}') ?? 0));
-    final off = discount == null ? 0 : (discount!['type'] == 1 ? discount!['value']! : subtotal * discount!['value']! / 100);
-    final gst = total - (subtotal - off);
+    final included = desk.hasGst && desk.pricesIncludeTax;
+    final asked = discount == null ? 0 : (discount!['type'] == 1 ? discount!['value']! : subtotal * discount!['value']! / 100);
+    // Prices with GST in them: the discount comes off before GST, so the bill drops by the discount and its GST
+    final num off = discount == null ? 0 : (included ? (subtotal - total).clamp(0, subtotal) : asked.clamp(0, subtotal));
+    final gst = included ? 0 : (total - (subtotal - off)).clamp(0, double.infinity);
+    final paidBefore = paid.where((p) => p.$2 > 0).toList();
+    final toPay = (total - paidBefore.fold<num>(0, (t, p) => t + p.$2)).clamp(0, double.infinity);
     Widget line(String a, String b, {bool bold = false, Color? color}) => Padding(
       padding: const EdgeInsets.symmetric(vertical: 3),
       child: Row(
@@ -154,11 +169,25 @@ class BillSummary extends StatelessWidget {
           if (lines.isNotEmpty) ...[
             const Padding(padding: EdgeInsets.symmetric(vertical: 8), child: Divider(height: 1)),
             line('Subtotal', formatRupees(subtotal)),
-            if (off > 0) line(discount!['type'] == 1 ? 'Discount' : 'Discount (${discount!['value']}%)', '− ${formatRupees(off)}', color: Brand.blue),
+            if (off > 0)
+              line(
+                discount!['type'] != 1
+                    ? 'Discount (${discount!['value']}%)'
+                    : included
+                    ? 'Discount (${formatRupees(discount!['value'])} before GST)'
+                    : 'Discount',
+                '− ${formatRupees(off)}',
+                color: Brand.blue,
+              ),
             if (desk.hasGst && !desk.pricesIncludeTax && gst > 0.5) line('GST', formatRupees(gst)),
             const Padding(padding: EdgeInsets.symmetric(vertical: 8), child: Divider(height: 1)),
             line('Total', formatRupees(total), bold: true),
             if (desk.hasGst && desk.pricesIncludeTax) const Text('Prices include GST', style: TextStyle(fontSize: 12, color: Brand.muted)),
+            if (paidBefore.isNotEmpty) ...[
+              const SizedBox(height: 6),
+              for (final p in paidBefore) line(p.$1, '− ${formatRupees(p.$2)}', color: Brand.blue),
+              line(toPay <= 0 ? 'Nothing to collect' : 'To collect now', formatRupees(toPay), bold: true),
+            ],
           ],
         ],
       ),
@@ -168,9 +197,12 @@ class BillSummary extends StatelessWidget {
 
 /// The bottom bar of a bill: what it comes to, and the button.
 class BillBar extends StatelessWidget {
-  const BillBar({super.key, required this.count, required this.total, required this.label, required this.onPressed, this.icon = Icons.receipt_long});
+  const BillBar({super.key, required this.count, required this.total, required this.label, required this.onPressed, this.icon = Icons.receipt_long, this.caption});
   final int count;
   final num total;
+
+  /// The words over the amount (default "2 services · total").
+  final String? caption;
   final String label;
   final IconData icon;
   final VoidCallback? onPressed;
@@ -191,7 +223,7 @@ class BillBar extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('$count service${count == 1 ? '' : 's'} · total', style: const TextStyle(fontSize: 12.5, color: Brand.muted)),
+                Text(caption ?? '$count service${count == 1 ? '' : 's'} · total', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12.5, color: Brand.muted)),
                 FittedBox(
                   fit: BoxFit.scaleDown,
                   alignment: Alignment.centerLeft,
@@ -311,4 +343,166 @@ class PersonPill extends StatelessWidget {
       ),
     );
   }
+}
+
+/// The customer's membership cards that can be used today, to take off the bill (free sessions, discount, credit).
+/// Shown only when online and the customer has some; the first card is picked, as on the web.
+class MembershipCards extends StatefulWidget {
+  const MembershipCards({super.key, required this.contactId, required this.phone, required this.value, required this.onChanged, this.effect});
+  final String? contactId;
+  final String phone;
+
+  /// The picked card, or null.
+  final Map<String, dynamic>? value;
+  final ValueChanged<Map<String, dynamic>?> onChanged;
+
+  /// What the picked card takes off, in words ("1 service free · ₹300 from credit").
+  final String? effect;
+  @override
+  State<MembershipCards> createState() => _MembershipCardsState();
+}
+
+class _MembershipCardsState extends State<MembershipCards> {
+  List<Map<String, dynamic>> _cards = const [];
+  Timer? _debounce;
+  String _asked = '';
+  int _seq = 0;
+
+  static String _last10(Object? phone) {
+    final digits = '${phone ?? ''}'.replaceAll(RegExp(r'\D'), '');
+    return digits.length > 10 ? digits.substring(digits.length - 10) : digits;
+  }
+
+  /// Usable today (not cancelled, started, not ended) and this customer's, as the server checks on the bill.
+  bool _usable(Map c) {
+    final now = DateTime.now();
+    final starts = DateTime.tryParse('${c['starts_at'] ?? ''}');
+    final ends = DateTime.tryParse('${c['expires_at'] ?? ''}');
+    if (c['status'] == 'cancelled' || (ends != null && !ends.isAfter(now)) || (starts != null && starts.isAfter(now))) return false;
+    final id = widget.contactId ?? '';
+    if (id.isNotEmpty && '${c['contact_id'] ?? ''}' == id) return true;
+    final phone = _last10(widget.phone);
+    return phone.length == 10 && _last10(c['customer_phone']) == phone;
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _look());
+  }
+
+  @override
+  void didUpdateWidget(MembershipCards old) {
+    super.didUpdateWidget(old);
+    if (old.contactId != widget.contactId || old.phone != widget.phone) _look();
+  }
+
+  @override
+  void dispose() {
+    _debounce?.cancel();
+    super.dispose();
+  }
+
+  void _look() {
+    _debounce?.cancel();
+    final who = '${widget.contactId ?? ''}|${_last10(widget.phone)}';
+    if (who == _asked) return;
+    _asked = who;
+    final seq = ++_seq;
+    if ((widget.contactId ?? '').isEmpty && _last10(widget.phone).length < 10) {
+      if (_cards.isNotEmpty) setState(() => _cards = const []);
+      if (widget.value != null) widget.onChanged(null);
+      return;
+    }
+    _debounce = Timer(const Duration(milliseconds: 400), () async {
+      final app = AppScope.read(context);
+      if (!app.online) return;
+      try {
+        final data = await app.backend.get('/api/salon/memberships', {'organizationId': app.orgId, 'view': 'customer', 'contact_id': widget.contactId ?? '', 'phone': widget.phone});
+        if (!mounted || seq != _seq) return;
+        final cards = [
+          for (final c in (data['cards'] as List? ?? const []))
+            if (_usable(c as Map)) Map<String, dynamic>.from(c),
+        ];
+        setState(() => _cards = cards);
+        final keep = cards.any((c) => c['id'] == widget.value?['id']);
+        if (!keep) widget.onChanged(cards.isEmpty ? null : cards.first);
+      } catch (_) {
+        // No cards shown: the bill is made without one
+      }
+    });
+  }
+
+  String _left(Map c) {
+    num n(Object? v) => num.tryParse('${v ?? ''}') ?? 0;
+    final sessions = [for (final s in (c['sessions'] as List? ?? const [])) n((s as Map)['total']) - n(s['used'])].fold<num>(0, (a, b) => a + b);
+    final off = n((c['plan'] as Map?)?['discount_percent']);
+    return [
+      if (n(c['credit_balance']) > 0) '${formatRupees(c['credit_balance'])} credit',
+      if ((c['sessions'] as List? ?? const []).isNotEmpty) '$sessions session${sessions == 1 ? '' : 's'} left',
+      if (off > 0) '${off.toInt()}% off',
+    ].join(' · ');
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_cards.isEmpty) return const SizedBox.shrink();
+    return BillStep(
+      number: 0,
+      icon: Icons.card_membership,
+      title: 'Membership card',
+      hint: 'Tap to use it on this bill, or tap again to bill without it.',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          for (final c in _cards)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Material(
+                color: widget.value?['id'] == c['id'] ? Brand.bubble : Colors.white,
+                borderRadius: BorderRadius.circular(12),
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(12),
+                  onTap: () => widget.onChanged(widget.value?['id'] == c['id'] ? null : c),
+                  child: Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: widget.value?['id'] == c['id'] ? Brand.blue : Brand.border, width: widget.value?['id'] == c['id'] ? 1.6 : 1),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(widget.value?['id'] == c['id'] ? Icons.check_circle : Icons.radio_button_off, color: widget.value?['id'] == c['id'] ? Brand.blue : Brand.faint),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text('${(c['plan'] as Map?)?['name'] ?? 'Membership'} · ${c['card_number'] ?? ''}', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w700)),
+                              if (_left(c).isNotEmpty) Text(_left(c), style: const TextStyle(fontSize: 12.5, color: Brand.muted)),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          if (widget.value != null && (widget.effect ?? '').isNotEmpty)
+            Text(widget.effect!, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Brand.blue)),
+        ],
+      ),
+    );
+  }
+}
+
+/// What a membership card takes off a bill, in words: "1 service free · ₹120 off · ₹300 from credit".
+String cardEffect({required int free, required num discount, required num credit}) {
+  final parts = [
+    if (free > 0) '$free service${free == 1 ? '' : 's'} free',
+    if (discount > 0.5) '${formatRupees(discount)} off',
+    if (credit > 0) '${formatRupees(credit)} from credit',
+  ];
+  return parts.isEmpty ? 'Nothing on this card applies to these services.' : parts.join(' · ');
 }

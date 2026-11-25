@@ -20,19 +20,41 @@ class _NewBookingScreenState extends State<NewBookingScreen> {
   Map<String, dynamic> _customer = const {};
   List<String> _services = [];
   String? _staff;
-  int _dayOffset = 0;
+  int? _dayOffset;
   String? _time;
   bool _tried = false;
   final _notes = TextEditingController();
 
-  DateTime get _day => istNow().add(Duration(days: _dayOffset));
+  /// Today when the screen opened: the day chips and the picked day count from it, so a booking made just after
+  /// midnight still lands on the day that was tapped.
+  final DateTime _today = istNow();
+
+  /// The business's hours and closed days (Setup), 10:00 am to 9:00 pm when not set.
+  Map<String, dynamic> _settings = const {};
+  int _minutes(Object? hhmm, int fallback) {
+    final p = '${hhmm ?? ''}'.split(':');
+    return p.length < 2 ? fallback : (int.tryParse(p[0]) ?? 0) * 60 + (int.tryParse(p[1]) ?? 0);
+  }
+
+  /// 0 = Sunday, as the server keeps closed days.
+  bool _closedOn(int offset) {
+    final closed = [for (final d in (_settings['closed_weekdays'] as List? ?? const [])) (d as num).toInt()];
+    return closed.contains(_today.add(Duration(days: offset)).weekday % 7);
+  }
+
+  /// The picked day, or the first open day from today.
+  int get _offset => _dayOffset ?? List.generate(14, (i) => i).firstWhere((i) => !_closedOn(i), orElse: () => 0);
+
+  DateTime get _day => _today.add(Duration(days: _offset));
 
   List<String> get _times {
     final out = <String>[];
-    final now = istNow();
-    for (var minutes = 10 * 60; minutes <= 20 * 60 + 30; minutes += 30) {
+    final now = DateTime.now();
+    final opens = _minutes(_settings['opens_at'], 10 * 60), closes = _minutes(_settings['closes_at'], 21 * 60);
+    for (var minutes = opens; minutes + 30 <= closes; minutes += 30) {
       final h = minutes ~/ 60, m = minutes % 60;
-      if (_dayOffset == 0 && (h < now.hour || (h == now.hour && m <= now.minute))) continue;
+      // Times already gone are left out (checked against the clock, so the list is right on any day)
+      if (!fromIst(_day, h, m).isAfter(now)) continue;
       out.add('${h.toString().padLeft(2, '0')}:${m.toString().padLeft(2, '0')}');
     }
     return out;
@@ -91,6 +113,7 @@ class _NewBookingScreenState extends State<NewBookingScreen> {
   @override
   Widget build(BuildContext context) {
     final desk = FrontDesk(AppScope.of(context));
+    _settings = desk.settings;
     final times = _times;
     return Scaffold(
       appBar: AppBar(title: const Text('Book a visit')),
@@ -134,9 +157,10 @@ class _NewBookingScreenState extends State<NewBookingScreen> {
                       children: [
                         for (var i = 0; i < 14; i++)
                           _DayChip(
-                            day: istNow().add(Duration(days: i)),
-                            selected: _dayOffset == i,
+                            day: _today.add(Duration(days: i)),
+                            selected: _offset == i,
                             today: i == 0,
+                            closed: _closedOn(i),
                             onTap: () => setState(() {
                               _dayOffset = i;
                               _time = null;
@@ -148,8 +172,10 @@ class _NewBookingScreenState extends State<NewBookingScreen> {
                 ),
                 FormSection(
                   title: 'Time',
-                  child: times.isEmpty
-                      ? const Text('No times left today. Pick another day.', style: TextStyle(color: Brand.muted))
+                  child: _closedOn(_offset)
+                      ? const Text('You are closed on this day (Setup → Hours). Pick another day.', style: TextStyle(color: Brand.muted))
+                      : times.isEmpty
+                      ? Text(_offset == 0 ? 'No times left today. Pick another day.' : 'No times on this day. Pick another day.', style: const TextStyle(color: Brand.muted))
                       : Wrap(
                           spacing: 8,
                           runSpacing: 8,
@@ -185,9 +211,12 @@ class _NewBookingScreenState extends State<NewBookingScreen> {
 }
 
 class _DayChip extends StatelessWidget {
-  const _DayChip({required this.day, required this.selected, required this.today, required this.onTap});
+  const _DayChip({required this.day, required this.selected, required this.today, required this.onTap, this.closed = false});
   final DateTime day;
   final bool selected, today;
+
+  /// The business is closed that day: greyed out, and it cannot be picked.
+  final bool closed;
   final VoidCallback onTap;
   @override
   Widget build(BuildContext context) {
@@ -195,12 +224,12 @@ class _DayChip extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.only(right: 8),
       child: InkWell(
-        onTap: onTap,
+        onTap: closed ? null : onTap,
         borderRadius: BorderRadius.circular(14),
         child: Container(
           width: 56,
           decoration: BoxDecoration(
-            color: selected ? Brand.blue : Colors.white,
+            color: selected ? Brand.blue : (closed ? Brand.page : Colors.white),
             borderRadius: BorderRadius.circular(14),
             border: Border.all(color: selected ? Brand.blue : Brand.border),
           ),
@@ -210,12 +239,12 @@ class _DayChip extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
-                  today ? 'Today' : names[day.weekday - 1],
+                  closed ? 'Closed' : (today ? 'Today' : names[day.weekday - 1]),
                   style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: selected ? Colors.white70 : Brand.muted),
                 ),
                 Text(
                   '${day.day}',
-                  style: TextStyle(fontSize: 19, fontWeight: FontWeight.w700, color: selected ? Colors.white : Brand.navy),
+                  style: TextStyle(fontSize: 19, fontWeight: FontWeight.w700, color: selected ? Colors.white : (closed ? Brand.faint : Brand.navy)),
                 ),
               ],
             ),

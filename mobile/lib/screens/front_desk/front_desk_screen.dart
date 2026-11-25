@@ -28,11 +28,22 @@ class FrontDeskScreen extends StatefulWidget {
 
 class _FrontDeskScreenState extends State<FrontDeskScreen> with SingleTickerProviderStateMixin {
   late final _tabs = TabController(length: 2, vsync: this, initialIndex: widget.initialTab.clamp(0, 1))..addListener(() => setState(() {}));
-  String _date = istToday();
+
+  /// The day picked with the calendar; null = today, so the screen moves on to the new day after midnight.
+  String? _picked;
+  String get _date => _picked ?? istToday();
 
   void _showDay(String date) {
-    setState(() => _date = date);
+    setState(() => _picked = date == istToday() ? null : date);
     AppScope.read(context).load(AppState.dayKey(date), '/api/salon/appointments', query: {'date': date}, force: true);
+  }
+
+  /// Pull to refresh: send what is waiting and bring the lists up to date, and the day shown when it is not today.
+  Future<void> _refresh() async {
+    final app = AppScope.read(context);
+    final date = _date;
+    await app.syncNow();
+    if (date != istToday()) await app.load(AppState.dayKey(date), '/api/salon/appointments', query: {'date': date}, force: true);
   }
 
   Future<void> _pickDay() async {
@@ -129,11 +140,11 @@ class _FrontDeskScreenState extends State<FrontDeskScreen> with SingleTickerProv
               controller: _tabs,
               children: [
                 RefreshIndicator(
-                  onRefresh: app.syncNow,
+                  onRefresh: _refresh,
                   child: app.isLoading(AppState.dayKey(_date)) || app.isLoading('setup') ? const SkeletonCards() : _Today(desk: desk, onDay: _showDay, onPick: _pickDay),
                 ),
                 RefreshIndicator(
-                  onRefresh: app.syncNow,
+                  onRefresh: _refresh,
                   child: _Requests(desk: desk),
                 ),
               ],
@@ -296,7 +307,8 @@ class _Today extends StatelessWidget {
               children: [
                 _Mini(value: '$visits', label: desk.isToday ? 'Visits today' : 'Visits'),
                 _Mini(value: '$waiting', label: 'Still to come'),
-                _Mini(value: shortRupees(desk.collectedToday), label: 'Collected'),
+                // Always today's money (bills are not kept per day on the phone), so it says so on other days
+                _Mini(value: shortRupees(desk.collectedToday), label: desk.isToday ? 'Collected' : 'Collected today'),
               ],
             ),
           ),
@@ -517,7 +529,10 @@ class _AppointmentRow extends StatelessWidget {
                   if (a['payment_status'] == 'paid' && ((a['payment_paid'] as num?) ?? num.tryParse('${a['payment_paid']}') ?? 0) > 0)
                     Padding(
                       padding: const EdgeInsets.only(top: 2),
-                      child: Text('${formatRupees(a['payment_paid'])} paid online', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Brand.blue)),
+                      child: Text(
+                        '${formatRupees(a['payment_paid'])} paid online',
+                        style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Brand.blue),
+                      ),
                     ),
                   const SizedBox(height: 6),
                   Row(
@@ -553,6 +568,7 @@ class _RequestCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final app = AppScope.read(context);
+    final write = app.can('write');
     final r = request;
     final start = DateTime.tryParse('${r['starts_at']}');
     final services = (r['services'] as List? ?? const []).map((s) => s['name']).join(', ');
@@ -578,29 +594,32 @@ class _RequestCard extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 12),
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton(
-                    onPressed: () {
-                      app.counterAction(kind: 'appointment', label: 'Decline ${r['customer_name']}', action: {'type': 'decline_request', 'appointment_id': r['id']});
-                      toast(context, app.online ? 'Request declined.' : 'Declined. It will sync when you are online.');
-                    },
-                    child: const Text('Decline'),
+            if (!write)
+              const Text('Ask a team member who can make changes to approve it.', style: TextStyle(fontSize: 13, color: Brand.muted))
+            else
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () {
+                        app.counterAction(kind: 'appointment', label: 'Decline ${r['customer_name']}', action: {'type': 'decline_request', 'appointment_id': r['id']});
+                        toast(context, app.online ? 'Request declined.' : 'Declined. It will sync when you are online.');
+                      },
+                      child: const Text('Decline'),
+                    ),
                   ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: FilledButton(
-                    onPressed: () {
-                      app.counterAction(kind: 'appointment', label: 'Approve ${r['customer_name']}', action: {'type': 'approve_request', 'appointment_id': r['id']});
-                      toast(context, app.online ? 'Booking approved. The customer gets a WhatsApp.' : 'Approved. It will sync when you are online.');
-                    },
-                    child: const Text('Approve'),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: FilledButton(
+                      onPressed: () {
+                        app.counterAction(kind: 'appointment', label: 'Approve ${r['customer_name']}', action: {'type': 'approve_request', 'appointment_id': r['id']});
+                        toast(context, app.online ? 'Booking approved. The customer gets a WhatsApp.' : 'Approved. It will sync when you are online.');
+                      },
+                      child: const Text('Approve'),
+                    ),
                   ),
-                ),
-              ],
-            ),
+                ],
+              ),
           ],
         ),
       ),
@@ -618,7 +637,8 @@ class _Bills extends StatelessWidget {
   Widget build(BuildContext context) {
     final invoices = desk.invoices;
     final paid = invoices.where((i) => i['status'] == 'paid');
-    final unpaid = invoices.where((i) => i['status'] == 'unpaid');
+    // What is still due (less card credit or money paid online), over the whole range even when the list is cut short
+    final toCollect = desk.toCollect;
     final summary = desk.billsSummary;
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 150),
@@ -636,11 +656,19 @@ class _Bills extends StatelessWidget {
             ),
             const SizedBox(width: 10),
             Expanded(
-              child: _Tile(label: 'To collect', value: shortRupees(unpaid.fold<num>(0, (s, i) => s + (num.tryParse('${i['total']}') ?? 0))), note: '${unpaid.length} unpaid'),
+              child: _Tile(label: 'To collect', value: shortRupees(toCollect.amount), note: '${toCollect.count} unpaid'),
             ),
           ],
         ),
         const SectionLabel('Bills'),
+        if (toCollect.hidden > 0)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Text(
+              'Showing the latest ${invoices.where((i) => i['_outbox'] == null).length} bills. Pick shorter dates to see the other ${toCollect.hidden}.',
+              style: const TextStyle(fontSize: 13, color: Brand.muted),
+            ),
+          ),
         if (invoices.isEmpty)
           const Panel(
             child: EmptyState(icon: Icons.receipt_long_outlined, title: 'No bills yet', text: 'Bills you make here show up straight away, even offline.'),
@@ -736,7 +764,7 @@ class _WhatsAppBookings extends StatelessWidget {
                 Expanded(
                   child: Text('${requests.length} booking request${requests.length == 1 ? '' : 's'} from WhatsApp', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14.5)),
                 ),
-                if (requests.length > 1)
+                if (requests.length > 1 && app.can('write'))
                   TextButton.icon(
                     onPressed: () async {
                       final ok = await showDialog<bool>(

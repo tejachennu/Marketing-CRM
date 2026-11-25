@@ -43,6 +43,22 @@ class AppointmentScreen extends StatelessWidget {
       toast(context, app.online ? '$label.' : '$label. It syncs when you are online.');
     }
 
+    // Cancelling or marking a no-show takes the visit off the list: ask first, so a slip of the thumb does nothing
+    Future<void> confirmThen(String question, String text, String yes, String label, String status) async {
+      final ok = await showDialog<bool>(
+        context: context,
+        builder: (d) => AlertDialog(
+          title: Text(question),
+          content: Text(text),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(d, false), child: const Text('Keep it')),
+            TextButton(onPressed: () => Navigator.pop(d, true), style: TextButton.styleFrom(foregroundColor: Brand.red), child: Text(yes)),
+          ],
+        ),
+      );
+      if (ok == true && context.mounted) act(label, {'type': 'set_status', 'status': status});
+    }
+
     Future<void> checkout() async {
       final billed = await Navigator.push(
         context,
@@ -122,7 +138,7 @@ class AppointmentScreen extends StatelessWidget {
                     ],
                   ),
                 ),
-                if (status == 'booked' || status == 'arrived' || status == 'in_service') ...[
+                if (app.can('write') && (status == 'booked' || status == 'arrived' || status == 'in_service')) ...[
                   const SizedBox(height: 18),
                   if (status == 'booked')
                     FilledButton.icon(onPressed: () => act('Marked arrived', {'type': 'set_status', 'status': 'arrived'}), icon: const Icon(Icons.how_to_reg), label: const Text('Arrived')),
@@ -133,7 +149,10 @@ class AppointmentScreen extends StatelessWidget {
                   Row(
                     children: [
                       Expanded(
-                        child: OutlinedButton(onPressed: () => act('Marked no-show', {'type': 'set_status', 'status': 'no_show'}), child: const Text('No-show')),
+                        child: OutlinedButton(
+                          onPressed: () => confirmThen('Mark as no-show?', '${a['customer_name']} did not come. The visit moves to Done.', 'No-show', 'Marked no-show', 'no_show'),
+                          child: const Text('No-show'),
+                        ),
                       ),
                       const SizedBox(width: 10),
                       Expanded(
@@ -142,11 +161,20 @@ class AppointmentScreen extends StatelessWidget {
                             foregroundColor: Brand.red,
                             side: const BorderSide(color: Color(0xFFF3C7C7)),
                           ),
-                          onPressed: () => act('Cancelled', {'type': 'set_status', 'status': 'cancelled'}),
+                          onPressed: () => confirmThen('Cancel this visit?', 'The booking for ${a['customer_name']} is cancelled. You can book it again from here.', 'Cancel visit', 'Cancelled', 'cancelled'),
                           child: const Text('Cancel visit'),
                         ),
                       ),
                     ],
+                  ),
+                ],
+                // Cancelled or no-show by mistake: put it back as booked
+                if (app.can('write') && (status == 'cancelled' || status == 'no_show') && a['_outbox'] == null && a['_changing'] != true) ...[
+                  const SizedBox(height: 18),
+                  OutlinedButton.icon(
+                    onPressed: () => act('Booked again', {'type': 'set_status', 'status': 'booked'}),
+                    icon: const Icon(Icons.undo),
+                    label: const Text('Book again'),
                   ),
                 ],
                 if (a['_outbox'] != null)

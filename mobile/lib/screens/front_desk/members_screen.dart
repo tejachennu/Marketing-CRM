@@ -105,19 +105,23 @@ class _MembersScreenState extends State<MembersScreen> {
           title: const Text('Members'),
           bottom: const TabBar(tabs: [Tab(text: 'Cards'), Tab(text: 'Plans')]),
         ),
+        // Rebuilt when the tab changes (the tab controller is listened to), so Plans shows "New plan"
         floatingActionButton: Builder(
-          builder: (context) {
-            final onPlans = DefaultTabController.of(context).index == 1;
-            if (!app.can('write') || (onPlans && !manage)) return const SizedBox.shrink();
-            return FloatingActionButton.extended(
-              onPressed: () async {
-                final done = onPlans ? await _openPlan(context, null) : await _sell(context);
-                if (done == true) _load();
-              },
-              icon: Icon(onPlans ? Icons.add : Icons.card_membership),
-              label: Text(onPlans ? 'New plan' : 'Sell'),
-            );
-          },
+          builder: (context) => AnimatedBuilder(
+            animation: DefaultTabController.of(context),
+            builder: (context, _) {
+              final onPlans = DefaultTabController.of(context).index == 1;
+              if (!app.can('write') || (onPlans && !manage)) return const SizedBox.shrink();
+              return FloatingActionButton.extended(
+                onPressed: () async {
+                  final done = onPlans ? await _openPlan(context, null) : await _sell(context);
+                  if (done == true) _load();
+                },
+                icon: Icon(onPlans ? Icons.add : Icons.card_membership),
+                label: Text(onPlans ? 'New plan' : 'Sell'),
+              );
+            },
+          ),
         ),
         body: _error.isNotEmpty && _cards == null
             ? EmptyState(icon: Icons.cloud_off, title: 'Could not load', text: _error, action: TextButton(onPressed: _load, child: const Text('Try again')))
@@ -308,8 +312,18 @@ class _MemberCardScreenState extends State<MemberCardScreen> {
                             : () async {
                                 setState(() => _sending = true);
                                 try {
-                                  await app.ask('/api/salon/memberships', {'action': {'type': 'send_card', 'card_id': card['id']}});
-                                  if (context.mounted) toast(context, 'Card sent on WhatsApp.');
+                                  final r = await app.ask('/api/salon/memberships', {'action': {'type': 'send_card', 'card_id': card['id']}});
+                                  // The server answers even when WhatsApp could not send it (closed 24-hour window, not connected…)
+                                  final whatsapp = r['whatsapp'] as Map?;
+                                  final error = '${whatsapp?['error'] ?? ''}'.trim();
+                                  if (context.mounted) {
+                                    toast(
+                                      context,
+                                      whatsapp?['sent'] == true
+                                          ? 'Card sent on WhatsApp.'
+                                          : (error.isEmpty ? 'The card could not be sent on WhatsApp. Copy the link instead.' : 'Not sent on WhatsApp: $error'),
+                                    );
+                                  }
                                 } catch (e) {
                                   if (context.mounted) toast(context, '$e');
                                 } finally {
@@ -472,6 +486,9 @@ class _PlanScreenState extends State<PlanScreen> {
   late final _discount = TextEditingController(text: widget.plan?['discount_percent'] == null || widget.plan!['discount_percent'] == 0 ? '' : '${widget.plan!['discount_percent']}');
   late final _credit = TextEditingController(text: widget.plan?['credit'] == null || widget.plan!['credit'] == 0 ? '' : '${widget.plan!['credit']}');
   late final Map<String, int> _sessions = {for (final s in (widget.plan?['sessions'] as List? ?? const [])) '${(s as Map)['service_id']}': ((s['count'] as num?) ?? 1).toInt()};
+
+  /// GST on the card's price (the server's rates; 18% when not set).
+  late int _tax = (num.tryParse('${widget.plan?['tax_rate'] ?? ''}') ?? 18).toInt();
   bool _busy = false;
   String _error = '';
 
@@ -500,6 +517,14 @@ class _PlanScreenState extends State<PlanScreen> {
               const SizedBox(width: 12),
               Expanded(child: TextField(controller: _days, decoration: box('Valid for', suffix: 'days'), keyboardType: TextInputType.number)),
             ],
+          ),
+          const SizedBox(height: 14),
+          const Text('GST on the price', style: TextStyle(fontWeight: FontWeight.w600)),
+          const SizedBox(height: 6),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [for (final rate in const [0, 5, 12, 18, 28]) ChoiceChip(label: Text('$rate%'), selected: _tax == rate, onSelected: (_) => setState(() => _tax = rate))],
           ),
           const SizedBox(height: 18),
           const Text('What it gives (at least one)', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
@@ -562,7 +587,20 @@ class _PlanScreenState extends State<PlanScreen> {
       await AppScope.read(context).ask('/api/salon/memberships', {
         'action': {
           'type': 'save_plan',
-          'plan': {if (widget.plan?['id'] != null) 'id': widget.plan!['id'], 'name': name, 'price': price, 'validity_days': days, 'discount_percent': discount, 'credit': credit, 'sessions': sessions},
+          // The server saves every field: keep what this screen does not change (colour, terms, on sale or not)
+          'plan': {
+            if (widget.plan?['id'] != null) 'id': widget.plan!['id'],
+            if (widget.plan?['colour'] != null) 'colour': widget.plan!['colour'],
+            if (widget.plan?['terms'] != null) 'terms': widget.plan!['terms'],
+            if (widget.plan != null) 'active': widget.plan!['active'] != false,
+            'tax_rate': _tax,
+            'name': name,
+            'price': price,
+            'validity_days': days,
+            'discount_percent': discount,
+            'credit': credit,
+            'sessions': sessions,
+          },
         },
       });
       if (mounted) Navigator.of(context).pop(true);

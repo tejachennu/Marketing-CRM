@@ -27,7 +27,7 @@ class SyncBanner extends StatelessWidget {
       attention = true;
     } else if (!app.online) {
       icon = Icons.cloud_off_outlined;
-      text = 'Offline. ${waiting > 0 ? '$waiting change${waiting == 1 ? '' : 's'} will sync when you are back online.' : 'Showing what was saved ${formatAgo(saved)}.'}';
+      text = 'Offline. ${waiting > 0 ? '$waiting change${waiting == 1 ? '' : 's'} will sync when you are back online.' : saved == null ? 'Showing what is saved on this phone.' : 'Showing what was saved ${formatAgo(saved)}.'}';
     } else {
       icon = Icons.sync;
       text = 'Syncing $waiting change${waiting == 1 ? '' : 's'}…';

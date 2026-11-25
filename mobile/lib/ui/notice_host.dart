@@ -8,6 +8,7 @@ import '../screens/chats/chat_screen.dart';
 import '../screens/chats/tickets_screen.dart';
 import '../screens/front_desk/front_desk_screen.dart';
 import '../screens/front_desk/reviews_team.dart';
+import '../screens/instagram/instagram_screen.dart';
 import '../screens/store/store_screen.dart';
 import 'theme.dart';
 import 'widgets.dart';
@@ -15,9 +16,15 @@ import 'widgets.dart';
 final navigatorKey = GlobalKey<NavigatorState>();
 
 /// Opens what a notification is about: the chat, or the Front Desk with the booking requests.
-void openNotice(AppState app, String payload) {
+void openNotice(AppState app, String payload, {bool waited = false}) {
+  // Signed out (an old notification from before): nothing of it to open
+  if (!app.signedIn) return;
   final nav = navigatorKey.currentState;
-  if (nav == null) return;
+  if (nav == null) {
+    // The notification opened the app and its screens are not up yet: open it once they are
+    if (!waited) WidgetsBinding.instance.addPostFrameCallback((_) => openNotice(app, payload, waited: true));
+    return;
+  }
   if (payload.startsWith('chat:')) {
     final id = payload.substring(5);
     final conv = app.findChat(id);
@@ -40,7 +47,11 @@ void openNotice(AppState app, String payload) {
     nav.push(MaterialPageRoute(builder: (_) => const StoreScreen()));
   } else if (payload == 'reviews' && app.frontDeskOn) {
     nav.push(MaterialPageRoute(builder: (_) => const ReviewsScreen()));
+  } else if (payload == 'instagram') {
+    // A new comment on a post: the Comments tab
+    nav.push(MaterialPageRoute(builder: (_) => const InstagramScreen(initialTab: 1)));
   }
+  // 'deals' (a deal given to you): the Sales Pipeline is on the website only, so the tap just opens the app
 }
 
 /// Shows notices as a banner at the top (like WhatsApp while it is open), opens the right screen
@@ -132,6 +143,7 @@ class _NoticeHostState extends State<NoticeHost> with WidgetsBindingObserver {
                                         'orders' => Icons.shopping_bag_outlined,
                                         'reviews' => Icons.star_outline_rounded,
                                         'deals' => Icons.trending_up,
+                                        'instagram' => Icons.camera_alt_outlined,
                                         _ => Icons.event_available,
                                       }, color: Brand.blue),
                                     )
