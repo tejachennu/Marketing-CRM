@@ -20,14 +20,39 @@ class CampaignScreen extends StatefulWidget {
 
 const _dispatchWords = {'PENDING': 'Waiting', 'SENT': 'Sent', 'DELIVERED': 'Delivered', 'READ': 'Read', 'FAILED': 'Not sent', 'SKIPPED': 'Skipped'};
 
+/// Why one message was not sent, in plain words, from the error WhatsApp (Meta or Twilio) gave.
+String plainSendError(String raw) {
+  bool has(String code) => RegExp('(^|\\D)$code(\\D|\$)').hasMatch(raw);
+  final text = raw.toLowerCase();
+  if (has('131026') || has('63024') || has('21211')) return 'Not on WhatsApp, or cannot get messages';
+  if (has('131047') || has('63016')) return 'Has not written to you in 24 hours';
+  if (has('131049')) return 'WhatsApp held it back (too many offers to this person)';
+  if (has('131050') || has('21610')) return 'This customer stopped your offers';
+  if (has('131056')) return 'Too many messages to this person just now';
+  if (has('131042')) return 'Payment problem on your WhatsApp account';
+  if (has('132001')) return 'The template was not found in this language';
+  if (has('132015') || has('132016')) return 'Meta has paused or turned off this template';
+  if (RegExp(r'(^|\D)132\d{3}(\D|$)').hasMatch(raw)) return 'The template blanks did not match';
+  if (text.contains('phone number is missing')) return 'No phone number';
+  return 'Could not be sent';
+}
+
 class _CampaignScreenState extends State<CampaignScreen> {
   bool _everyone = false;
   String _show = 'all'; // all, delivered, read, failed, replied
   String _search = '';
   int _limit = 50;
   bool _busy = false;
+  // Kept here, so the words stay in the box when it is rebuilt (after Replies, or when scrolled away)
+  final _searchBox = TextEditingController();
 
   String get _key => 'campaign:${widget.campaignId}';
+
+  @override
+  void dispose() {
+    _searchBox.dispose();
+    super.dispose();
+  }
 
   String? _error;
 
@@ -149,7 +174,7 @@ class _CampaignScreenState extends State<CampaignScreen> {
                                   const SizedBox(width: 8),
                                   Expanded(
                                     child: Text(
-                                      status == 'SCHEDULED' && c['scheduled_at'] != null ? 'Goes ${formatWhen(c['scheduled_at'])}' : 'Made ${formatWhen(c['created_at'])}',
+                                      status == 'SCHEDULED' && c['scheduled_at'] != null ? 'Goes ${formatScheduled(c['scheduled_at'])}' : 'Made ${formatWhen(c['created_at'])}',
                                       style: const TextStyle(fontSize: 13, color: Brand.muted),
                                     ),
                                   ),
@@ -284,6 +309,27 @@ class _CampaignScreenState extends State<CampaignScreen> {
     );
   }
 
+  void _whyNotSent(String name, String error) => showDialog<void>(
+    context: context,
+    builder: (d) => AlertDialog(
+      title: Text('Not sent to $name'),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(plainSendError(error), style: const TextStyle(fontWeight: FontWeight.w700)),
+            const SizedBox(height: 10),
+            const Text('What WhatsApp said:', style: TextStyle(fontSize: 12.5, color: Brand.muted)),
+            const SizedBox(height: 2),
+            SelectableText(error, style: const TextStyle(fontSize: 12.5, color: Brand.textSoft)),
+          ],
+        ),
+      ),
+      actions: [TextButton(onPressed: () => Navigator.pop(d), child: const Text('OK'))],
+    ),
+  );
+
   Map<String, dynamic> _contact(Map<String, dynamic> p) => {'id': p['contact_id'], 'first_name': p['first_name'], 'last_name': p['last_name'], 'phone_number': p['contact_phone'] ?? p['phone_number']};
 
   List<Widget> _replies(BuildContext context, List<Map<String, dynamic>> replied) {
@@ -367,6 +413,7 @@ class _CampaignScreenState extends State<CampaignScreen> {
     final shown = people.where(keep).toList();
     return [
       SearchField(
+        controller: _searchBox,
         hint: 'Search name or number',
         padding: EdgeInsets.zero,
         onChanged: (v) => setState(() {
@@ -409,10 +456,13 @@ class _CampaignScreenState extends State<CampaignScreen> {
                     final p = shown[i];
                     final s = '${p['dispatch_status']}';
                     final contact = _contact(p);
+                    final error = s == 'FAILED' ? '${p['error_message'] ?? ''}'.trim() : '';
                     return ListTile(
+                      // The full answer from WhatsApp, for when the short reason is not enough
+                      onTap: error.isEmpty ? null : () => _whyNotSent(contactName(contact), error),
                       title: Text(contactName(contact), style: const TextStyle(fontWeight: FontWeight.w600)),
                       subtitle: Text(
-                        s == 'FAILED' && '${p['error_message'] ?? ''}'.isNotEmpty ? '${p['error_message']}' : showPhone(p['phone_number'] ?? contact['phone_number']),
+                        error.isNotEmpty ? plainSendError(error) : showPhone(p['phone_number'] ?? contact['phone_number']),
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(color: s == 'FAILED' ? Brand.red : Brand.muted, fontSize: 13),

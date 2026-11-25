@@ -36,11 +36,42 @@ class _TemplateEditorScreenState extends State<TemplateEditorScreen> {
   bool _checking = false;
   Timer? _checkTimer;
 
+  /// Something was changed that leaving would lose.
+  bool _dirty = false;
+
   bool get _editing => widget.editing != null;
   String get _type => '${d['type']}';
   void _set(void Function() change) {
-    setState(change);
+    setState(() {
+      change();
+      _dirty = true;
+    });
     _scheduleCheck();
+  }
+
+  /// Ask before throwing away changes; true when the person chose to leave.
+  Future<bool> _confirmDiscard() async {
+    if (!_dirty) return true;
+    final leave = await showDialog<bool>(
+      context: context,
+      builder: (dialog) => AlertDialog(
+        title: const Text('Discard this template?'),
+        content: const Text('Your changes will be lost.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialog, false), child: const Text('Keep editing')),
+          TextButton(
+            style: TextButton.styleFrom(foregroundColor: Brand.red),
+            onPressed: () => Navigator.pop(dialog, true),
+            child: const Text('Discard'),
+          ),
+        ],
+      ),
+    );
+    return leave == true;
+  }
+
+  Future<void> _leave() async {
+    if (await _confirmDiscard() && mounted) Navigator.pop(context);
   }
 
   @override
@@ -213,88 +244,96 @@ class _TemplateEditorScreenState extends State<TemplateEditorScreen> {
       child: Builder(
         builder: (context) {
           final tabs = DefaultTabController.of(context);
-          return Scaffold(
-            appBar: AppBar(
-              titleSpacing: 0,
-              title: Row(
-                children: [
-                  CategoryIcon(category: '${d['category']}', size: 36),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(_editing ? 'Edit ${d['name']}' : '${d['name']}', maxLines: 1, overflow: TextOverflow.ellipsis),
-                        Text(
-                          '${typeTitle('${d['category']}', _type)} · ${languageLabel(d['language'])}',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(fontSize: 12.5, color: Brand.muted, fontWeight: FontWeight.w400),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-              actions: [_status(tabs)],
-              bottom: const TabBar(
-                tabs: [
-                  Tab(text: 'Edit'),
-                  Tab(text: 'Preview'),
-                ],
-              ),
-            ),
-            body: TabBarView(
-              children: [
-                ListView(
-                  controller: _scroll,
-                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 120),
+          return PopScope(
+            canPop: !_dirty,
+            onPopInvokedWithResult: (didPop, _) {
+              if (!didPop) _leave();
+            },
+            child: Scaffold(
+              appBar: AppBar(
+                titleSpacing: 0,
+                title: Row(
                   children: [
-                    if (editing?['status'] == 'REJECTED')
-                      _Banner(
-                        text: 'Rejected by Meta. ${rejectionReasons['${editing!['rejected_reason'] ?? 'NONE'}'] ?? editing['rejected_reason']} Fix the content below and submit it again.',
-                        danger: true,
-                      ),
-                    if (_editing && editing!['status'] == 'APPROVED')
-                      const _Banner(text: 'You can edit an approved template once a day and up to 10 times a month. After you submit, it goes back into review and you can keep sending it meanwhile.'),
-                    ..._type == 'otp' ? _otpSections() : _sections(),
-                    if (_submitError.isNotEmpty)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 8),
-                        child: Text('Meta: $_submitError', style: const TextStyle(color: Brand.red)),
-                      ),
-                    if (!canManage)
-                      const Padding(
-                        padding: EdgeInsets.only(top: 8),
-                        child: Text('Only admins and managers can submit templates.', style: TextStyle(color: Brand.muted, fontSize: 12.5)),
-                      ),
-                  ],
-                ),
-                _previewTab(),
-              ],
-            ),
-            bottomNavigationBar: SafeArea(
-              child: Container(
-                padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
-                decoration: const BoxDecoration(
-                  color: Colors.white,
-                  border: Border(top: BorderSide(color: Brand.line)),
-                ),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: OutlinedButton(onPressed: () => Navigator.pop(context), child: const Text('Discard')),
-                    ),
+                    CategoryIcon(category: '${d['category']}', size: 36),
                     const SizedBox(width: 10),
                     Expanded(
-                      flex: 2,
-                      child: FilledButton.icon(
-                        onPressed: _busy || !canManage ? null : () => _submit(tabs),
-                        icon: _busy ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Icon(Icons.send),
-                        label: Text(_editing ? 'Submit changes' : 'Submit for review'),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(_editing ? 'Edit ${d['name']}' : '${d['name']}', maxLines: 1, overflow: TextOverflow.ellipsis),
+                          Text(
+                            '${typeTitle('${d['category']}', _type)} · ${languageLabel(d['language'])}',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(fontSize: 12.5, color: Brand.muted, fontWeight: FontWeight.w400),
+                          ),
+                        ],
                       ),
                     ),
                   ],
+                ),
+                actions: [_status(tabs)],
+                bottom: const TabBar(
+                  tabs: [
+                    Tab(text: 'Edit'),
+                    Tab(text: 'Preview'),
+                  ],
+                ),
+              ),
+              body: TabBarView(
+                children: [
+                  ListView(
+                    controller: _scroll,
+                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 120),
+                    children: [
+                      if (editing?['status'] == 'REJECTED')
+                        _Banner(
+                          text: 'Rejected by Meta. ${rejectionReasons['${editing!['rejected_reason'] ?? 'NONE'}'] ?? editing['rejected_reason']} Fix the content below and submit it again.',
+                          danger: true,
+                        ),
+                      if (_editing && editing!['status'] == 'APPROVED')
+                        const _Banner(
+                          text: 'You can edit an approved template once a day and up to 10 times a month. After you submit, it goes back into review and you can keep sending it meanwhile.',
+                        ),
+                      ..._type == 'otp' ? _otpSections() : _sections(),
+                      if (_submitError.isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 8),
+                          child: Text('Meta: $_submitError', style: const TextStyle(color: Brand.red)),
+                        ),
+                      if (!canManage)
+                        const Padding(
+                          padding: EdgeInsets.only(top: 8),
+                          child: Text('Only admins and managers can submit templates.', style: TextStyle(color: Brand.muted, fontSize: 12.5)),
+                        ),
+                    ],
+                  ),
+                  _previewTab(),
+                ],
+              ),
+              bottomNavigationBar: SafeArea(
+                child: Container(
+                  padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
+                  decoration: const BoxDecoration(
+                    color: Colors.white,
+                    border: Border(top: BorderSide(color: Brand.line)),
+                  ),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton(onPressed: _leave, child: const Text('Discard')),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        flex: 2,
+                        child: FilledButton.icon(
+                          onPressed: _busy || !canManage ? null : () => _submit(tabs),
+                          icon: _busy ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Icon(Icons.send),
+                          label: Text(_editing ? 'Submit changes' : 'Submit for review'),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -564,7 +603,8 @@ class _TemplateEditorScreenState extends State<TemplateEditorScreen> {
             lines: 6,
             hint: 'Hello {{1}}, …',
             onChanged: (v) => _set(() => d['body'] = v),
-            addVariable: () => nextVariable('${d['body']}', format, headerVars),
+            // Meta numbers the body's {{1}}, {{2}}… apart from the title's; named ones must differ from the title's
+            addVariable: () => nextVariable('${d['body']}', format, format == 'NAMED' ? headerVars : const []),
           ),
         ],
       ),
@@ -648,7 +688,7 @@ class _TemplateEditorScreenState extends State<TemplateEditorScreen> {
           optional: _type == 'custom',
           description: 'Create buttons that let customers respond to your message or take action.',
           errors: _errors('buttons'),
-          children: [_ButtonsEditor(buttons: (d['buttons'] as List).cast<Map<String, dynamic>>(), allowed: allowedButtons, flows: widget.flows, onChanged: () => setState(() {}))],
+          children: [_ButtonsEditor(buttons: (d['buttons'] as List).cast<Map<String, dynamic>>(), allowed: allowedButtons, flows: widget.flows, onChanged: () => setState(() => _dirty = true))],
         ),
       _validity(),
       if (!_editing && d['category'] != 'AUTHENTICATION')
@@ -745,7 +785,12 @@ class _TemplateEditorScreenState extends State<TemplateEditorScreen> {
               child: _Input(key: ValueKey('card$i:$name'), label: 'Sample {{$name}}', value: '${samples[name] ?? ''}', onChanged: (v) => _set(() => samples[name] = v)),
             ),
           const SizedBox(height: 8),
-          _ButtonsEditor(buttons: (card['buttons'] as List).cast<Map<String, dynamic>>(), allowed: const ['QUICK_REPLY', 'URL', 'PHONE_NUMBER'], flows: widget.flows, onChanged: () => setState(() {})),
+          _ButtonsEditor(
+            buttons: (card['buttons'] as List).cast<Map<String, dynamic>>(),
+            allowed: const ['QUICK_REPLY', 'URL', 'PHONE_NUMBER'],
+            flows: widget.flows,
+            onChanged: () => setState(() => _dirty = true),
+          ),
         ],
       ),
     );

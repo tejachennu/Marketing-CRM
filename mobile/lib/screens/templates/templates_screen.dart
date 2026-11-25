@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../data/app_state.dart';
+import '../../data/backend.dart';
 import '../../data/format.dart';
 import '../../ui/skeleton.dart';
 import '../../ui/theme.dart';
@@ -30,6 +31,8 @@ class _TemplatesScreenState extends State<TemplatesScreen> {
   String _language = '';
   String _status = '';
   bool _syncing = false;
+  // What Meta (or the server) answered when the list could not be fetched, until a fetch works
+  String? _error;
   Timer? _timer;
   Map<String, String>? _lastStatuses;
   final List<Map<String, String>> _updates = [];
@@ -73,8 +76,16 @@ class _TemplatesScreenState extends State<TemplatesScreen> {
   Future<void> _sync() async {
     final app = AppScope.read(context);
     setState(() => _syncing = true);
-    await app.load('templates', '/api/whatsapp-templates', query: const {'drafts': '1'}, force: true);
+    String? error;
+    try {
+      await app.load('templates', '/api/whatsapp-templates', query: const {'drafts': '1'}, force: true, rethrowErrors: true);
+    } on OfflineException {
+      // Offline: the copy on the phone stays, and the bar at the top says so
+    } catch (e) {
+      error = '$e'.replaceFirst('Exception: ', '');
+    }
     if (!mounted) return;
+    _error = error;
     final list = templatesOf(app);
     final previous = _lastStatuses;
     if (previous != null) {
@@ -194,6 +205,34 @@ class _TemplatesScreenState extends State<TemplatesScreen> {
               child: ListView(
                 padding: const EdgeInsets.only(bottom: 96),
                 children: [
+                  if (_error != null && all.isNotEmpty)
+                    Container(
+                      margin: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                      padding: const EdgeInsets.fromLTRB(12, 10, 4, 10),
+                      decoration: BoxDecoration(color: Brand.redSoft, borderRadius: BorderRadius.circular(12)),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text(
+                                  'Could not get your templates from Meta. This list may be old.',
+                                  style: TextStyle(color: Brand.red, fontWeight: FontWeight.w700, fontSize: 13),
+                                ),
+                                Text(
+                                  _error!,
+                                  maxLines: 3,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(fontSize: 12.5, color: Brand.textSoft),
+                                ),
+                              ],
+                            ),
+                          ),
+                          TextButton(onPressed: _syncing ? null : _sync, child: const Text('Try again')),
+                        ],
+                      ),
+                    ),
                   if (data['notConnected'] != null)
                     Container(
                       margin: const EdgeInsets.fromLTRB(16, 8, 16, 0),
@@ -313,6 +352,16 @@ class _TemplatesScreenState extends State<TemplatesScreen> {
                   ),
                   if (app.isLoading('templates'))
                     const SkeletonCards(tiles: false)
+                  else if (all.isEmpty && _error != null)
+                    Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: EmptyState(
+                        icon: Icons.cloud_off_outlined,
+                        title: 'Could not get your templates from Meta',
+                        text: _error!,
+                        action: OutlinedButton(onPressed: _syncing ? null : _sync, child: const Text('Try again')),
+                      ),
+                    )
                   else if (shown.isEmpty)
                     Padding(
                       padding: const EdgeInsets.all(16),

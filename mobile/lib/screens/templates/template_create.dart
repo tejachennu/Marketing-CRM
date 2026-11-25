@@ -23,8 +23,32 @@ class TemplateSetupScreen extends StatefulWidget {
 class _TemplateSetupScreenState extends State<TemplateSetupScreen> {
   late Draft d = widget.start == null ? emptyDraft('MARKETING', 'custom') : copyDraft(widget.start!);
   late final _name = TextEditingController(text: '${d['name'] ?? ''}');
+  final _nameCard = GlobalKey();
+  bool _fromAi = false;
+  int _drafts = 0;
   bool get _locked => widget.lockedName != null;
   bool get _taken => widget.existing.any((t) => t['name'] == d['name'] && t['language'] == d['language']);
+
+  /// The AI's template comes back here first, so its name and language can be checked (and changed) before Next.
+  void _useAiDraft(Draft draft) {
+    final language = templateLanguages.any((l) => l.$1 == draft['language']) ? '${draft['language']}' : 'en';
+    final base = '${draft['name'] ?? ''}';
+    var name = base;
+    // A name already used in this language would be refused by Meta: take the next free one
+    for (var n = 2; name.isNotEmpty && widget.existing.any((t) => t['name'] == name && t['language'] == language); n++) {
+      name = '${base}_$n';
+    }
+    setState(() {
+      d = {...draft, 'name': name, 'language': language};
+      _name.text = name;
+      _fromAi = true;
+      _drafts++;
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final card = _nameCard.currentContext;
+      if (card != null) Scrollable.ensureVisible(card, duration: const Duration(milliseconds: 300));
+    });
+  }
 
   Future<void> _edit(Draft draft) async {
     final done = await Navigator.push<String>(
@@ -58,7 +82,7 @@ class _TemplateSetupScreenState extends State<TemplateSetupScreen> {
               title: 'Write it with AI',
               icon: Icons.auto_awesome,
               text: "Say what the message is for. AI writes the template, with blanks, examples and buttons that follow Meta's rules, and opens it in the editor to check.",
-              child: AiTemplateWriter(onDraft: _edit),
+              child: AiTemplateWriter(onDraft: _useAiDraft),
             ),
             const SizedBox(height: 12),
           ],
@@ -178,10 +202,25 @@ class _TemplateSetupScreenState extends State<TemplateSetupScreen> {
           ),
           const SizedBox(height: 12),
           _Card(
+            key: _nameCard,
             title: 'Template name and language',
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
+                if (_fromAi)
+                  Container(
+                    margin: const EdgeInsets.only(bottom: 12),
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(color: Brand.bubble, borderRadius: BorderRadius.circular(10)),
+                    child: const Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Icon(Icons.auto_awesome, size: 18, color: Brand.blue),
+                        SizedBox(width: 8),
+                        Expanded(child: Text('AI wrote your template. Check its name and language, then tap Next to see it.', style: TextStyle(fontSize: 13))),
+                      ],
+                    ),
+                  ),
                 TextField(
                   controller: _name,
                   enabled: !_locked,
@@ -204,6 +243,7 @@ class _TemplateSetupScreenState extends State<TemplateSetupScreen> {
                 ),
                 const SizedBox(height: 12),
                 DropdownButtonFormField<String>(
+                  key: ValueKey('language$_drafts'),
                   initialValue: '${d['language']}',
                   isExpanded: true,
                   decoration: const InputDecoration(labelText: 'Select language'),
@@ -245,7 +285,7 @@ class _TemplateSetupScreenState extends State<TemplateSetupScreen> {
 }
 
 class _Card extends StatelessWidget {
-  const _Card({required this.title, required this.child, this.text, this.icon});
+  const _Card({super.key, required this.title, required this.child, this.text, this.icon});
   final String title;
   final String? text;
   final IconData? icon;
@@ -566,6 +606,19 @@ class _LibraryTemplateScreenState extends State<_LibraryTemplateScreen> {
   bool _busy = false;
   String _error = '';
 
+  // The same checks as the server: a box that fails them is dropped there, and Meta then refuses the template
+  static final _website = RegExp(r'^https://\S+$');
+  static final _phoneNumber = RegExp(r'^\+?[1-9]\d{6,18}$');
+  bool _websiteOk(int i) => _website.hasMatch(_base[i] ?? '');
+  bool _exampleOk(int i) => !(_base[i] ?? '').contains('{{1}}') || (_example[i] ?? '').isNotEmpty;
+  bool _phoneOk(int i) => _phoneNumber.hasMatch((_phone[i] ?? '').replaceAll(RegExp(r'[\s-]'), ''));
+
+  /// Every website and phone box is filled in the way Meta needs.
+  bool _buttonsReady(List<Map> buttons) => [
+    for (final (i, b) in buttons.indexed)
+      if (b['type'] == 'URL') _websiteOk(i) && _exampleOk(i) else if (b['type'] == 'PHONE_NUMBER') _phoneOk(i) else true,
+  ].every((ok) => ok);
+
   String _freeName() {
     final base = '${widget.template['name']}';
     var candidate = base;
@@ -610,6 +663,7 @@ class _LibraryTemplateScreenState extends State<_LibraryTemplateScreen> {
   Widget build(BuildContext context) {
     final buttons = ((widget.template['buttons'] as List?) ?? const []).cast<Map>();
     final taken = widget.existing.contains(_name.text);
+    final ready = _buttonsReady(buttons);
     return Scaffold(
       appBar: AppBar(title: Text(_humanize('${widget.template['name']}'))),
       body: ListView(
@@ -637,22 +691,34 @@ class _LibraryTemplateScreenState extends State<_LibraryTemplateScreen> {
             if (b['type'] == 'URL') ...[
               const SizedBox(height: 12),
               TextField(
+                keyboardType: TextInputType.url,
                 onChanged: (v) => setState(() => _base[i] = v.trim()),
-                decoration: InputDecoration(labelText: '“${b['text']}” button: your website', hintText: 'https://www.example.com/orders/{{1}}'),
+                decoration: InputDecoration(
+                  labelText: '“${b['text']}” button: your website',
+                  hintText: 'https://www.example.com/orders/{{1}}',
+                  helperText: 'Needed. Starts with https://',
+                  errorText: (_base[i] ?? '').isNotEmpty && !_websiteOk(i) ? 'Start it with https://' : null,
+                ),
               ),
               if ((_base[i] ?? '').contains('{{1}}')) ...[
                 const SizedBox(height: 8),
                 TextField(
-                  onChanged: (v) => _example[i] = v.trim(),
-                  decoration: const InputDecoration(labelText: 'Sample address', hintText: 'https://www.example.com/orders/12345'),
+                  keyboardType: TextInputType.url,
+                  onChanged: (v) => setState(() => _example[i] = v.trim()),
+                  decoration: const InputDecoration(labelText: 'Sample address', hintText: 'https://www.example.com/orders/12345', helperText: 'Needed. A full example link.'),
                 ),
               ],
             ] else if (b['type'] == 'PHONE_NUMBER') ...[
               const SizedBox(height: 12),
               TextField(
                 keyboardType: TextInputType.phone,
-                onChanged: (v) => _phone[i] = v.trim(),
-                decoration: InputDecoration(labelText: '“${b['text']}” button: your phone number', hintText: '+91 98765 43210'),
+                onChanged: (v) => setState(() => _phone[i] = v.trim()),
+                decoration: InputDecoration(
+                  labelText: '“${b['text']}” button: your phone number',
+                  hintText: '+91 98765 43210',
+                  helperText: 'Needed. With the country code.',
+                  errorText: (_phone[i] ?? '').isNotEmpty && !_phoneOk(i) ? 'Enter the full number, like +91 98765 43210' : null,
+                ),
               ),
             ],
           if (_error.isNotEmpty)
@@ -662,9 +728,18 @@ class _LibraryTemplateScreenState extends State<_LibraryTemplateScreen> {
             ),
           const SizedBox(height: 16),
           FilledButton(
-            onPressed: _busy || _name.text.isEmpty || taken ? null : _create,
+            onPressed: _busy || _name.text.isEmpty || taken || !ready ? null : _create,
             child: _busy ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Text('Create template'),
           ),
+          if (!ready)
+            const Padding(
+              padding: EdgeInsets.only(top: 8),
+              child: Text(
+                'Fill in the boxes above to create it.',
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 12.5, color: Brand.muted),
+              ),
+            ),
         ],
       ),
     );
@@ -734,11 +809,14 @@ class _TemplateInsightsScreenState extends State<TemplateInsightsScreen> {
     return Scaffold(
       appBar: AppBar(
         title: Column(
+          mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text('${t['name']}', maxLines: 1, overflow: TextOverflow.ellipsis),
             Text(
               '${categoryLabels[t['category']]?.title ?? t['category']} · ${languageLabel(t['language'])} · Insights',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
               style: const TextStyle(fontSize: 12.5, color: Brand.muted, fontWeight: FontWeight.w400),
             ),
           ],

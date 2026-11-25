@@ -7,10 +7,13 @@ import 'package:excel/excel.dart';
 /// messaged once, and a number the server would drop is not counted.
 
 /// The digits of a phone number in international form, or '' when it cannot be one.
-/// A bare 10-digit Indian mobile number (starting 6-9) gets 91 in front.
+/// A bare 10-digit Indian mobile number (starting 6-9) gets 91 in front; the 0 often written before
+/// one (09876543210, +91 098765 43210) is dropped.
 String phoneDigits(Object? raw) {
   var digits = '${raw ?? ''}'.replaceAll(RegExp(r'\D'), '');
   if (digits.startsWith('00')) digits = digits.substring(2);
+  final local = RegExp(r'^(?:91)?0([6-9]\d{9})$').firstMatch(digits);
+  if (local != null) digits = local.group(1)!;
   if (digits.length == 10 && RegExp(r'^[6-9]').hasMatch(digits)) digits = '91$digits';
   return digits.length >= 8 && digits.length <= 15 ? digits : '';
 }
@@ -142,6 +145,12 @@ class SheetData {
   String? get nameColumn => headers.cast<String?>().firstWhere((h) => RegExp(r'^(first[ _]?)?name$|customer|full[ _]?name', caseSensitive: false).hasMatch(h!), orElse: () => null);
 }
 
+/// The most people one uploaded list can have.
+const maxSheetRows = 10000;
+
+/// [readSheet] for `compute`, so a big file is read off the screen's thread.
+SheetData readSheetJob((String, Uint8List) file) => readSheet(file.$1, file.$2);
+
 /// Reads a .csv or .xlsx file: the first row is the column names.
 SheetData readSheet(String filename, Uint8List bytes) {
   final lower = filename.toLowerCase();
@@ -154,9 +163,16 @@ SheetData readSheet(String filename, Uint8List bytes) {
     ];
   } else {
     table = parseCsv(utf8.decode(bytes, allowMalformed: true));
+    // Excel saves long numbers it shows as 9.19877E+11 that way in a CSV: the real number is lost
+    final shortened = RegExp(r'^\d(\.\d+)?E\+(\d+)$', caseSensitive: false);
+    bool phoneLike(String cell) => (int.tryParse(shortened.firstMatch(cell.trim())?.group(2) ?? '') ?? 0) >= 7;
+    if (table.skip(1).any((r) => r.any(phoneLike))) {
+      throw const FormatException('Your phone numbers were saved like 9.19E+11. Upload the .xlsx file, or format the phone column as Text in Excel and save again.');
+    }
   }
   table = table.where((r) => r.any((c) => c.trim().isNotEmpty)).toList();
   if (table.length < 2) throw const FormatException('The file needs a row of column names and at least one person.');
+  if (table.length - 1 > maxSheetRows) throw const FormatException('The list has more than 10,000 people. Split it into smaller files.');
   final headers = <String>[];
   for (var i = 0; i < table.first.length; i++) {
     var h = table.first[i].trim();

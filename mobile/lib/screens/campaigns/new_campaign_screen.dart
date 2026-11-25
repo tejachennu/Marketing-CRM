@@ -1,8 +1,10 @@
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart' show compute, listEquals;
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../../data/app_state.dart';
+import '../../data/backend.dart';
 import '../../data/format.dart';
 import '../../ui/theme.dart';
 import '../../ui/widgets.dart';
@@ -17,6 +19,25 @@ List<Map<String, dynamic>> campaignContacts(AppState app) {
 
 /// What can fill a blank for people from your contacts.
 const _contactFields = {'first_name': 'First name', 'full_name': 'Full name', 'company': 'Company', '_fixed': 'Same text for all'};
+
+/// What a contact with no name (or an empty name cell) is called in the message.
+const _noName = 'Customer';
+
+/// Whether the app can send this template to a list. Login codes, products, order details and a
+/// location title need details for each message that a campaign made here cannot give.
+bool campaignCanSend(Map<String, dynamic> t) {
+  if ('${t['category']}'.toUpperCase() == 'AUTHENTICATION') return false;
+  String up(Object? v) => '${v ?? ''}'.toUpperCase();
+  bool productHeader(Map part) => up(part['type']) == 'HEADER' && up(part['format']) == 'PRODUCT';
+  for (final c in (t['components'] as List? ?? const [])) {
+    if (c is! Map) continue;
+    final type = up(c['type']);
+    if (type == 'HEADER' && (up(c['format']) == 'LOCATION' || up(c['format']) == 'PRODUCT')) return false;
+    if (type == 'BUTTONS' && (c['buttons'] as List? ?? const []).any((b) => b is Map && const ['MPM', 'SPM', 'ORDER_DETAILS', 'OTP'].contains(up(b['type'])))) return false;
+    if (type == 'CAROUSEL' && (c['cards'] as List? ?? const []).any((card) => card is Map && (card['components'] as List? ?? const []).any((p) => p is Map && productHeader(p)))) return false;
+  }
+  return true;
+}
 
 /// A new campaign, as on the web but on one page: the message, who gets it (your contacts, with
 /// filters and ticks, or a list you upload), what fills each blank, which number sends it, and when.
@@ -52,6 +73,12 @@ class _NewCampaignScreenState extends State<NewCampaignScreen> {
   DateTime? _pickedAt; // UTC
   bool _tried = false;
   bool _saving = false;
+  bool _reading = false;
+  String? _templatesError; // Meta's answer when the templates could not be fetched
+
+  // The list worked out last time, and what it was worked out from (a big list is not redone on every key press)
+  RecipientList? _list;
+  List<Object?>? _listKey;
 
   @override
   void initState() {
@@ -61,6 +88,7 @@ class _NewCampaignScreenState extends State<NewCampaignScreen> {
       if (!app.online) return;
       app.load('contacts:all', '/api/contacts', query: {'all': 'true', 'fields': 'basic'}, force: true);
       app.load('campaigns:all', '/api/campaigns', query: {'all': 'true'}, force: true);
+      _loadTemplates(app);
       try {
         final s = await app.backend.get('/api/campaigns/senders', {'organizationId': app.orgId});
         final list = [for (final x in (s['whatsappSenders'] as List? ?? const [])) Map<String, dynamic>.from(x)];
@@ -74,6 +102,19 @@ class _NewCampaignScreenState extends State<NewCampaignScreen> {
         // The server picks the business number when none is given
       }
     });
+  }
+
+  /// The latest templates (one approved a minute ago shows), or why Meta did not give them.
+  Future<void> _loadTemplates(AppState app) async {
+    String? error;
+    try {
+      await app.load('templates', '/api/whatsapp-templates', query: const {'drafts': '1'}, force: true, rethrowErrors: true);
+    } on OfflineException {
+      // The copy on the phone is used
+    } catch (e) {
+      error = '$e'.replaceFirst('Exception: ', '');
+    }
+    if (mounted) setState(() => _templatesError = error);
   }
 
   @override
@@ -118,16 +159,42 @@ class _NewCampaignScreenState extends State<NewCampaignScreen> {
   String _value(String blank, {Map<String, dynamic>? contact, Map<String, String>? row}) {
     final src = _source[blank] ?? '_fixed';
     if (src == '_fixed') return _fixed[blank]?.text.trim() ?? '';
-    if (row != null) return (row[src] ?? '').trim();
+    if (row != null) {
+      final value = (row[src] ?? '').trim();
+      return value.isEmpty && src == _nameColumn ? _noName : value;
+    }
     final c = contact ?? const {};
+    final first = '${c['first_name'] ?? ''}'.trim();
+    final last = '${c['last_name'] ?? ''}'.trim();
+    // Never the phone number: a contact saved without a name is greeted as "Customer"
     return switch (src) {
-      'first_name' => '${c['first_name'] ?? ''}'.trim().isNotEmpty ? '${c['first_name']}'.trim() : contactName(c).split(' ').first,
-      'full_name' => contactName(c),
+      'first_name' => first.isNotEmpty ? first : (last.isNotEmpty ? last.split(' ').first : _noName),
+      'full_name' => first.isEmpty && last.isEmpty ? _noName : [first, last].where((p) => p.isNotEmpty).join(' '),
       _ => '${c[src] ?? ''}'.trim(),
     };
   }
 
   RecipientList _recipients(AppState app) {
+    final key = <Object?>[
+      _fromSheet,
+      _sheet,
+      _phoneColumn,
+      _nameColumn,
+      _sheetTag.text.trim(),
+      _template,
+      _picked,
+      for (final e in _source.entries) '${e.key}=${e.value}',
+      for (final e in _fixed.entries) '${e.key}=${e.value.text}',
+      app.savedAt('contacts:all'),
+      app.savedAt('contacts'),
+    ];
+    final saved = _list;
+    if (saved != null && listEquals(key, _listKey)) return saved;
+    _listKey = key;
+    return _list = _workOutRecipients(app);
+  }
+
+  RecipientList _workOutRecipients(AppState app) {
     final blanks = _parts?.blanks ?? const <String>[];
     if (_fromSheet) {
       final sheet = _sheet;
@@ -156,9 +223,12 @@ class _NewCampaignScreenState extends State<NewCampaignScreen> {
 
   Future<void> _upload() async {
     final file = await FilePicker.pickFile(type: FileType.custom, allowedExtensions: ['csv', 'xlsx']);
-    if (file == null) return;
+    if (file == null || !mounted) return;
+    setState(() => _reading = true);
     try {
-      final sheet = readSheet(file.name, await file.readAsBytes());
+      // Read away from the screen, so a big file does not freeze it
+      final sheet = await compute(readSheetJob, (file.name, await file.readAsBytes()));
+      if (!mounted) return;
       setState(() {
         _sheet = sheet;
         _sheetName = file.name;
@@ -171,7 +241,31 @@ class _NewCampaignScreenState extends State<NewCampaignScreen> {
       });
     } catch (e) {
       if (mounted) toast(context, 'Could not read that file. ${e is FormatException ? e.message : 'Save it as .xlsx or .csv and try again.'}');
+    } finally {
+      if (mounted) setState(() => _reading = false);
     }
+  }
+
+  /// Something is filled in that leaving would lose.
+  bool get _started => _name.text.trim().isNotEmpty || _template != null || _sheet != null || _picked != null;
+
+  Future<void> _confirmLeave() async {
+    final leave = await showDialog<bool>(
+      context: context,
+      builder: (d) => AlertDialog(
+        title: const Text('Leave without sending?'),
+        content: const Text('This campaign will be lost.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(d, false), child: const Text('Stay')),
+          TextButton(
+            style: TextButton.styleFrom(foregroundColor: Brand.red),
+            onPressed: () => Navigator.pop(d, true),
+            child: const Text('Leave'),
+          ),
+        ],
+      ),
+    );
+    if (leave == true && mounted) Navigator.pop(context);
   }
 
   Future<void> _pickTime() async {
@@ -196,264 +290,292 @@ class _NewCampaignScreenState extends State<NewCampaignScreen> {
       if ((_source[b] ?? '_fixed') == '_fixed' && (_fixed[b]?.text.trim() ?? '').isEmpty) return 'Write what goes in blank {{$b}}.';
     }
     if (_when == 3 && (_pickedAt == null || _pickedAt!.isBefore(DateTime.now().toUtc().add(const Duration(minutes: 2))))) return 'Pick a time at least 2 minutes from now.';
+    if (_when == 1 && istNow().hour >= 18) return 'It is past 6 pm. Pick another time.';
     return null;
   }
 
   @override
   Widget build(BuildContext context) {
     final app = AppScope.of(context);
-    final templates = templatesOf(app).where((t) => t['status'] == 'APPROVED').toList();
+    final approved = templatesOf(app).where((t) => t['status'] == 'APPROVED').toList();
+    final templates = approved.where(campaignCanSend).toList();
+    final cannotSend = approved.length - templates.length;
     final parts = _parts;
     final list = _recipients(app);
     final first = list.recipients.isEmpty ? null : list.recipients.first;
     final problem = _problem(app, list);
     final eveningPassed = istNow().hour >= 18;
 
-    return Scaffold(
-      appBar: AppBar(title: const Text('New campaign')),
-      body: Column(
-        children: [
-          const SyncBanner(),
-          Expanded(
-            child: ListView(
-              padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
-              children: [
-                TextField(
-                  controller: _name,
-                  textCapitalization: TextCapitalization.sentences,
-                  onChanged: (_) => setState(() {}),
-                  decoration: InputDecoration(labelText: 'Campaign name', hintText: 'Diwali offer', errorText: _tried && _name.text.trim().isEmpty ? 'Give it a name' : null),
-                ),
-
-                // ── 1. Message ──
-                const _Step(1, 'Message', 'An approved WhatsApp template'),
-                if (templates.isEmpty)
-                  const Text('No approved templates yet. Make one in More → WhatsApp templates; Meta checks it first.', style: TextStyle(color: Brand.muted))
-                else
-                  Card(
-                    child: Column(
-                      children: [
-                        for (var i = 0; i < templates.length; i++) ...[
-                          if (i > 0) const Divider(indent: 52),
-                          ListTile(
-                            leading: Icon(_template?['id'] == templates[i]['id'] ? Icons.radio_button_checked : Icons.radio_button_unchecked, color: Brand.blue),
-                            title: Text('${templates[i]['name']}', style: const TextStyle(fontWeight: FontWeight.w700)),
-                            subtitle: Text(TemplateParts(templates[i]).body, maxLines: 2, overflow: TextOverflow.ellipsis),
-                            onTap: () => _pickTemplate(templates[i]),
-                          ),
-                        ],
-                      ],
-                    ),
+    return PopScope(
+      canPop: !_started,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) _confirmLeave();
+      },
+      child: Scaffold(
+        appBar: AppBar(title: const Text('New campaign')),
+        body: Column(
+          children: [
+            const SyncBanner(),
+            Expanded(
+              child: ListView(
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+                children: [
+                  TextField(
+                    controller: _name,
+                    textCapitalization: TextCapitalization.sentences,
+                    onChanged: (_) => setState(() {}),
+                    decoration: InputDecoration(labelText: 'Campaign name', hintText: 'Diwali offer', errorText: _tried && _name.text.trim().isEmpty ? 'Give it a name' : null),
                   ),
-                if (_tried && _template == null) const _Error('Pick the message to send.'),
 
-                // ── 2. Who gets it ──
-                _Step(2, 'Who gets it', '${list.recipients.length} ${list.recipients.length == 1 ? 'person' : 'people'}'),
-                SegmentedButton<bool>(
-                  showSelectedIcon: false,
-                  segments: const [
-                    ButtonSegment(value: false, icon: Icon(Icons.people_outline, size: 18), label: Text('My contacts')),
-                    ButtonSegment(value: true, icon: Icon(Icons.upload_file, size: 18), label: Text('Upload a list')),
-                  ],
-                  selected: {_fromSheet},
-                  onSelectionChanged: (s) => setState(() {
-                    _fromSheet = s.first;
-                    for (final b in _source.keys.toList()) {
-                      _source[b] = _source[b] == '_fixed' ? '_fixed' : (_fromSheet ? (_nameColumn ?? '_fixed') : 'first_name');
-                    }
-                  }),
-                ),
-                const SizedBox(height: 10),
-                if (!_fromSheet)
-                  Panel(
-                    onTap: () async {
-                      final result = await Navigator.push<(Set<String>, AudienceFilter)>(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => ChoosePeopleScreen(picked: _picked, filter: _filter),
-                        ),
-                      );
-                      if (result != null) {
-                        setState(() {
-                          _picked = result.$1;
-                          _filter = result.$2;
-                        });
-                      }
-                    },
-                    child: Row(
-                      children: [
-                        Container(
-                          width: 44,
-                          height: 44,
-                          decoration: BoxDecoration(color: Brand.blueSoft, borderRadius: BorderRadius.circular(12)),
-                          child: const Icon(Icons.groups_outlined, color: Brand.blue),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(_picked == null ? 'Everyone with a number' : '${_picked!.length} chosen', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
-                              Text(
-                                [
-                                  '${list.recipients.length} will get it',
-                                  if (list.duplicates > 0) '${list.duplicates} repeated numbers once',
-                                  if (list.invalid > 0) '${list.invalid} without a number left out',
-                                ].join(' · '),
-                                style: const TextStyle(fontSize: 12.5, color: Brand.muted),
-                              ),
-                            ],
-                          ),
-                        ),
-                        const Text(
-                          'Choose',
-                          style: TextStyle(color: Brand.blue, fontWeight: FontWeight.w700),
-                        ),
-                        const Icon(Icons.chevron_right, color: Brand.blue),
-                      ],
-                    ),
-                  )
-                else ...[
-                  OutlinedButton.icon(
-                    onPressed: _upload,
-                    icon: const Icon(Icons.upload_file),
-                    label: Text(_sheet == null ? 'Choose an Excel or CSV file' : 'Change file · $_sheetName', overflow: TextOverflow.ellipsis),
-                  ),
-                  const SizedBox(height: 6),
-                  if (_sheet == null)
-                    const Text('First row: column names, like Name and Phone. One person on each row.', style: TextStyle(fontSize: 12.5, color: Brand.muted))
-                  else ...[
-                    Text(
-                      [
-                        '${_sheet!.rows.length} rows',
-                        '${list.recipients.length} will get it',
-                        if (list.invalid > 0) '${list.invalid} without a usable number',
-                        if (list.duplicates > 0) '${list.duplicates} repeated',
-                      ].join(' · '),
-                      style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: list.invalid > 0 ? Brand.red : Brand.textSoft),
-                    ),
-                    const SizedBox(height: 10),
-                    _ColumnPicker(
-                      label: 'Phone number column',
-                      value: _phoneColumn,
-                      columns: _sheet!.headers,
-                      sample: (c) => _sheet!.rows.first[c] ?? '',
-                      onChanged: (v) => setState(() => _phoneColumn = v),
-                    ),
-                    const SizedBox(height: 10),
-                    _ColumnPicker(
-                      label: 'Name column (optional)',
-                      value: _nameColumn,
-                      columns: _sheet!.headers,
-                      optional: true,
-                      sample: (c) => _sheet!.rows.first[c] ?? '',
-                      onChanged: (v) => setState(() => _nameColumn = v),
-                    ),
-                    const SizedBox(height: 10),
-                    TextField(
-                      controller: _sheetTag,
-                      decoration: const InputDecoration(labelText: 'Tag for these people (optional)', hintText: 'Diwali list'),
-                      onChanged: (_) => setState(() {}),
-                    ),
-                    const SizedBox(height: 4),
-                    const Text('They are saved to your contacts with this tag, so you can send to them again.', style: TextStyle(fontSize: 12, color: Brand.muted)),
-                  ],
-                ],
-
-                // ── 3. Blanks ──
-                if (parts != null && parts.blanks.isNotEmpty) ...[
-                  const _Step(3, 'Fill the blanks', 'Different for each person, or the same for all'),
-                  for (final b in parts.blanks) ...[
-                    Text('Blank {{$b}}', style: const TextStyle(fontWeight: FontWeight.w700)),
-                    const SizedBox(height: 6),
-                    if (_fromSheet && _sheet == null)
-                      const Text('Upload the list to use its columns.', style: TextStyle(fontSize: 12.5, color: Brand.muted))
-                    else
-                      Wrap(
-                        spacing: 6,
-                        runSpacing: 6,
+                  // ── 1. Message ──
+                  const _Step(1, 'Message', 'An approved WhatsApp template'),
+                  if (approved.isEmpty && _templatesError != null)
+                    Text('Could not get your templates from Meta. $_templatesError', style: const TextStyle(color: Brand.red))
+                  else if (approved.isEmpty)
+                    const Text('No approved templates yet. Make one in More → WhatsApp templates; Meta checks it first.', style: TextStyle(color: Brand.muted))
+                  else if (templates.isEmpty)
+                    const Text(
+                      "Templates for login codes, products, order details or a location can't be sent as a campaign from the app. Make a plain template in More → WhatsApp templates.",
+                      style: TextStyle(color: Brand.muted),
+                    )
+                  else
+                    Card(
+                      child: Column(
                         children: [
-                          for (final (key, label)
-                              in _fromSheet ? [for (final h in _sheet!.headers) (h, h), ('_fixed', 'Same text for all')] : [for (final e in _contactFields.entries) (e.key, e.value)])
-                            ChoiceChip(label: Text(label), selected: (_source[b] ?? '_fixed') == key, onSelected: (_) => setState(() => _source[b] = key)),
+                          for (var i = 0; i < templates.length; i++) ...[
+                            if (i > 0) const Divider(indent: 52),
+                            ListTile(
+                              leading: Icon(_template?['id'] == templates[i]['id'] ? Icons.radio_button_checked : Icons.radio_button_unchecked, color: Brand.blue),
+                              title: Text('${templates[i]['name']}', style: const TextStyle(fontWeight: FontWeight.w700)),
+                              subtitle: Text(TemplateParts(templates[i]).body, maxLines: 2, overflow: TextOverflow.ellipsis),
+                              onTap: () => _pickTemplate(templates[i]),
+                            ),
+                          ],
                         ],
                       ),
-                    if ((_source[b] ?? '_fixed') == '_fixed')
-                      Padding(
-                        padding: const EdgeInsets.only(top: 8),
-                        child: TextField(
-                          controller: _fixed[b],
-                          onChanged: (_) => setState(() {}),
-                          decoration: InputDecoration(hintText: 'Text for {{$b}}', errorText: _tried && (_fixed[b]?.text.trim() ?? '').isEmpty ? 'Write what goes here' : null),
-                        ),
-                      ),
-                    const SizedBox(height: 12),
-                  ],
-                ],
-
-                // Preview, with the first person's values
-                if (parts != null) ...[
-                  SectionLabel(first == null ? 'How it looks' : 'How it looks for the first person'),
-                  TemplateBubble(parts: parts, values: first?.variables ?? {for (final b in parts.blanks) b: _value(b)}),
-                ],
-
-                // ── 4. Sending ──
-                _Step(parts != null && parts.blanks.isNotEmpty ? 4 : 3, 'When', _when == 0 ? (app.online ? 'Right away' : 'As soon as you are online') : 'Scheduled, India time'),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: [
-                    ChoiceChip(label: Text(app.online ? 'Now' : 'When online'), selected: _when == 0, onSelected: (_) => setState(() => _when = 0)),
-                    if (!eveningPassed) ChoiceChip(label: const Text('Today, 6 pm'), selected: _when == 1, onSelected: (_) => setState(() => _when = 1)),
-                    ChoiceChip(label: const Text('Tomorrow, 10 am'), selected: _when == 2, onSelected: (_) => setState(() => _when = 2)),
-                    ChoiceChip(
-                      avatar: Icon(Icons.event, size: 18, color: _when == 3 ? Brand.blue : Brand.textSoft),
-                      label: Text(_when == 3 && _pickedAt != null ? DateFormat('d MMM, h:mm a').format(_pickedAt!.add(istOffset)) : 'Pick date and time'),
-                      selected: _when == 3,
-                      onSelected: (_) => _pickTime(),
                     ),
+                  if (templates.isNotEmpty && cannotSend > 0)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 6),
+                      child: Text("$cannotSend more can't be sent from the app (login codes, products, order details or a location).", style: const TextStyle(fontSize: 12.5, color: Brand.muted)),
+                    ),
+                  if (_tried && _template == null) const _Error('Pick the message to send.'),
+
+                  // ── 2. Who gets it ──
+                  _Step(2, 'Who gets it', '${list.recipients.length} ${list.recipients.length == 1 ? 'person' : 'people'}'),
+                  SegmentedButton<bool>(
+                    showSelectedIcon: false,
+                    segments: const [
+                      ButtonSegment(value: false, icon: Icon(Icons.people_outline, size: 18), label: Text('My contacts')),
+                      ButtonSegment(value: true, icon: Icon(Icons.upload_file, size: 18), label: Text('Upload a list')),
+                    ],
+                    selected: {_fromSheet},
+                    onSelectionChanged: (s) => setState(() {
+                      _fromSheet = s.first;
+                      for (final b in _source.keys.toList()) {
+                        _source[b] = _source[b] == '_fixed' ? '_fixed' : (_fromSheet ? (_nameColumn ?? '_fixed') : 'first_name');
+                      }
+                    }),
+                  ),
+                  const SizedBox(height: 10),
+                  if (!_fromSheet)
+                    Panel(
+                      onTap: () async {
+                        final result = await Navigator.push<(Set<String>, AudienceFilter)>(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => ChoosePeopleScreen(picked: _picked, filter: _filter),
+                          ),
+                        );
+                        if (result != null) {
+                          setState(() {
+                            _picked = result.$1;
+                            _filter = result.$2;
+                          });
+                        }
+                      },
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 44,
+                            height: 44,
+                            decoration: BoxDecoration(color: Brand.blueSoft, borderRadius: BorderRadius.circular(12)),
+                            child: const Icon(Icons.groups_outlined, color: Brand.blue),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(_picked == null ? 'Everyone with a number' : '${_picked!.length} chosen', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
+                                Text(
+                                  [
+                                    '${list.recipients.length} will get it',
+                                    if (list.duplicates > 0) '${list.duplicates} repeated numbers once',
+                                    if (list.invalid > 0) '${list.invalid} without a number left out',
+                                  ].join(' · '),
+                                  style: const TextStyle(fontSize: 12.5, color: Brand.muted),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const Text(
+                            'Choose',
+                            style: TextStyle(color: Brand.blue, fontWeight: FontWeight.w700),
+                          ),
+                          const Icon(Icons.chevron_right, color: Brand.blue),
+                        ],
+                      ),
+                    )
+                  else ...[
+                    OutlinedButton.icon(
+                      onPressed: _reading ? null : _upload,
+                      icon: _reading ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.upload_file),
+                      label: Text(
+                        _reading
+                            ? 'Reading the file…'
+                            : _sheet == null
+                            ? 'Choose an Excel or CSV file'
+                            : 'Change file · $_sheetName',
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    if (_sheet == null)
+                      const Text('First row: column names, like Name and Phone. One person on each row.', style: TextStyle(fontSize: 12.5, color: Brand.muted))
+                    else ...[
+                      Text(
+                        [
+                          '${_sheet!.rows.length} rows',
+                          '${list.recipients.length} will get it',
+                          if (list.invalid > 0) '${list.invalid} without a usable number',
+                          if (list.duplicates > 0) '${list.duplicates} repeated',
+                        ].join(' · '),
+                        style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: list.invalid > 0 ? Brand.red : Brand.textSoft),
+                      ),
+                      const SizedBox(height: 10),
+                      _ColumnPicker(
+                        label: 'Phone number column',
+                        value: _phoneColumn,
+                        columns: _sheet!.headers,
+                        sample: (c) => _sheet!.rows.first[c] ?? '',
+                        onChanged: (v) => setState(() => _phoneColumn = v),
+                      ),
+                      const SizedBox(height: 10),
+                      _ColumnPicker(
+                        label: 'Name column (optional)',
+                        value: _nameColumn,
+                        columns: _sheet!.headers,
+                        optional: true,
+                        sample: (c) => _sheet!.rows.first[c] ?? '',
+                        onChanged: (v) => setState(() => _nameColumn = v),
+                      ),
+                      const SizedBox(height: 10),
+                      TextField(
+                        controller: _sheetTag,
+                        decoration: const InputDecoration(labelText: 'Tag for these people (optional)', hintText: 'Diwali list'),
+                        onChanged: (_) => setState(() {}),
+                      ),
+                      const SizedBox(height: 4),
+                      const Text('They are saved to your contacts with this tag, so you can send to them again.', style: TextStyle(fontSize: 12, color: Brand.muted)),
+                    ],
                   ],
-                ),
-                if (_senders.length > 1) ...[
-                  const SectionLabel('Send from'),
+
+                  // ── 3. Blanks ──
+                  if (parts != null && parts.blanks.isNotEmpty) ...[
+                    const _Step(3, 'Fill the blanks', 'Different for each person, or the same for all'),
+                    for (final b in parts.blanks) ...[
+                      Text('Blank {{$b}}', style: const TextStyle(fontWeight: FontWeight.w700)),
+                      const SizedBox(height: 6),
+                      if (_fromSheet && _sheet == null)
+                        const Text('Upload the list to use its columns.', style: TextStyle(fontSize: 12.5, color: Brand.muted))
+                      else
+                        Wrap(
+                          spacing: 6,
+                          runSpacing: 6,
+                          children: [
+                            for (final (key, label)
+                                in _fromSheet ? [for (final h in _sheet!.headers) (h, h), ('_fixed', 'Same text for all')] : [for (final e in _contactFields.entries) (e.key, e.value)])
+                              ChoiceChip(label: Text(label), selected: (_source[b] ?? '_fixed') == key, onSelected: (_) => setState(() => _source[b] = key)),
+                          ],
+                        ),
+                      if ((_source[b] ?? '_fixed') == '_fixed')
+                        Padding(
+                          padding: const EdgeInsets.only(top: 8),
+                          child: TextField(
+                            controller: _fixed[b],
+                            onChanged: (_) => setState(() {}),
+                            decoration: InputDecoration(hintText: 'Text for {{$b}}', errorText: _tried && (_fixed[b]?.text.trim() ?? '').isEmpty ? 'Write what goes here' : null),
+                          ),
+                        ),
+                      const SizedBox(height: 12),
+                    ],
+                  ],
+
+                  // Preview, with the first person's values
+                  if (parts != null) ...[
+                    SectionLabel(first == null ? 'How it looks' : 'How it looks for the first person'),
+                    TemplateBubble(parts: parts, values: first?.variables ?? {for (final b in parts.blanks) b: _value(b)}),
+                  ],
+
+                  // ── 4. Sending ──
+                  _Step(parts != null && parts.blanks.isNotEmpty ? 4 : 3, 'When', _when == 0 ? (app.online ? 'Right away' : 'As soon as you are online') : 'Scheduled, India time'),
                   Wrap(
                     spacing: 8,
                     runSpacing: 8,
                     children: [
-                      for (final s in _senders)
-                        ChoiceChip(label: Text('${s['label'] ?? s['value']}'), selected: _sender == '${s['value']}', onSelected: (_) => setState(() => _sender = '${s['value']}')),
+                      ChoiceChip(label: Text(app.online ? 'Now' : 'When online'), selected: _when == 0, onSelected: (_) => setState(() => _when = 0)),
+                      if (!eveningPassed) ChoiceChip(label: const Text('Today, 6 pm'), selected: _when == 1, onSelected: (_) => setState(() => _when = 1)),
+                      ChoiceChip(label: const Text('Tomorrow, 10 am'), selected: _when == 2, onSelected: (_) => setState(() => _when = 2)),
+                      ChoiceChip(
+                        avatar: Icon(Icons.event, size: 18, color: _when == 3 ? Brand.blue : Brand.textSoft),
+                        label: Text(_when == 3 && _pickedAt != null ? DateFormat('d MMM, h:mm a').format(_pickedAt!.add(istOffset)) : 'Pick date and time'),
+                        selected: _when == 3,
+                        onSelected: (_) => _pickTime(),
+                      ),
                     ],
                   ),
+                  if (_senders.length > 1) ...[
+                    const SectionLabel('Send from'),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        for (final s in _senders)
+                          ChoiceChip(label: Text('${s['label'] ?? s['value']}'), selected: _sender == '${s['value']}', onSelected: (_) => setState(() => _sender = '${s['value']}')),
+                      ],
+                    ),
+                  ],
+                  const SizedBox(height: 16),
+                  const Text(
+                    'Only customers who agreed to hear from you should get marketing messages. WhatsApp may limit numbers that get many blocks.',
+                    style: TextStyle(fontSize: 12.5, color: Brand.muted, height: 1.4),
+                  ),
+                  if (_tried && problem != null) _Error(problem),
                 ],
-                const SizedBox(height: 16),
-                const Text(
-                  'Only customers who agreed to hear from you should get marketing messages. WhatsApp may limit numbers that get many blocks.',
-                  style: TextStyle(fontSize: 12.5, color: Brand.muted, height: 1.4),
-                ),
-                if (_tried && problem != null) _Error(problem),
-              ],
+              ),
             ),
-          ),
-        ],
-      ),
-      bottomNavigationBar: SafeArea(
-        top: false,
-        child: Container(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-          decoration: const BoxDecoration(
-            color: Colors.white,
-            border: Border(top: BorderSide(color: Brand.line)),
-          ),
-          child: FilledButton.icon(
-            onPressed: _saving
-                ? null
-                : () {
-                    setState(() => _tried = true);
-                    if (problem != null) return toast(context, problem);
-                    _create(app, parts!, list);
-                  },
-            icon: Icon(_when == 0 ? Icons.send : Icons.schedule_send),
-            label: Text(_when == 0 ? 'Send to ${list.recipients.length}' : 'Schedule for ${list.recipients.length}'),
+          ],
+        ),
+        bottomNavigationBar: SafeArea(
+          top: false,
+          child: Container(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+            decoration: const BoxDecoration(
+              color: Colors.white,
+              border: Border(top: BorderSide(color: Brand.line)),
+            ),
+            child: FilledButton.icon(
+              onPressed: _saving
+                  ? null
+                  : () {
+                      setState(() => _tried = true);
+                      if (problem != null) return toast(context, problem);
+                      _create(app, parts!, list);
+                    },
+              icon: Icon(_when == 0 ? Icons.send : Icons.schedule_send),
+              label: Text(_when == 0 ? 'Send to ${list.recipients.length}' : 'Schedule for ${list.recipients.length}'),
+            ),
           ),
         ),
       ),
@@ -464,6 +586,9 @@ class _NewCampaignScreenState extends State<NewCampaignScreen> {
     setState(() => _saving = true);
     final localId = AppState.newLocalId();
     final name = _name.text.trim();
+    // A time that has already come (say "Today, 6 pm" tapped just before 6) is sent right away
+    var at = _scheduledAt;
+    if (at != null && !at.isAfter(DateTime.now().toUtc().add(const Duration(minutes: 1)))) at = null;
     await app.enqueue(
       kind: 'campaign',
       label: 'Campaign "$name" to ${list.recipients.length}',
@@ -474,17 +599,21 @@ class _NewCampaignScreenState extends State<NewCampaignScreen> {
         'organizationId': app.orgId,
         'name': name,
         'templateName': _template!['name'],
+        // Meta's id for the template: the server then sends the approved template (title, photo, buttons), not plain text
+        if (_template!['id'] != null) 'templateSid': 'META_${_template!['id']}',
         'templateBody': parts.body,
         'templateLanguage': _template!['language'] ?? 'en',
         'channel': 'whatsapp',
         'sender': ?_sender,
         'audience': [for (final r in list.recipients) r.toJson()],
         'createdBy': app.me?['user']?['id'],
-        if (_scheduledAt != null) 'scheduledAt': _scheduledAt!.toIso8601String(),
+        // The same for every try: a create sent again after a slow answer must not make a second campaign
+        'client_ref': localId,
+        if (at != null) 'scheduledAt': at.toIso8601String(),
       },
     );
     // Sending now: start it once it exists on the server (scheduled ones start on their own)
-    if (_scheduledAt == null) {
+    if (at == null) {
       await app.enqueue(kind: 'campaign_run', label: 'Start "$name"', path: '/api/campaigns/run', body: {'campaignId': localId});
     }
     if (!mounted) return;
@@ -492,7 +621,7 @@ class _NewCampaignScreenState extends State<NewCampaignScreen> {
       context,
       !app.online
           ? 'Campaign saved. It is created and sent when you are online.'
-          : _scheduledAt == null
+          : at == null
           ? 'Sending to ${list.recipients.length}.'
           : 'Scheduled.',
     );

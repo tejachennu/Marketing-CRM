@@ -181,7 +181,12 @@ class _TemplatePickerState extends State<_TemplatePicker> {
               Text(parts == null ? 'Only templates Meta approved can be sent.' : 'Fill the blanks. This is how it will look.', style: const TextStyle(color: Brand.muted)),
               const SizedBox(height: 14),
               if (parts == null) ...[
-                if (approved.isEmpty) const Text('No approved templates yet. Create them on the web (Templates).'),
+                if (approved.isEmpty)
+                  Text(
+                    app.can('campaigns')
+                        ? 'No approved templates yet. Make one in More → WhatsApp templates; Meta checks it first.'
+                        : 'No approved templates yet. Ask your admin to make one in More → WhatsApp templates.',
+                  ),
                 for (final t in approved)
                   Padding(
                     padding: const EdgeInsets.only(bottom: 8),

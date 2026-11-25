@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 
 import '../../data/app_state.dart';
 import '../../data/format.dart';
@@ -26,6 +27,31 @@ const campaignStatusWords = {
 };
 
 bool isSending(String status) => status == 'RUNNING' || status == 'PROCESSING' || status == 'PENDING';
+
+/// When a scheduled campaign goes, in India time: "today 6 pm", "tomorrow 10:30 am", "Thu 27 Nov, 10 am".
+String formatScheduled(String? iso) {
+  final at = DateTime.tryParse(iso ?? '');
+  if (at == null) return '';
+  final ist = toIst(at);
+  final today = istNow();
+  final days = DateTime.utc(ist.year, ist.month, ist.day).difference(DateTime.utc(today.year, today.month, today.day)).inDays;
+  final time = DateFormat(ist.minute == 0 ? 'h a' : 'h:mm a').format(ist).toLowerCase();
+  if (days == 0) return 'today $time';
+  if (days == 1) return 'tomorrow $time';
+  return '${DateFormat('EEE d MMM').format(ist)}, $time';
+}
+
+/// Asks the server to start campaigns whose time has come (and ones that did not start). It does
+/// that only when asked, so the app asks whenever campaigns are opened. True when one was started.
+Future<bool> startDueCampaigns(AppState app) async {
+  if (!app.online) return false;
+  try {
+    final data = await app.backend.get('/api/campaigns/scheduled', {'organizationId': app.orgId});
+    return ((data['triggeredCount'] as num?) ?? 0) > 0;
+  } catch (_) {
+    return false;
+  }
+}
 
 PillTone campaignTone(String status) => status == 'FAILED'
     ? PillTone.red
@@ -60,6 +86,14 @@ class _CampaignsScreenState extends State<CampaignsScreen> {
     _page = 1;
     _more.clear();
     AppScope.read(context).load(_key, '/api/campaigns', query: _query, force: true);
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (await startDueCampaigns(AppScope.read(context)) && mounted) _reload();
+    });
   }
 
   Future<void> _loadMore() async {
@@ -163,6 +197,8 @@ class _CampaignsScreenState extends State<CampaignsScreen> {
           Expanded(
             child: RefreshIndicator(
               onRefresh: () async {
+                await startDueCampaigns(app);
+                if (!mounted) return;
                 _reload();
                 await app.syncNow();
               },
@@ -276,7 +312,8 @@ class CampaignCard extends StatelessWidget {
     final failed = (c['failed_count'] as num?) ?? 0;
     final replies = (c['active_chats_count'] as num?) ?? 0;
     final toReply = (c['unread_chats_count'] as num?) ?? 0;
-    final when = status == 'SCHEDULED' && c['scheduled_at'] != null ? 'Goes ${formatWhen(c['scheduled_at'])}' : formatWhen(c['created_at']);
+    final scheduled = status == 'SCHEDULED' && c['scheduled_at'] != null;
+    final when = formatWhen(c['created_at']);
     final (icon, iconBg, iconFg) = switch (status) {
       'FAILED' => (Icons.error_outline, Brand.redSoft, Brand.red),
       'SCHEDULED' => (Icons.schedule, Brand.blueSoft, Brand.blue),
@@ -314,7 +351,7 @@ class CampaignCard extends StatelessWidget {
                       const SizedBox(width: 8),
                       Text(
                         when,
-                        style: TextStyle(fontSize: 12, color: status == 'SCHEDULED' ? Brand.blue : Brand.faint, fontWeight: FontWeight.w600),
+                        style: const TextStyle(fontSize: 12, color: Brand.faint, fontWeight: FontWeight.w600),
                       ),
                     ],
                   ),
@@ -325,10 +362,19 @@ class CampaignCard extends StatelessWidget {
                         child: Text(
                           status == 'FAILED' && sent == 0
                               ? '${failed.toInt()} of ${total.toInt()} could not be sent'
+                              : scheduled
+                              ? 'Goes ${formatScheduled(c['scheduled_at'])} · ${total.toInt()} people · ${c['template_name'] ?? ''}'
                               : status == 'SCHEDULED' || status == '_WAITING'
                               ? '${total.toInt()} people · ${c['template_name'] ?? ''}'
                               : '${sent.toInt()} of ${total.toInt()} sent${sent > 0 ? ' · ${read.toInt()} read' : ''}${failed > 0 ? ' · ${failed.toInt()} not sent' : ''}',
-                          style: TextStyle(fontSize: 13.5, color: status == 'FAILED' ? Brand.red : Brand.muted),
+                          style: TextStyle(
+                            fontSize: 13.5,
+                            color: status == 'FAILED'
+                                ? Brand.red
+                                : scheduled
+                                ? Brand.blue
+                                : Brand.muted,
+                          ),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                         ),
