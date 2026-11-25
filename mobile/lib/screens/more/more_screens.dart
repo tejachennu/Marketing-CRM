@@ -2,6 +2,8 @@ import 'billing_screen.dart';
 import 'grow_screen.dart';
 
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
+import '../../config.dart';
 
 import '../../data/app_state.dart';
 import '../../data/format.dart';
@@ -220,7 +222,16 @@ class MoreScreen extends StatelessWidget {
                     }
                   },
                 ),
-                const _Row(icon: Icons.language, title: 'Team members', subtitle: 'Invite and manage on the web'),
+                // Teammates are invited and managed on the website: opens it in the phone's browser
+                _Row(
+                  icon: Icons.language,
+                  title: 'Team members',
+                  subtitle: 'Invite and manage on the web',
+                  onTap: () async {
+                    final ok = await launchUrl(Uri.parse('${AppConfig.apiBase}/dashboard/team'), mode: LaunchMode.externalApplication).catchError((_) => false);
+                    if (!ok && context.mounted) toast(context, 'Open ${AppConfig.apiBase}/dashboard/team on a computer or phone browser.');
+                  },
+                ),
                 const _Gap(),
                 _Row(
                   icon: Icons.logout,
