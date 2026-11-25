@@ -641,21 +641,10 @@ class _LoginScreenState extends State<LoginScreen> {
                         ),
                         const Padding(
                           padding: EdgeInsets.symmetric(vertical: 16),
-                          child: Row(
-                            children: [
-                              Expanded(child: Divider()),
-                              Flexible(
-                                child: Padding(
-                                  padding: EdgeInsets.symmetric(horizontal: 10),
-                                  child: Text(
-                                    'Already have an account? Sign in',
-                                    textAlign: TextAlign.center,
-                                    style: TextStyle(color: Brand.muted, fontSize: 12.5),
-                                  ),
-                                ),
-                              ),
-                              Expanded(child: Divider()),
-                            ],
+                          child: Text(
+                            'Already have an account? Sign in',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(color: Brand.muted, fontSize: 13),
                           ),
                         ),
                         TextField(
