@@ -23,7 +23,10 @@ Future<void> _saveVideos(AppState app, {String? lang, String? watched}) async {
   final old = app.store.read('videos') ?? const {};
   final seen = {...((old['watched'] as List?) ?? const []).map((e) => '$e')};
   if (watched != null) seen.add(watched);
-  await app.store.write('videos', {'lang': lang ?? old['lang'] ?? 'en', 'watched': seen.toList()});
+  // No language picked yet: keep none, so the phone's language still counts (videoLanguage)
+  await app.store.write('videos', {'lang': lang ?? old['lang'], 'watched': seen.toList()});
+  // Watch buttons on the welcome pages follow the new language
+  if (lang != null) app.changed();
 }
 
 Set<String> watchedVideos(AppState app) => {...((app.store.read('videos')?['watched'] as List?) ?? const []).map((e) => '$e')};
@@ -53,7 +56,7 @@ class ExplainerScreen extends StatefulWidget {
   State<ExplainerScreen> createState() => _ExplainerScreenState();
 }
 
-class _ExplainerScreenState extends State<ExplainerScreen> with SingleTickerProviderStateMixin {
+class _ExplainerScreenState extends State<ExplainerScreen> with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   late int _video = explainers.indexWhere((e) => e.id == widget.startId).clamp(0, explainers.length - 1);
   late int _scene = widget.startScene.clamp(0, explainers[_video].scenes.length - 1);
   bool _paused = false;
@@ -66,13 +69,25 @@ class _ExplainerScreenState extends State<ExplainerScreen> with SingleTickerProv
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    // Screen readers: start paused, so the words are not swapped while they are being read
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && MediaQuery.accessibleNavigationOf(context) && !_paused) _togglePause();
+    });
     _startScene();
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _clock.dispose();
     super.dispose();
+  }
+
+  /// Leaving the app pauses the video (otherwise the time away would count and skip scenes)
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed && !_paused && !_ended) _togglePause();
   }
 
   void _startScene() {
@@ -143,140 +158,181 @@ class _ExplainerScreenState extends State<ExplainerScreen> with SingleTickerProv
     final scene = _ex.scenes[_scene];
     return Scaffold(
       backgroundColor: const Color(0xFF0B141A),
-      body: SafeArea(
-        child: Column(
-          children: [
-            // Story bars, one per scene
-            Padding(
-              padding: const EdgeInsets.fromLTRB(12, 10, 12, 0),
-              child: AnimatedBuilder(
-                animation: _clock,
-                builder: (context, _) => Row(
-                  children: [
-                    for (var i = 0; i < _ex.scenes.length; i++) ...[
-                      if (i > 0) const SizedBox(width: 4),
-                      Expanded(
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(99),
-                          child: LinearProgressIndicator(
-                            minHeight: 3,
-                            value: _ended || i < _scene ? 1 : (i == _scene ? _clock.value : 0),
-                            backgroundColor: const Color(0x40FFFFFF),
-                            color: Colors.white,
-                          ),
-                        ),
+      // Large phone text up to 1.3×: beyond that the words would push the controls off a small screen
+      body: MediaQuery.withClampedTextScaling(
+        maxScaleFactor: 1.3,
+        child: SafeArea(
+          child: Column(
+            children: [
+              // Story bars, one per scene
+              Padding(
+                padding: const EdgeInsets.fromLTRB(12, 10, 12, 0),
+                child: Semantics(
+                  label: '${_scene + 1} / ${_ex.scenes.length}',
+                  child: ExcludeSemantics(
+                    child: AnimatedBuilder(
+                      animation: _clock,
+                      builder: (context, _) => Row(
+                        children: [
+                          for (var i = 0; i < _ex.scenes.length; i++) ...[
+                            if (i > 0) const SizedBox(width: 4),
+                            Expanded(
+                              child: ClipRRect(
+                                borderRadius: BorderRadius.circular(99),
+                                child: LinearProgressIndicator(
+                                  minHeight: 3,
+                                  value: _ended || i < _scene ? 1 : (i == _scene ? _clock.value : 0),
+                                  backgroundColor: const Color(0x40FFFFFF),
+                                  color: Colors.white,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ],
                       ),
-                    ],
+                    ),
+                  ),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(8, 6, 4, 0),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 34,
+                      height: 34,
+                      margin: const EdgeInsets.only(left: 6, right: 10),
+                      decoration: BoxDecoration(color: Brand.blue, borderRadius: BorderRadius.circular(10)),
+                      child: Icon(_ex.icon, color: Colors.white, size: 19),
+                    ),
+                    Expanded(
+                      child: Text(
+                        _ex.title.of(lang),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(color: Colors.white, fontSize: 14.5, fontWeight: FontWeight.w700, height: 1.25),
+                      ),
+                    ),
+                    IconButton(
+                      onPressed: () => Navigator.maybePop(context),
+                      tooltip: VideoWords.close.of(lang),
+                      icon: const Icon(Icons.close, color: Colors.white),
+                    ),
                   ],
                 ),
               ),
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(8, 6, 4, 0),
-              child: Row(
-                children: [
-                  Container(
-                    width: 34,
-                    height: 34,
-                    margin: const EdgeInsets.only(left: 6, right: 10),
-                    decoration: BoxDecoration(color: Brand.blue, borderRadius: BorderRadius.circular(10)),
-                    child: Icon(_ex.icon, color: Colors.white, size: 19),
-                  ),
-                  Expanded(
-                    child: Text(_ex.title.of(lang), maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white, fontSize: 14.5, fontWeight: FontWeight.w700, height: 1.25)),
-                  ),
-                  IconButton(onPressed: () => Navigator.maybePop(context), tooltip: 'Close', icon: const Icon(Icons.close, color: Colors.white)),
-                ],
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+                child: LanguagePicker(lang: lang, onPick: _setLang, dark: true),
               ),
-            ),
-            Padding(padding: const EdgeInsets.fromLTRB(16, 4, 16, 8), child: LanguagePicker(lang: lang, onPick: _setLang, dark: true)),
-            Expanded(
-              child: _ended
-                  ? _endView(lang)
-                  : LayoutBuilder(
-                      builder: (context, box) => GestureDetector(
-                        behavior: HitTestBehavior.opaque,
-                        onTapUp: (d) {
-                          final x = d.localPosition.dx / box.maxWidth;
-                          if (x < 0.28) {
-                            _go(-1);
-                          } else if (x > 0.72) {
-                            _go(1);
-                          } else {
-                            _togglePause();
-                          }
-                        },
-                        child: Stack(
-                          children: [
-                            Positioned.fill(
-                              child: Padding(
-                                padding: const EdgeInsets.symmetric(horizontal: 14),
-                                child: FittedBox(
-                                  child: AnimatedBuilder(
-                                    animation: _clock,
-                                    builder: (context, _) => Semantics(
-                                      label: '${scene.title.of(lang)}. ${scene.line.of(lang)}',
-                                      child: SceneView(scene: scene, t: still ? 1 : _clock.value, lang: lang),
+              Expanded(
+                child: _ended
+                    ? _endView(lang)
+                    : LayoutBuilder(
+                        builder: (context, box) => GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onTapUp: (d) {
+                            final x = d.localPosition.dx / box.maxWidth;
+                            if (x < 0.28) {
+                              _go(-1);
+                            } else if (x > 0.72) {
+                              _go(1);
+                            } else {
+                              _togglePause();
+                            }
+                          },
+                          child: Stack(
+                            children: [
+                              Positioned.fill(
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(horizontal: 14),
+                                  child: FittedBox(
+                                    child: AnimatedBuilder(
+                                      animation: _clock,
+                                      builder: (context, _) => ExcludeSemantics(
+                                        child: SceneView(scene: scene, t: still ? 1 : _clock.value, lang: lang),
+                                      ),
                                     ),
                                   ),
                                 ),
                               ),
-                            ),
-                            if (_paused)
-                              Center(
-                                child: Container(
-                                  width: 64,
-                                  height: 64,
-                                  decoration: const BoxDecoration(color: Color(0x99000000), shape: BoxShape.circle),
-                                  child: const Icon(Icons.play_arrow_rounded, color: Colors.white, size: 40),
+                              if (_paused)
+                                Center(
+                                  child: Container(
+                                    width: 64,
+                                    height: 64,
+                                    decoration: const BoxDecoration(color: Color(0x99000000), shape: BoxShape.circle),
+                                    child: const Icon(Icons.play_arrow_rounded, color: Colors.white, size: 40),
+                                  ),
                                 ),
-                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+              ),
+              // The words for this scene
+              if (!_ended)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 12, 20, 6),
+                  child: AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 280),
+                    transitionBuilder: (child, a) => FadeTransition(
+                      opacity: a,
+                      child: SlideTransition(
+                        position: Tween(begin: const Offset(0, 0.15), end: Offset.zero).animate(a),
+                        child: child,
+                      ),
+                    ),
+                    // Full width, so the words start at the same place in every scene
+                    child: SizedBox(
+                      key: ValueKey('$_video-$_scene-$lang'),
+                      width: double.infinity,
+                      child: Semantics(
+                        liveRegion: true,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              scene.title.of(lang),
+                              style: const TextStyle(color: Colors.white, fontSize: 21, fontWeight: FontWeight.w700, height: 1.25),
+                            ),
+                            const SizedBox(height: 6),
+                            Text(scene.line.of(lang), style: const TextStyle(color: Color(0xD9FFFFFF), fontSize: 15, height: 1.4)),
                           ],
                         ),
                       ),
                     ),
-            ),
-            // The words for this scene
-            if (!_ended)
-              Padding(
-                padding: const EdgeInsets.fromLTRB(20, 12, 20, 6),
-                child: AnimatedSwitcher(
-                  duration: const Duration(milliseconds: 280),
-                  transitionBuilder: (child, a) => FadeTransition(
-                    opacity: a,
-                    child: SlideTransition(position: Tween(begin: const Offset(0, 0.15), end: Offset.zero).animate(a), child: child),
                   ),
-                  child: Column(
-                    key: ValueKey('$_video-$_scene-$lang'),
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                ),
+              if (!_ended)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(8, 4, 8, 10),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Text(scene.title.of(lang), style: const TextStyle(color: Colors.white, fontSize: 21, fontWeight: FontWeight.w700, height: 1.25)),
-                      const SizedBox(height: 6),
-                      Text(scene.line.of(lang), style: const TextStyle(color: Color(0xD9FFFFFF), fontSize: 15, height: 1.4)),
+                      IconButton(
+                        onPressed: () => _go(-1),
+                        tooltip: VideoWords.back.of(lang),
+                        icon: const Icon(Icons.skip_previous_rounded, color: Colors.white, size: 30),
+                      ),
+                      const SizedBox(width: 18),
+                      IconButton.filled(
+                        onPressed: _togglePause,
+                        tooltip: _paused ? VideoWords.play.of(lang) : VideoWords.pause.of(lang),
+                        style: IconButton.styleFrom(backgroundColor: Colors.white, foregroundColor: const Color(0xFF0B141A), fixedSize: const Size(56, 56)),
+                        icon: Icon(_paused ? Icons.play_arrow_rounded : Icons.pause_rounded, size: 32),
+                      ),
+                      const SizedBox(width: 18),
+                      IconButton(
+                        onPressed: () => _go(1),
+                        tooltip: VideoWords.forward.of(lang),
+                        icon: const Icon(Icons.skip_next_rounded, color: Colors.white, size: 30),
+                      ),
                     ],
                   ),
                 ),
-              ),
-            if (!_ended)
-              Padding(
-                padding: const EdgeInsets.fromLTRB(8, 4, 8, 10),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    IconButton(onPressed: () => _go(-1), tooltip: 'Back', icon: const Icon(Icons.skip_previous_rounded, color: Colors.white, size: 30)),
-                    const SizedBox(width: 18),
-                    IconButton.filled(
-                      onPressed: _togglePause,
-                      tooltip: _paused ? 'Play' : 'Pause',
-                      style: IconButton.styleFrom(backgroundColor: Colors.white, foregroundColor: const Color(0xFF0B141A), fixedSize: const Size(56, 56)),
-                      icon: Icon(_paused ? Icons.play_arrow_rounded : Icons.pause_rounded, size: 32),
-                    ),
-                    const SizedBox(width: 18),
-                    IconButton(onPressed: () => _go(1), tooltip: 'Next', icon: const Icon(Icons.skip_next_rounded, color: Colors.white, size: 30)),
-                  ],
-                ),
-              ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -297,14 +353,27 @@ class _ExplainerScreenState extends State<ExplainerScreen> with SingleTickerProv
           ),
         ),
         const SizedBox(height: 16),
-        Text(_ex.scenes.last.title.of(lang), textAlign: TextAlign.center, style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.w700, height: 1.25)),
+        Text(
+          _ex.scenes.last.title.of(lang),
+          textAlign: TextAlign.center,
+          style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.w700, height: 1.25),
+        ),
         const SizedBox(height: 8),
-        Text(_ex.scenes.last.line.of(lang), textAlign: TextAlign.center, style: const TextStyle(color: Color(0xD9FFFFFF), fontSize: 15, height: 1.4)),
+        Text(
+          _ex.scenes.last.line.of(lang),
+          textAlign: TextAlign.center,
+          style: const TextStyle(color: Color(0xD9FFFFFF), fontSize: 15, height: 1.4),
+        ),
         const SizedBox(height: 28),
         if (next != null) ...[
           FilledButton.icon(
             onPressed: () => _playVideo(next),
-            style: FilledButton.styleFrom(backgroundColor: Brand.green, foregroundColor: const Color(0xFF0B141A), minimumSize: const Size.fromHeight(54), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14))),
+            style: FilledButton.styleFrom(
+              backgroundColor: Brand.green,
+              foregroundColor: const Color(0xFF0B141A),
+              minimumSize: const Size.fromHeight(54),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+            ),
             icon: const Icon(Icons.play_arrow_rounded),
             label: Text('${VideoWords.next.of(lang)}: ${explainers[next].title.of(lang)}', maxLines: 2, textAlign: TextAlign.center),
           ),
@@ -312,7 +381,12 @@ class _ExplainerScreenState extends State<ExplainerScreen> with SingleTickerProv
         ],
         OutlinedButton.icon(
           onPressed: () => _playVideo(_video),
-          style: OutlinedButton.styleFrom(foregroundColor: Colors.white, side: const BorderSide(color: Color(0x66FFFFFF)), minimumSize: const Size.fromHeight(50), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14))),
+          style: OutlinedButton.styleFrom(
+            foregroundColor: Colors.white,
+            side: const BorderSide(color: Color(0x66FFFFFF)),
+            minimumSize: const Size.fromHeight(50),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+          ),
           icon: const Icon(Icons.replay),
           label: Text(VideoWords.again.of(lang)),
         ),
@@ -356,7 +430,10 @@ class LanguagePicker extends StatelessWidget {
             button: true,
             child: Material(
               color: code == lang ? (dark ? Colors.white : Brand.blue) : (dark ? const Color(0x26FFFFFF) : Colors.white),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(99), side: BorderSide(color: code == lang ? Colors.transparent : (dark ? const Color(0x40FFFFFF) : Brand.border))),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(99),
+                side: BorderSide(color: code == lang ? Colors.transparent : (dark ? const Color(0x40FFFFFF) : Brand.border)),
+              ),
               child: InkWell(
                 borderRadius: BorderRadius.circular(99),
                 onTap: () => onPick(code),
@@ -366,11 +443,7 @@ class LanguagePicker extends StatelessWidget {
                   child: Text(
                     name,
                     maxLines: 1,
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w700,
-                      color: code == lang ? (dark ? const Color(0xFF0B141A) : Colors.white) : (dark ? Colors.white : Brand.textSoft),
-                    ),
+                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: code == lang ? (dark ? const Color(0xFF0B141A) : Colors.white) : (dark ? Colors.white : Brand.textSoft)),
                   ),
                 ),
               ),
@@ -396,7 +469,10 @@ class ExplainerGallery extends StatefulWidget {
 class _ExplainerGalleryState extends State<ExplainerGallery> with SingleTickerProviderStateMixin {
   String? _lang;
   // The big card plays its first scene over and over, without sound or words
-  late final AnimationController _preview = AnimationController(vsync: this, duration: Duration(milliseconds: explainers.first.scenes[2].ms));
+  late final AnimationController _preview = AnimationController(
+    vsync: this,
+    duration: Duration(milliseconds: explainers.first.scenes[2].ms),
+  );
 
   @override
   void initState() {
@@ -430,7 +506,10 @@ class _ExplainerGalleryState extends State<ExplainerGallery> with SingleTickerPr
       padding: widget.padding,
       children: [
         ?widget.header,
-        Text(VideoWords.pickLanguage.of(lang), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15, color: Brand.text)),
+        Text(
+          VideoWords.pickLanguage.of(lang),
+          style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15, color: Brand.text),
+        ),
         const SizedBox(height: 8),
         LanguagePicker(
           lang: lang,
@@ -474,7 +553,11 @@ class _ExplainerGalleryState extends State<ExplainerGallery> with SingleTickerPr
                           child: Container(
                             width: 62,
                             height: 62,
-                            decoration: BoxDecoration(color: Brand.green, shape: BoxShape.circle, border: Border.all(color: Colors.white, width: 3)),
+                            decoration: BoxDecoration(
+                              color: Brand.green,
+                              shape: BoxShape.circle,
+                              border: Border.all(color: Colors.white, width: 3),
+                            ),
                             child: const Icon(Icons.play_arrow_rounded, color: Colors.white, size: 38),
                           ),
                         ),
@@ -489,7 +572,10 @@ class _ExplainerGalleryState extends State<ExplainerGallery> with SingleTickerPr
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text(first.title.of(lang), style: const TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.w700, height: 1.25)),
+                              Text(
+                                first.title.of(lang),
+                                style: const TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.w700, height: 1.25),
+                              ),
                               const SizedBox(height: 3),
                               Text(first.summary.of(lang), style: const TextStyle(color: Color(0xBFFFFFFF), fontSize: 13, height: 1.35)),
                             ],
@@ -509,7 +595,10 @@ class _ExplainerGalleryState extends State<ExplainerGallery> with SingleTickerPr
         for (final ex in explainers.skip(1)) ...[
           Material(
             color: Colors.white,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16), side: const BorderSide(color: Brand.line)),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+              side: const BorderSide(color: Brand.line),
+            ),
             clipBehavior: Clip.antiAlias,
             child: InkWell(
               onTap: () => _open(ex.id),
@@ -532,7 +621,11 @@ class _ExplainerGalleryState extends State<ExplainerGallery> with SingleTickerPr
                           child: Container(
                             width: 22,
                             height: 22,
-                            decoration: BoxDecoration(color: Colors.white, shape: BoxShape.circle, border: Border.all(color: Brand.line)),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              shape: BoxShape.circle,
+                              border: Border.all(color: Brand.line),
+                            ),
                             child: const Icon(Icons.play_arrow_rounded, size: 16, color: Brand.blue),
                           ),
                         ),
@@ -543,7 +636,10 @@ class _ExplainerGalleryState extends State<ExplainerGallery> with SingleTickerPr
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(ex.title.of(lang), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15, color: Brand.text, height: 1.25)),
+                          Text(
+                            ex.title.of(lang),
+                            style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15, color: Brand.text, height: 1.25),
+                          ),
                           const SizedBox(height: 3),
                           Text(ex.summary.of(lang), style: const TextStyle(color: Brand.muted, fontSize: 13, height: 1.3)),
                         ],

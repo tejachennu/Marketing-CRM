@@ -377,4 +377,9 @@ class VideoWords {
   static const yourShop = Tx('Your shop', 'మీ షాప్', 'आपकी दुकान');
   static const chats = Tx('Chats', 'చాట్‌లు', 'चैट');
   static const reach = Tx('People reached', 'చూసినవాళ్ళు', 'देखने वाले');
+  static const play = Tx('Play', 'ప్లే', 'चलाएँ');
+  static const pause = Tx('Pause', 'ఆపండి', 'रोकें');
+  static const back = Tx('Back', 'వెనక్కి', 'पीछे');
+  static const forward = Tx('Next', 'ముందుకు', 'आगे');
+  static const close = Tx('Close', 'మూసేయండి', 'बंद करें');
 }
