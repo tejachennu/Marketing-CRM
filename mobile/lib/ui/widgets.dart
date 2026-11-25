@@ -4,7 +4,8 @@ import '../data/app_state.dart';
 import '../data/format.dart';
 import 'theme.dart';
 
-/// The strip under the title bar: offline, sending, or changes that need a look.
+/// The strip under the title bar: offline, changes that need a look, or changes stuck for a while. Normal sending
+/// while online happens quietly (owner: the "Syncing…" strip came up after every tap).
 class SyncBanner extends StatelessWidget {
   const SyncBanner({super.key, this.cacheKey});
 
@@ -17,6 +18,8 @@ class SyncBanner extends StatelessWidget {
     final waiting = app.waitingCount;
     final failed = app.failedCount;
     if (app.online && waiting == 0) return const SizedBox.shrink();
+    // Online: say nothing while changes go out as usual; only one waiting over a minute is worth a word
+    if (app.online && failed == 0 && !app.outbox.any((i) => DateTime.now().difference(i.createdAt) > const Duration(minutes: 1))) return const SizedBox.shrink();
     final saved = cacheKey == null ? null : app.savedAt(cacheKey!);
     late final IconData icon;
     late final String text;
@@ -30,7 +33,7 @@ class SyncBanner extends StatelessWidget {
       text = 'Offline. ${waiting > 0 ? '$waiting change${waiting == 1 ? '' : 's'} will sync when you are back online.' : saved == null ? 'Showing what is saved on this phone.' : 'Showing what was saved ${formatAgo(saved)}.'}';
     } else {
       icon = Icons.sync;
-      text = 'Syncing $waiting change${waiting == 1 ? '' : 's'}…';
+      text = '$waiting change${waiting == 1 ? ' is' : 's are'} still waiting to be sent. Tap to see.';
     }
     return Material(
       color: attention ? Brand.redSoft : Brand.navy,
@@ -120,12 +123,17 @@ class Pill extends StatelessWidget {
 
 enum PillTone { grey, blue, navy, red }
 
-/// "Waiting to sync" on something made on the phone.
+/// "Waiting to sync" on something made on the phone while offline, or "Not saved" when the server refused it. Online
+/// it goes out within moments, so nothing is shown (owner: "syncing" kept coming up after every tap).
 class WaitingPill extends StatelessWidget {
   const WaitingPill({super.key, this.failed = false});
   final bool failed;
   @override
-  Widget build(BuildContext context) => failed ? const Pill('Not saved', tone: PillTone.red, icon: Icons.error_outline) : const Pill('Waiting to sync', tone: PillTone.navy, icon: Icons.schedule);
+  Widget build(BuildContext context) {
+    if (failed) return const Pill('Not saved', tone: PillTone.red, icon: Icons.error_outline);
+    if (AppScope.of(context).online) return const SizedBox.shrink();
+    return const Pill('Waiting to sync', tone: PillTone.navy, icon: Icons.schedule);
+  }
 }
 
 class SectionLabel extends StatelessWidget {
