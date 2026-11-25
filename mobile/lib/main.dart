@@ -201,6 +201,7 @@ class WamaApp extends StatelessWidget {
       'delete_account' => const DeleteAccountScreen(),
       'expenses' => const ExpensesScreen(),
       'expense_new' => const ExpenseFormScreen(month: '2026-11'),
+      'expense_kinds' => const Scaffold(body: SafeArea(child: CategorySearchSheet(selected: 'rent', own: ['Tea and snacks', 'Cleaning']))),
       'splash' => const SplashScreen(),
       'signup' => const SignupScreen(),
       'signup_code' => const SignupScreen(demoCodeStep: true),

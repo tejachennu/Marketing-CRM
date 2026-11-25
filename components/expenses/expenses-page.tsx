@@ -9,8 +9,9 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { CalendarClock, ChevronLeft, ChevronRight, Loader2, Plus, Repeat, Sparkles, Trash2, TrendingDown, TrendingUp, Wallet, ReceiptText, Target, ThumbsUp, Wrench, Lightbulb } from 'lucide-react'
 import { api, card, Chip, dangerButton, Field, input, Modal, primaryButton, secondaryButton, StatTile, Toast, Toggle, useToast, useWorkspace } from '@/components/salon/ui'
 import { formatMoney } from '@/lib/pipeline/rules'
+import { CategoryPicker } from './category-picker'
 import { can } from '@/lib/rbac'
-import { EXPENSE_CATEGORIES, PAY_METHODS, addMonths, categoryLabel, istToday, methodLabel, monthName, shortMonth, type Insight, type MonthTotals } from '@/lib/expenses/rules'
+import { PAY_METHODS, addMonths, categoryLabel, istToday, methodLabel, monthName, shortMonth, type Insight, type MonthTotals } from '@/lib/expenses/rules'
 
 interface Expense { id: string; spent_on: string; category: string; amount: number; note: string | null; paid_to: string | null; method: string | null; repeat_monthly: boolean; repeat_key: string | null }
 interface Overview {
@@ -23,6 +24,8 @@ interface Overview {
   insight: { month: string; kind: 'full' | 'so_far'; insight: Insight; created_at: string } | null
   insightKind: 'full' | 'so_far'
   canAskInsight: boolean
+  /** Categories this business typed itself before, most used first */
+  ownCategories?: string[]
 }
 
 const money = (value: number) => formatMoney(value)
@@ -91,8 +94,9 @@ export function ExpensesBoard({ orgId }: { orgId?: string }) {
   }
 
   const totals = view?.months[view.months.length - 1]
-  const shown = (view?.expenses || []).filter((row) => filter === 'all' || row.category === filter)
-  const present = EXPENSE_CATEGORIES.filter((c) => view?.expenses.some((row) => row.category === c.key))
+  // Own categories match whatever their letter case
+  const shown = (view?.expenses || []).filter((row) => filter === 'all' || row.category.toLowerCase() === filter.toLowerCase())
+  const present = view?.categories || []
   const atCurrent = view ? month >= view.current : true
 
   return (
@@ -188,7 +192,7 @@ export function ExpensesBoard({ orgId }: { orgId?: string }) {
       )}
 
       {editing && orgId && (
-        <ExpenseForm orgId={orgId} month={month} expense={editing === 'new' ? null : editing}
+        <ExpenseForm orgId={orgId} month={month} expense={editing === 'new' ? null : editing} own={view?.ownCategories || []}
           onClose={() => setEditing(null)}
           onSaved={(text) => { setEditing(null); flash('success', text); load() }} />
       )}
@@ -367,7 +371,7 @@ function WhereItWent({ categories, total }: { categories: Overview['categories']
 
 // ── Add / change an expense ─────────────────────────────────────────────────
 
-function ExpenseForm({ orgId, month, expense, onClose, onSaved }: { orgId: string; month: string; expense: Expense | null; onClose: () => void; onSaved: (text: string) => void }) {
+function ExpenseForm({ orgId, month, expense, own, onClose, onSaved }: { orgId: string; month: string; expense: Expense | null; own: string[]; onClose: () => void; onSaved: (text: string) => void }) {
   const today = istToday()
   const [amount, setAmount] = useState(expense ? String(expense.amount) : '')
   const [category, setCategory] = useState(expense?.category || '')
@@ -428,9 +432,7 @@ function ExpenseForm({ orgId, month, expense, onClose, onSaved }: { orgId: strin
           <input className={`${input} text-[18px] font-bold`} inputMode="decimal" autoFocus={!expense} placeholder="0" value={amount} onChange={(e) => setAmount(e.target.value.replace(/[^\d.,]/g, ''))} />
         </Field>
         <Field label="What for" group>
-          <div className="flex flex-wrap gap-2">
-            {EXPENSE_CATEGORIES.map((c) => <Chip key={c.key} selected={category === c.key} onClick={() => pickCategory(c.key)}>{c.label}</Chip>)}
-          </div>
+          <CategoryPicker value={category} own={own} onChange={pickCategory} />
         </Field>
         <div className="grid gap-4 @md:grid-cols-2">
           <Field label="Date"><input type="date" className={input} value={day} onChange={(e) => setDay(e.target.value)} /></Field>

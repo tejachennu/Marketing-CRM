@@ -25,6 +25,8 @@ class DemoExpenses {
       {'id': 'e6', 'spent_on': '$now-05', 'category': 'bills', 'amount': 2600, 'paid_to': 'Electricity board', 'note': null, 'method': 'upi', 'repeat_monthly': false, 'repeat_key': null},
       {'id': 'e7', 'spent_on': '$now-09', 'category': 'stock', 'amount': 3400, 'paid_to': 'Sri Ram Traders', 'note': 'Hair colour, 12 boxes', 'method': 'upi', 'repeat_monthly': false, 'repeat_key': null},
       {'id': 'e8', 'spent_on': '$now-12', 'category': 'marketing', 'amount': 5000, 'paid_to': null, 'note': 'Instagram ads', 'method': 'card', 'repeat_monthly': false, 'repeat_key': null},
+      // A kind the business typed itself
+      {'id': 'e9', 'spent_on': '$last-20', 'category': 'Tea and snacks', 'amount': 640, 'paid_to': 'Ramu tea stall', 'note': null, 'method': 'cash', 'repeat_monthly': false, 'repeat_key': null},
     ]);
   }
 
@@ -61,6 +63,7 @@ class DemoExpenses {
       'insight': saved,
       'insightKind': kind,
       'canAskInsight': saved == null,
+      'ownCategories': mergeOwnCategories([for (final e in _expenses) e['category']]),
     };
   }
 
@@ -89,11 +92,12 @@ class DemoExpenses {
     }
     final amount = toNum('${body['amount'] ?? ''}'.replaceAll(RegExp(r'[₹,\s]'), ''));
     if (amount <= 0) throw ApiException(400, 'Type how much was spent.');
-    if (!expenseCategories.any((c) => c.$1 == body['category'])) throw ApiException(400, 'Pick what kind of expense it is.');
+    final category = resolveCategory(body['category'], mergeOwnCategories([for (final e in _expenses) e['category']]));
+    if (category == null) throw ApiException(400, 'Pick what kind of expense it is, or type a short name for it.');
     String? text(Object? v) => '${v ?? ''}'.trim().isEmpty ? null : '$v'.trim();
     final values = {
       'spent_on': body['spent_on'] ?? '${thisMonth()}-01',
-      'category': body['category'],
+      'category': category,
       'amount': amount,
       'paid_to': text(body['paid_to']),
       'note': text(body['note']),

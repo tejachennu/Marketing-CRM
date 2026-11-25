@@ -72,6 +72,7 @@ void main() {
     'delete_account': () => const DeleteAccountScreen(),
     'expenses': () => const ExpensesScreen(),
     'expense_new': () => const ExpenseFormScreen(month: '2026-11'),
+    'expense_kinds': () => const Scaffold(body: SafeArea(child: CategorySearchSheet(selected: 'rent', own: ['Tea and snacks', 'Cleaning']))),
     'onb_videos': () => const OnboardingScreen(),
     'video_end': () => const ExplainerScreen(startId: 'grow', autoplay: false, showEnd: true),
     'video_end_te': () => const ExplainerScreen(startId: 'grow', autoplay: false, showEnd: true, lang: 'te'),

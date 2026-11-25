@@ -284,7 +284,11 @@ test('Organization: members get no credentials, only whether each channel is con
   assert.equal(safe.whatsapp_connected, true)
 })
 
-test('Organization: a Meta-only or SMTP-only setup counts as configured', () => {
+test('Organization: a Meta-only or SMTP-only setup counts as configured', (t) => {
+  // A platform AI key in the environment would count as AI set up: this checks the workspace's own settings only
+  const platformKey = process.env.OPENAI_API_KEY
+  delete process.env.OPENAI_API_KEY
+  t.after(() => { if (platformKey !== undefined) process.env.OPENAI_API_KEY = platformKey })
   assert.deepEqual(getOrganizationCredentials({ whatsapp_api_token: 't', whatsapp_phone_number_id: '1' }), { messaging: true, email: false, ai: false })
   assert.deepEqual(getOrganizationCredentials({ smtp_host: 'h', smtp_email: 'e', smtp_password: 'p' }), { messaging: false, email: true, ai: false })
   assert.deepEqual(getOrganizationCredentials({ twilio_account_sid: 'AC', twilio_auth_token: '  ' }), { messaging: false, email: false, ai: false })

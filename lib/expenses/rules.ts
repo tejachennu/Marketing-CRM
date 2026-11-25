@@ -18,6 +18,9 @@ export const EXPENSE_CATEGORIES = [
 ] as const
 export type ExpenseCategory = (typeof EXPENSE_CATEGORIES)[number]['key']
 
+/** Longest name of a category the business types itself ("Tea and snacks"). */
+export const MAX_CATEGORY_NAME = 40
+
 export const PAY_METHODS = [
   { key: 'cash', label: 'Cash' },
   { key: 'upi', label: 'UPI' },
@@ -31,7 +34,8 @@ export const SUMMARY_MONTHS = 6
 
 export interface ExpenseInput {
   spent_on: string
-  category: ExpenseCategory
+  /** A built-in key ("rent") or a name the business typed itself ("Tea and snacks") */
+  category: string
   amount: number
   note: string | null
   paid_to: string | null
@@ -62,7 +66,63 @@ export interface SaleRow {
 
 export interface SoldItem { name: string; quantity: number; amount: number }
 
-export const categoryLabel = (key: string) => EXPENSE_CATEGORIES.find((c) => c.key === key)?.label || 'Other'
+export const isBuiltInCategory = (value: unknown): value is ExpenseCategory => EXPENSE_CATEGORIES.some((c) => c.key === value)
+
+/** A category name the business typed: tidied, 2 to 40 characters with a letter or digit in it; null when not usable. */
+export function cleanCategoryName(value: unknown): string | null {
+  const name = String(value ?? '').replace(/[\u0000-\u001f\u007f<>]/g, ' ').replace(/\s+/g, ' ').trim()
+  if (name.length < 2 || name.length > MAX_CATEGORY_NAME || !/[\p{L}\p{N}]/u.test(name)) return null
+  return name
+}
+
+/**
+ * What a picked or typed category is saved as: a built-in key (also when its name is typed: "rent", "Salaries"), one
+ * of the business's own categories in the spelling it already has (any letter case), or the new name as typed.
+ */
+export function resolveCategory(value: unknown, own: string[] = []): string | null {
+  if (isBuiltInCategory(value)) return value
+  const name = cleanCategoryName(value)
+  if (!name) return null
+  const lower = name.toLowerCase()
+  const builtIn = EXPENSE_CATEGORIES.find((c) => c.key === lower || c.label.toLowerCase() === lower)
+  if (builtIn) return builtIn.key
+  return own.find((o) => o.toLowerCase() === lower) ?? name
+}
+
+/** The name to show: a built-in label, or the business's own name. */
+export const categoryLabel = (key: string) => EXPENSE_CATEGORIES.find((c) => c.key === key)?.label || cleanCategoryName(key) || 'Other'
+
+/** The business's own categories (not the built-in ones), most used first, each once whatever its letter case. */
+export function ownCategories(rows: { category?: string | null }[], limit = 60): string[] {
+  const counts = new Map<string, { name: string; count: number }>()
+  for (const row of rows) {
+    if (isBuiltInCategory(row.category)) continue
+    const name = cleanCategoryName(row.category)
+    if (!name) continue
+    const seen = counts.get(name.toLowerCase())
+    if (seen) seen.count += 1
+    else counts.set(name.toLowerCase(), { name, count: 1 })
+  }
+  return [...counts.values()].sort((a, b) => b.count - a.count || a.name.localeCompare(b.name)).slice(0, limit).map((c) => c.name)
+}
+
+/**
+ * The category picker's list for what is typed: built-in and own categories whose name has the typed words (all of
+ * them, any order), built-in ones first; `add` is the typed name when it is new (offered as "Add …").
+ */
+export function categoryChoices(query: string, own: string[] = []): { choices: { key: string; label: string; own: boolean }[]; add: string | null } {
+  const all = [
+    ...EXPENSE_CATEGORIES.map((c) => ({ key: c.key as string, label: c.label as string, own: false })),
+    ...own.filter((o) => !isBuiltInCategory(o) && cleanCategoryName(o)).map((o) => ({ key: o, label: o, own: true })),
+  ]
+  const words = String(query ?? '').toLowerCase().split(/[^\p{L}\p{N}]+/u).filter(Boolean)
+  const choices = words.length ? all.filter((c) => words.every((w) => c.label.toLowerCase().includes(w) || c.key.toLowerCase().includes(w))) : all
+  const name = cleanCategoryName(query)
+  const lower = name?.toLowerCase()
+  const exists = !name || all.some((c) => c.label.toLowerCase() === lower || c.key.toLowerCase() === lower)
+  return { choices, add: exists ? null : name }
+}
+
 export const methodLabel = (key: string | null | undefined) => PAY_METHODS.find((m) => m.key === key)?.label || ''
 
 const round2 = (value: number) => Math.round((value + Number.EPSILON) * 100) / 100
@@ -141,7 +201,7 @@ const text = (value: unknown, max: number) => {
 }
 
 /** Checks an expense typed by a person. Amount in rupees (paise allowed). */
-export function cleanExpense(input: any, now: Date | number = Date.now()): { value: ExpenseInput } | { error: string; field: string } {
+export function cleanExpense(input: any, now: Date | number = Date.now(), own: string[] = []): { value: ExpenseInput } | { error: string; field: string } {
   const raw = typeof input?.amount === 'string' ? input.amount.replace(/[₹,\s]/g, '') : input?.amount
   const amount = Number(raw)
   if (!Number.isFinite(amount) || amount <= 0) return { error: 'Type how much was spent.', field: 'amount' }
@@ -153,8 +213,8 @@ export function cleanExpense(input: any, now: Date | number = Date.now()): { val
   // Rent paid ahead is fine; a date years away is a typing slip
   const latest = new Date(Date.parse(`${today}T00:00:00Z`) + 62 * 86_400_000).toISOString().slice(0, 10)
   if (spentOn > latest) return { error: 'That date is too far ahead.', field: 'spent_on' }
-  const category = EXPENSE_CATEGORIES.some((c) => c.key === input?.category) ? (input.category as ExpenseCategory) : null
-  if (!category) return { error: 'Pick what kind of expense it is.', field: 'category' }
+  const category = resolveCategory(input?.category, own)
+  if (!category) return { error: 'Pick what kind of expense it is, or type a short name for it.', field: 'category' }
   const method = PAY_METHODS.some((m) => m.key === input?.method) ? (input.method as PayMethod) : null
   return {
     value: {
@@ -203,17 +263,19 @@ export interface CategoryTotal { key: string; label: string; amount: number; cou
 
 /** Where the money went in a month, biggest first; share is a whole percent. */
 export function byCategory(expenses: ExpenseRow[]): CategoryTotal[] {
-  const totals = new Map<string, { amount: number; count: number }>()
+  // Own categories are one group whatever their letter case, shown in the spelling seen first
+  const totals = new Map<string, { key: string; amount: number; count: number }>()
   for (const expense of expenses) {
-    const key = EXPENSE_CATEGORIES.some((c) => c.key === expense.category) ? expense.category : 'other'
-    const row = totals.get(key) || { amount: 0, count: 0 }
+    const key = isBuiltInCategory(expense.category) ? expense.category : cleanCategoryName(expense.category) || 'other'
+    const group = isBuiltInCategory(key) ? key : key.toLowerCase()
+    const row = totals.get(group) || { key, amount: 0, count: 0 }
     row.amount += Number(expense.amount) || 0
     row.count += 1
-    totals.set(key, row)
+    totals.set(group, row)
   }
   const all = [...totals.values()].reduce((sum, row) => sum + row.amount, 0)
-  return [...totals.entries()]
-    .map(([key, row]) => ({ key, label: categoryLabel(key), amount: round2(row.amount), count: row.count, share: all > 0 ? Math.round((row.amount / all) * 100) : 0 }))
+  return [...totals.values()]
+    .map((row) => ({ key: row.key, label: categoryLabel(row.key), amount: round2(row.amount), count: row.count, share: all > 0 ? Math.round((row.amount / all) * 100) : 0 }))
     .sort((a, b) => b.amount - a.amount)
 }
 
@@ -268,7 +330,7 @@ export function repeatsDue(month: string, earlier: ExpenseRow[], inMonth: Expens
     const day = Math.min(Number(String(row.spent_on).slice(8, 10)) || 1, daysInMonth(month))
     due.push({
       spent_on: `${month}-${String(day).padStart(2, '0')}`,
-      category: (EXPENSE_CATEGORIES.some((c) => c.key === row.category) ? row.category : 'other') as ExpenseCategory,
+      category: isBuiltInCategory(row.category) ? row.category : cleanCategoryName(row.category) || 'other',
       amount: round2(Number(row.amount) || 0),
       note: row.note || null,
       paid_to: row.paid_to || null,

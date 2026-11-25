@@ -21,7 +21,9 @@ test('an expense is checked: amount, date, kind, payment method', () => {
   assert.equal(R.cleanExpense({ amount: 100, category: 'rent', spent_on: '2026-02-30' }, NOW).field, 'spent_on')
   assert.equal(R.cleanExpense({ amount: 100, category: 'rent', spent_on: '2027-06-01' }, NOW).field, 'spent_on', 'years ahead is a slip')
   assert.equal(R.cleanExpense({ amount: 100, category: 'rent', spent_on: '2026-12-01' }, NOW).value.spent_on, '2026-12-01', 'next month rent paid ahead is fine')
-  assert.equal(R.cleanExpense({ amount: 100, category: 'party' }, NOW).field, 'category')
+  assert.equal(R.cleanExpense({ amount: 100, category: '' }, NOW).field, 'category')
+  assert.equal(R.cleanExpense({ amount: 100, category: '!' }, NOW).field, 'category', 'a typed kind needs a letter or digit')
+  assert.equal(R.cleanExpense({ amount: 100, category: 'x'.repeat(41) }, NOW).field, 'category', 'a typed kind is short')
   const plain = R.cleanExpense({ amount: 100, category: 'stock', method: 'bitcoin' }, NOW).value
   assert.equal(plain.spent_on, '2026-11-25', 'no date = today in India')
   assert.equal(plain.method, null)
@@ -60,10 +62,48 @@ test('where the money went: biggest first, with shares', () => {
     { spent_on: '2026-11-01', category: 'salaries', amount: 30000 },
     { spent_on: '2026-11-02', category: 'salaries', amount: 15000 },
     { spent_on: '2026-11-03', category: 'rent', amount: 15000 },
-    { spent_on: '2026-11-04', category: 'mystery', amount: 0 },
+    { spent_on: '2026-11-04', category: '', amount: 0 },
   ])
   assert.deepEqual(rows.map((r) => [r.key, r.amount, r.count, r.share]), [['salaries', 45000, 2, 75], ['rent', 15000, 1, 25], ['other', 0, 1, 0]])
   assert.equal(rows[0].label, 'Salaries')
+})
+
+test('a business can type its own kind of expense; it is kept and offered next time', () => {
+  // Built-in kinds win, also when their name is typed
+  assert.equal(R.resolveCategory('rent'), 'rent')
+  assert.equal(R.resolveCategory('  SALARIES '), 'salaries')
+  assert.equal(R.resolveCategory('Electricity, water, internet'), 'bills')
+  // A new one is kept as typed (tidied); one used before keeps its first spelling
+  assert.equal(R.resolveCategory('  Tea   and snacks '), 'Tea and snacks')
+  assert.equal(R.resolveCategory('tea AND snacks', ['Tea and snacks']), 'Tea and snacks')
+  assert.equal(R.resolveCategory('<b>x</b>'), 'b x /b', 'no tags')
+  assert.equal(R.resolveCategory('a'), null)
+  const saved = R.cleanExpense({ amount: 250, category: 'tea and snacks', spent_on: '2026-11-05' }, NOW, ['Tea and snacks']).value
+  assert.equal(saved.category, 'Tea and snacks')
+  assert.equal(R.categoryLabel('Tea and snacks'), 'Tea and snacks')
+  assert.equal(R.categoryLabel('rent'), 'Rent')
+  // The list of own kinds: no built-in ones, each once, most used first
+  assert.deepEqual(R.ownCategories([
+    { category: 'rent' }, { category: 'Tea and snacks' }, { category: 'Cleaning' }, { category: 'tea and snacks' }, { category: '' }, { category: null },
+  ]), ['Tea and snacks', 'Cleaning'])
+  // Where the money went puts letter-case twins together under the first spelling
+  const rows = R.byCategory([
+    { spent_on: '2026-11-01', category: 'Tea and snacks', amount: 200 },
+    { spent_on: '2026-11-02', category: 'TEA AND SNACKS', amount: 100 },
+    { spent_on: '2026-11-03', category: 'rent', amount: 900 },
+  ])
+  assert.deepEqual(rows.map((r) => [r.key, r.label, r.amount, r.count]), [['rent', 'Rent', 900, 1], ['Tea and snacks', 'Tea and snacks', 300, 2]])
+  // The picker: search by any word, own ones after built-in ones, "Add …" only for a new name
+  const all = R.categoryChoices('', ['Tea and snacks'])
+  assert.equal(all.choices.length, R.EXPENSE_CATEGORIES.length + 1)
+  assert.equal(all.add, null)
+  assert.deepEqual(R.categoryChoices('water', []).choices.map((c) => c.key), ['bills'])
+  assert.deepEqual(R.categoryChoices('snacks', ['Tea and snacks']).choices.map((c) => [c.key, c.own]), [['Tea and snacks', true]])
+  assert.equal(R.categoryChoices('snacks', ['Tea and snacks']).add, 'snacks')
+  assert.equal(R.categoryChoices('tea and snacks', ['Tea and snacks']).add, null, 'already there')
+  assert.equal(R.categoryChoices('Rent', []).add, null)
+  assert.equal(R.categoryChoices('Cleaning', []).add, 'Cleaning')
+  assert.equal(R.categoryChoices('x', []).add, null, 'too short to add')
 })
 
 test('repeating expenses (salaries, rent) are copied once into a new month, on the same day', () => {
@@ -155,6 +195,12 @@ test('store: add, list, copy monthly ones, sales from bills and orders, the over
   assert.equal(view.repeatsDue, 0)
   assert.equal(view.insight, null)
   assert.equal(view.canAskInsight, true)
+  assert.deepEqual(view.ownCategories, [], 'no own kinds yet')
+  // An own kind typed once is in the list for the next expense (and not another workspace's)
+  await S.addExpense(db, ORG, R.cleanExpense({ amount: 120, category: 'Tea and snacks', spent_on: '2026-09-04' }, NOW).value, 'u1')
+  await S.addExpense(db, 'other', R.cleanExpense({ amount: 50, category: 'Secret kind', spent_on: '2026-11-04' }, NOW).value, 'u9')
+  assert.deepEqual(await S.ownCategoryList(db, ORG), ['Tea and snacks'])
+  assert.deepEqual((await S.loadExpensesOverview(db, ORG, '2026-11', NOW)).ownCategories, ['Tea and snacks'])
 
   const facts = await S.insightFacts(db, ORG, '2026-11', NOW)
   assert.equal(facts.soFar, true)

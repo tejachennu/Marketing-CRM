@@ -25,7 +25,19 @@ void main() {
       await tapText(tester, 'Add expense');
       await tester.enterText(find.widgetWithText(TextField, 'How much'), '1250');
       await tester.pump();
-      await tapText(tester, 'Repairs and upkeep');
+      // What for: a search list; a kind that is not there is typed and added (and kept for next time)
+      await tapText(tester, 'Pick one or type your own');
+      await tester.enterText(find.widgetWithText(TextField, 'Search or type a new one'), 'tea');
+      await tester.pump();
+      expect(find.text('Tea and snacks'), findsOneWidget, reason: 'a kind typed before is in the list');
+      expect(find.text('Yours'), findsOneWidget);
+      await tester.enterText(find.widgetWithText(TextField, 'Search or type a new one'), 'water');
+      await tester.pump();
+      expect(find.text('Electricity, water, internet'), findsOneWidget, reason: 'search finds a built-in kind by any word');
+      await tester.enterText(find.widgetWithText(TextField, 'Search or type a new one'), 'Pooja items');
+      await tester.pump();
+      await tapText(tester, 'Add “Pooja items”');
+      expect(find.text('Pooja items'), findsOneWidget, reason: 'the form shows the new kind');
       await tapText(tester, 'Cash');
       final save = await reach(tester, find.widgetWithText(FilledButton, 'Add expense'));
       expect(tester.widget<FilledButton>(save).onPressed, isNotNull);
@@ -36,8 +48,9 @@ void main() {
       expect(find.text('Expense added'), findsOneWidget);
       // The new row in the month's list (tap it later to change it)
       // (every box is an InkWell without a tap, and the kind filter chips also show the name: the row is the last tappable one)
-      final rows = find.descendant(of: find.byWidgetPredicate((w) => w is InkWell && w.onTap != null), matching: find.text('Repairs and upkeep'));
+      final rows = find.descendant(of: find.byWidgetPredicate((w) => w is InkWell && w.onTap != null), matching: find.text('Pooja items'));
       expect(await reach(tester, rows), findsWidgets);
+      expect(r.app.store.read('expense_kinds')?['names'], ['Pooja items'], reason: 'kept on the phone for next time');
 
       // The AI review, once a month (near the top: scroll back up)
       await tester.drag(find.descendant(of: find.byType(RefreshIndicator), matching: find.byType(Scrollable)).first, const Offset(0, 3000));
@@ -77,6 +90,28 @@ void main() {
       {'spent_on': '2026-11-02', 'category': 'loan', 'amount': 4000, 'repeat_monthly': true, 'repeat_key': 'c'},
     ]);
     expect(due.map((e) => e['spent_on']), ['2026-11-30']);
-    expect(byCategory([{'category': 'rent', 'amount': 300}, {'category': 'x', 'amount': 100}]).map((c) => '${c['key']} ${c['share']}'), ['rent 75', 'other 25']);
+    expect(byCategory([{'category': 'rent', 'amount': 300}, {'category': '', 'amount': 100}]).map((c) => '${c['key']} ${c['share']}'), ['rent 75', 'other 25']);
+  });
+
+  test('own kinds of expense: typed, found again, the same as the server', () {
+    expect(resolveCategory('  SALARIES '), 'salaries');
+    expect(resolveCategory('Electricity, water, internet'), 'bills');
+    expect(resolveCategory('  Tea   and snacks '), 'Tea and snacks');
+    expect(resolveCategory('tea AND snacks', ['Tea and snacks']), 'Tea and snacks');
+    expect(resolveCategory('a'), isNull);
+    expect(categoryLabel('Tea and snacks'), 'Tea and snacks');
+    expect(categoryLabel('rent'), 'Rent');
+    expect(mergeOwnCategories(['rent', 'Tea and snacks', 'Cleaning', 'tea and snacks', '', null]), ['Tea and snacks', 'Cleaning']);
+    expect(byCategory([
+      {'category': 'Tea and snacks', 'amount': 200},
+      {'category': 'TEA AND SNACKS', 'amount': 100},
+      {'category': 'rent', 'amount': 900},
+    ]).map((c) => '${c['key']}|${c['label']}|${c['amount']}|${c['count']}'), ['rent|Rent|900|1', 'Tea and snacks|Tea and snacks|300|2']);
+    expect(categoryChoices('', ['Tea and snacks']).choices.length, expenseCategories.length + 1);
+    expect(categoryChoices('water').choices.map((c) => c.key), ['bills']);
+    expect(categoryChoices('snacks', ['Tea and snacks']).add, 'snacks');
+    expect(categoryChoices('tea and snacks', ['Tea and snacks']).add, isNull);
+    expect(categoryChoices('Rent').add, isNull);
+    expect(categoryChoices('x').add, isNull);
   });
 }

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../data/app_state.dart';
@@ -92,7 +94,8 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
   Future<void> _edit([Map<String, dynamic>? expense]) async {
     // A message still showing would sit over the form's Save button
     ScaffoldMessenger.of(context).hideCurrentSnackBar();
-    final saved = await Navigator.push<String>(context, MaterialPageRoute(builder: (_) => ExpenseFormScreen(month: _month, expense: expense)));
+    final own = ownExpenseKinds(AppScope.read(context), _view);
+    final saved = await Navigator.push<String>(context, MaterialPageRoute(builder: (_) => ExpenseFormScreen(month: _month, expense: expense, own: own)));
     if (saved != null && mounted) {
       toast(context, saved);
       _load();
@@ -303,8 +306,9 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
   }
 
   Widget _listCard(List<Map<String, dynamic>> expenses) {
-    final kinds = [for (final c in expenseCategories) if (expenses.any((e) => e['category'] == c.$1)) c];
-    final shown = expenses.where((e) => _filter == 'all' || e['category'] == _filter).toList();
+    final kinds = [for (final c in byCategory(expenses)) ('${c['key']}', '${c['label']}')];
+    // Own kinds match whatever their letter case
+    final shown = expenses.where((e) => _filter == 'all' || '${e['category']}'.toLowerCase() == _filter.toLowerCase()).toList();
     final total = shown.fold<num>(0, (sum, e) => sum + toNum(e['amount']));
     return Panel(
       padding: const EdgeInsets.fromLTRB(0, 14, 0, 6),
@@ -638,9 +642,12 @@ class _InsightList extends StatelessWidget {
 
 /// Add or change one expense; returns the words for the toast when saved or removed.
 class ExpenseFormScreen extends StatefulWidget {
-  const ExpenseFormScreen({super.key, required this.month, this.expense});
+  const ExpenseFormScreen({super.key, required this.month, this.expense, this.own = const []});
   final String month;
   final Map<String, dynamic>? expense;
+
+  /// Kinds of expense this business typed itself before (from the server and this phone)
+  final List<String> own;
   @override
   State<ExpenseFormScreen> createState() => _ExpenseFormScreenState();
 }
@@ -698,6 +705,8 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
         'method': _method.isEmpty ? null : _method,
         'repeat_monthly': _repeat,
       }, method: e == null ? 'POST' : 'PUT');
+      // A kind typed here is kept on this phone too, so it is in the list next time (also offline)
+      if (mounted) unawaited(rememberExpenseKind(AppScope.read(context), _category));
       if (mounted) Navigator.pop(context, e == null ? 'Expense added' : 'Expense saved');
     } catch (e) {
       if (mounted) setState(() => _error = plain(e));
@@ -755,20 +764,13 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
           const SizedBox(height: 18),
           const Text('What for', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
           const SizedBox(height: 8),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              for (final (key, label) in expenseCategories)
-                ChoiceChip(
-                  label: Text(label),
-                  selected: _category == key,
-                  onSelected: (_) => setState(() {
-                    _category = key;
-                    if (widget.expense == null && usuallyMonthly.contains(key)) _repeat = true;
-                  }),
-                ),
-            ],
+          CategoryField(
+            value: _category,
+            own: widget.own,
+            onChanged: (key) => setState(() {
+              _category = key;
+              if (widget.expense == null && usuallyMonthly.contains(key)) _repeat = true;
+            }),
           ),
           const SizedBox(height: 18),
           ListTile(
@@ -819,4 +821,160 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
       ),
     );
   }
+}
+
+/// The business's own kinds of expense: the server's list (most used first), then the ones kept on this phone.
+List<String> ownExpenseKinds(AppState app, Map<String, dynamic>? view) =>
+    mergeOwnCategories([...((view?['ownCategories'] as List?) ?? const []), ...((app.store.read('expense_kinds')?['names'] as List?) ?? const [])]);
+
+/// Keeps a kind the business typed on this phone (newest first, up to 60), so it is offered next time.
+Future<void> rememberExpenseKind(AppState app, String category) async {
+  final name = cleanCategoryName(category);
+  if (name == null || isBuiltInCategory(category)) return;
+  final old = (app.store.read('expense_kinds')?['names'] as List?) ?? const [];
+  await app.store.write('expense_kinds', {'names': mergeOwnCategories([name, ...old])});
+}
+
+/// "What for": shows the picked kind; a tap opens a search list where a new kind can be typed and added.
+class CategoryField extends StatelessWidget {
+  const CategoryField({super.key, required this.value, required this.own, required this.onChanged});
+  final String value;
+  final List<String> own;
+  final ValueChanged<String> onChanged;
+
+  Future<void> _open(BuildContext context) async {
+    final picked = await showModalBottomSheet<String>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      showDragHandle: true,
+      builder: (_) => CategorySearchSheet(selected: value, own: own),
+    );
+    if (picked != null) onChanged(picked);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final picked = value.isNotEmpty;
+    return Semantics(
+      button: true,
+      label: picked ? 'What for: ${categoryLabel(value)}. Tap to change' : 'What for: tap to pick or type your own',
+      excludeSemantics: true,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: () => _open(context),
+        child: InputDecorator(
+          isEmpty: !picked,
+          decoration: const InputDecoration(
+            prefixIcon: Icon(Icons.search),
+            suffixIcon: Icon(Icons.expand_more),
+            hintText: 'Pick one or type your own',
+            helperText: 'Not in the list? Type it and tap Add. It is kept for next time.',
+            helperMaxLines: 2,
+          ),
+          child: Text(picked ? categoryLabel(value) : '', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+        ),
+      ),
+    );
+  }
+}
+
+/// The search list: type to find a kind, or add the typed name as a new one. Returns the key or name picked.
+class CategorySearchSheet extends StatefulWidget {
+  const CategorySearchSheet({super.key, required this.selected, required this.own});
+  final String selected;
+  final List<String> own;
+  @override
+  State<CategorySearchSheet> createState() => _CategorySearchSheetState();
+}
+
+class _CategorySearchSheetState extends State<CategorySearchSheet> {
+  final _query = TextEditingController();
+
+  @override
+  void dispose() {
+    _query.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final found = categoryChoices(_query.text, widget.own);
+    final add = found.add;
+    return Padding(
+      padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
+      child: SizedBox(
+        height: MediaQuery.sizeOf(context).height * 0.8,
+        child: Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('What for', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: _query,
+                    autofocus: true,
+                    maxLength: maxCategoryName,
+                    textCapitalization: TextCapitalization.sentences,
+                    textInputAction: TextInputAction.done,
+                    decoration: const InputDecoration(hintText: 'Search or type a new one', prefixIcon: Icon(Icons.search), counterText: ''),
+                    onChanged: (_) => setState(() {}),
+                    onSubmitted: (_) {
+                      if (found.choices.isNotEmpty) {
+                        Navigator.pop(context, found.choices.first.key);
+                      } else if (add != null) {
+                        Navigator.pop(context, add);
+                      }
+                    },
+                  ),
+                ],
+              ),
+            ),
+            Expanded(
+              child: ListView(
+                keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+                children: [
+                  if (add != null)
+                    ListTile(
+                      leading: const Icon(Icons.add_circle_outline, color: Brand.blue),
+                      title: Text('Add “$add”', style: const TextStyle(color: Brand.blue, fontWeight: FontWeight.w700)),
+                      subtitle: const Text('A new kind, kept for next time'),
+                      onTap: () => Navigator.pop(context, add),
+                    ),
+                  if (found.choices.isEmpty && add == null)
+                    const Padding(padding: EdgeInsets.all(16), child: Text('Type at least 2 letters to add your own.', style: TextStyle(color: Brand.textSoft))),
+                  for (final c in found.choices)
+                    ListTile(
+                      title: Text(c.label, maxLines: 1, overflow: TextOverflow.ellipsis),
+                      selected: c.key == widget.selected,
+                      trailing: c.key == widget.selected
+                          ? const Icon(Icons.check, color: Brand.blue)
+                          : c.own
+                          ? const SoftPillText('Yours')
+                          : null,
+                      onTap: () => Navigator.pop(context, c.key),
+                    ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// A small grey label ("Yours").
+class SoftPillText extends StatelessWidget {
+  const SoftPillText(this.text, {super.key});
+  final String text;
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+    decoration: BoxDecoration(color: Brand.line, borderRadius: BorderRadius.circular(20)),
+    child: Text(text, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Brand.textSoft)),
+  );
 }

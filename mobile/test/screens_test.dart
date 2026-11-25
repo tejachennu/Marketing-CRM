@@ -9,6 +9,7 @@ void main() {
       'delete_account',
       'expenses',
       'expense_new',
+      'expense_kinds',
       'signup',
       'signup_code',
       'desk',

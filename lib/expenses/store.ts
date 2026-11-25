@@ -6,7 +6,7 @@
 import { randomUUID } from 'node:crypto'
 import { createAutoSetup, isMissingSchemaError, runMigrationSql } from '../schema-setup'
 import {
-  byCategory, insightKindFor, istToday, monthBounds, monthOf, monthsUpTo, monthTotals, monthName, repeatsDue, salesByWeekday,
+  byCategory, insightKindFor, ownCategories, istToday, monthBounds, monthOf, monthsUpTo, monthTotals, monthName, repeatsDue, salesByWeekday,
   topItems, addMonths, daysInMonth,
   type ExpenseInput, type ExpenseRow, type Insight, type InsightFacts, type InsightKind, type SaleRow, type SoldItem,
 } from './rules'
@@ -132,10 +132,11 @@ export async function insightsFor(db: any, organizationId: string, month: string
 export async function loadExpensesOverview(db: any, organizationId: string, month: string, now: Date | number = Date.now()) {
   const months = monthsUpTo(month)
   const range = { first: monthBounds(months[0]).first, last: monthBounds(month).last, start: monthBounds(months[0]).start, end: monthBounds(month).end }
-  const [expenses, { sales }, insights] = await Promise.all([
+  const [expenses, { sales }, insights, own] = await Promise.all([
     expensesBetween(db, organizationId, range.first, range.last),
     salesBetween(db, organizationId, range.start, range.end),
     insightsFor(db, organizationId, month),
+    ownCategoryList(db, organizationId),
   ])
   const thisMonth = expenses.filter((row) => monthOf(String(row.spent_on)) === month)
   const earlier = await expensesBetween(db, organizationId, monthBounds(addMonths(month, -3)).first, monthBounds(addMonths(month, -1)).last)
@@ -150,7 +151,16 @@ export async function loadExpensesOverview(db: any, organizationId: string, mont
     insight: insights.find((row) => row.kind === 'full') || insights.find((row) => row.kind === kind) || null,
     insightKind: kind,
     canAskInsight: !insights.some((row) => row.kind === kind) && !insights.some((row) => row.kind === 'full'),
+    ownCategories: own,
   }
+}
+
+/** The categories this business typed itself before (from its latest 3,000 expenses), most used first. */
+export async function ownCategoryList(db: any, organizationId: string): Promise<string[]> {
+  const { data, error } = await withExpensesSchema(() => db.from('business_expenses').select('category')
+    .eq('organization_id', organizationId).order('spent_on', { ascending: false }).limit(3000))
+  if (error) return []
+  return ownCategories(data || [])
 }
 
 export async function addExpense(db: any, organizationId: string, value: ExpenseInput, userId: string | null) {
