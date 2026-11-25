@@ -24,6 +24,41 @@
 	<string>????</string>
 	<key>CFBundleVersion</key>
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
+	<!-- Google sign-in comes back to the app at com.magnetora.wamacrm://login-callback (same as Android's
+	     intent filter). Without this, Safari says it cannot open the page. -->
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLName</key>
+			<string>com.magnetora.wamacrm</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>com.magnetora.wamacrm</string>
+			</array>
+		</dict>
+	</array>
+	<!-- Supabase reads the Google return link itself. Flutter's own link handling would also open it as a
+	     page and put a second home screen on top (a back arrow on every tab), so it is off. -->
+	<key>FlutterDeepLinkingEnabled</key>
+	<false/>
+	<!-- Razorpay checks which UPI apps are on the phone -->
+	<key>LSApplicationQueriesSchemes</key>
+	<array>
+		<string>tez</string>
+		<string>phonepe</string>
+		<string>paytmmp</string>
+		<string>bhim</string>
+		<string>credpay</string>
+		<string>whatsapp</string>
+	</array>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Pick photos to send in chats, add to products, bookings and your store.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>Save photos customers send you to your phone.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>Take photos to send in chats or add to products.</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>UIApplicationSceneManifest</key>

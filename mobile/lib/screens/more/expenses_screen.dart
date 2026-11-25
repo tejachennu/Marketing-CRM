@@ -222,7 +222,9 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
                     crossAxisAlignment: CrossAxisAlignment.end,
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      for (final v in [top, top / 2, 0]) Text(v == 0 ? '0' : shortRupees(v), style: const TextStyle(fontSize: 11, color: Brand.faint)),
+                      for (final v in [top, top / 2, 0])
+                        // Short labels (₹20k, ₹1.5L) that never wrap in the narrow column
+                        FittedBox(fit: BoxFit.scaleDown, child: Text(v == 0 ? '0' : _axisLabel(v), maxLines: 1, style: const TextStyle(fontSize: 11, color: Brand.faint))),
                     ],
                   ),
                 ),
@@ -390,6 +392,16 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
 
 extension on String {
   String ifEmpty(String other) => isEmpty ? other : this;
+}
+
+/// A chart side label: ₹500, ₹20k, ₹1.5L, ₹2Cr.
+String _axisLabel(num v) {
+  if (v >= 1e5) return shortRupees(v);
+  if (v >= 1000) {
+    final k = v / 1000;
+    return '₹${k == k.roundToDouble() ? k.toStringAsFixed(0) : k.toStringAsFixed(1)}k';
+  }
+  return formatRupees(v.round());
 }
 
 /// A round top for the axis: 1, 2 or 5 × a power of ten, at or above the biggest bar.

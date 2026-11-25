@@ -384,19 +384,27 @@ class _IgCommentsState extends State<_IgComments> {
                                   if (app.can('write'))
                                     busy
                                         ? const Padding(padding: EdgeInsets.all(8), child: SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)))
+                                        // Compact buttons so Reply · Message them · Hide · Delete fit on one line on phones
                                         : Wrap(
-                                            spacing: 0,
+                                            spacing: 2,
+                                            runSpacing: 0,
+                                            crossAxisAlignment: WrapCrossAlignment.center,
                                             children: [
-                                              if (!answered || c['private_reply_at'] != null) TextButton(onPressed: () => _reply(c, private: false), child: const Text('Reply')),
-                                              if (c['private_reply_at'] == null) TextButton(onPressed: () => _reply(c, private: true), child: const Text('Message them')),
-                                              TextButton(onPressed: () => _act(c, hidden ? 'unhide' : 'hide'), child: Text(hidden ? 'Show' : 'Hide')),
-                                              TextButton(
+                                              if (!answered || c['private_reply_at'] != null) TextButton(style: _commentAction, onPressed: () => _reply(c, private: false), child: const Text('Reply')),
+                                              if (c['private_reply_at'] == null) TextButton(style: _commentAction, onPressed: () => _reply(c, private: true), child: const Text('Message them')),
+                                              TextButton(style: _commentAction, onPressed: () => _act(c, hidden ? 'unhide' : 'hide'), child: Text(hidden ? 'Show' : 'Hide')),
+                                              // A bin icon (asks first) keeps the row on one line
+                                              IconButton(
+                                                tooltip: 'Delete',
+                                                visualDensity: VisualDensity.compact,
+                                                constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+                                                padding: EdgeInsets.zero,
+                                                icon: const Icon(Icons.delete_outline, color: Brand.red, size: 20),
                                                 onPressed: () async {
                                                   if (await confirmAction(context, title: 'Delete this comment?', message: 'It is removed from Instagram for everyone.', yes: 'Delete', destructive: true)) {
                                                     await _act(c, 'delete');
                                                   }
                                                 },
-                                                child: const Text('Delete', style: TextStyle(color: Brand.red)),
                                               ),
                                             ],
                                           ),
@@ -881,3 +889,12 @@ class _IgAutoRepliesState extends State<_IgAutoReplies> {
     );
   }
 }
+
+/// Small text buttons for a comment's actions (the default ones are too wide to sit on one line).
+final ButtonStyle _commentAction = TextButton.styleFrom(
+  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+  minimumSize: const Size(0, 36),
+  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+  visualDensity: VisualDensity.compact,
+  textStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+);
