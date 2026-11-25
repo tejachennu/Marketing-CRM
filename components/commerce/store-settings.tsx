@@ -521,7 +521,7 @@ export function StoreSettings({ orgId, orgData, currency, whatsappConnected, onS
         {catalogInfo && chosenCatalogId && (
           <ul className="space-y-2 text-xs text-slate-600 dark:text-slate-300">
             {isLinkedCatalog && catalogInfo.linkedError && (
-              <li role="alert" className="flex items-start gap-2 text-amber-800 dark:text-amber-200">
+              <li role="alert" className="flex items-start gap-2 text-[#b91c1c] dark:text-red-300">
                 <AlertCircle size={15} className="shrink-0 mt-px" /> {catalogInfo.linkedError}
               </li>
             )}
@@ -537,7 +537,7 @@ export function StoreSettings({ orgId, orgData, currency, whatsappConnected, onS
                   <CheckCircle2 size={15} className="shrink-0 mt-px text-[#1D5BEA]" /> It is connected to your WhatsApp account.
                 </li>
               ) : (
-                <li className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-3 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/60 text-amber-900 dark:text-amber-100">
+                <li className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-3 rounded-xl bg-[#fdf0f0] dark:bg-red-950/40 border border-[#f5c9c9] dark:border-red-900/60 text-[#b91c1c] dark:text-red-200">
                   <span className="flex items-start gap-2">
                     <AlertCircle size={15} className="shrink-0 mt-px" />
                     It is not connected to your WhatsApp account, so its products cannot be sent or ordered in chats yet.
@@ -555,7 +555,7 @@ export function StoreSettings({ orgId, orgData, currency, whatsappConnected, onS
               </li>
             )}
             {isLinkedCatalog && catalogInfo.canEdit === false && (
-              <li className="flex items-start gap-2 text-amber-800 dark:text-amber-200">
+              <li className="flex items-start gap-2 text-[#b91c1c] dark:text-red-300">
                 <AlertCircle size={15} className="shrink-0 mt-px" />
                 <span>
                   This WhatsApp connection can read the catalog but not change it, so products added here stay out of WhatsApp. To manage the catalog from here, reconnect WhatsApp and include the catalog, or use an access token that has the <span className="font-mono">catalog_management</span> permission.
@@ -767,7 +767,7 @@ export function StoreSettings({ orgId, orgData, currency, whatsappConnected, onS
             if (!chosen || !status || status.toLowerCase() === 'active') return null
             const provider = GATEWAY_LABELS[String(chosen.provider_name || '').toLowerCase()] || chosen.provider_name || 'your gateway'
             return (
-              <p role="alert" className="mt-2 flex items-start gap-2 p-3 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/60 text-xs text-amber-800 dark:text-amber-200">
+              <p role="alert" className="mt-2 flex items-start gap-2 p-3 rounded-xl bg-[#fdf0f0] dark:bg-red-950/40 border border-[#f5c9c9] dark:border-red-900/60 text-xs text-[#b91c1c] dark:text-red-300">
                 <AlertCircle size={15} className="shrink-0 mt-px" />
                 <span>
                   “{chosen.configuration_name}” is not ready on Meta ({status}). In WhatsApp Manager → Payments, open it and {/connect/i.test(status) ? `choose Connect, then sign in to ${provider} and approve WhatsApp` : 'finish the steps Meta shows'}. Then use Refresh from Meta. Until it is Active, online payment requests fail{form.commerce_enable_cod ? ' and customers can only use Cash on Delivery' : ''}.
@@ -787,7 +787,7 @@ export function StoreSettings({ orgId, orgData, currency, whatsappConnected, onS
           </span>
         </label>
         {!hasGateway && !form.commerce_enable_cod && (
-          <p role="alert" className="flex items-start gap-2 p-3 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/60 text-xs text-amber-800 dark:text-amber-200">
+          <p role="alert" className="flex items-start gap-2 p-3 rounded-xl bg-[#fdf0f0] dark:bg-red-950/40 border border-[#f5c9c9] dark:border-red-900/60 text-xs text-[#b91c1c] dark:text-red-300">
             <AlertCircle size={15} className="shrink-0 mt-px" />
             With no gateway and no Cash on Delivery, customers can place an order but cannot pay in the chat. They will only be told that your team will contact them.
           </p>

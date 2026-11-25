@@ -313,14 +313,18 @@ class _PhoneFieldState extends State<PhoneField> {
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
+    // The country box is as tall as the number box beside it (it was a few pixels taller, more with
+    // large text); with an error under the number it keeps its own height
+    final error = widget.errorText != null;
+    final row = Row(
+      crossAxisAlignment: error ? CrossAxisAlignment.start : CrossAxisAlignment.stretch,
       children: [
         InkWell(
           onTap: _pick,
           borderRadius: BorderRadius.circular(12),
           child: Container(
-            height: 54,
+            height: error ? 54 : null,
+            constraints: const BoxConstraints(minHeight: 48),
             padding: const EdgeInsets.symmetric(horizontal: 10),
             decoration: BoxDecoration(
               color: Colors.white,
@@ -359,6 +363,7 @@ class _PhoneFieldState extends State<PhoneField> {
         ),
       ],
     );
+    return error ? row : IntrinsicHeight(child: row);
   }
 }
 

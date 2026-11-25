@@ -326,7 +326,7 @@ class _NewOrderScreenState extends State<NewOrderScreen> {
               controller: _fee,
               keyboardType: const TextInputType.numberWithOptions(decimal: true),
               onChanged: (_) => setState(() {}),
-              decoration: const InputDecoration(labelText: 'Delivery charge', helperText: 'Leave empty to use your store\'s shipping fee.'),
+              decoration: const InputDecoration(labelText: 'Delivery charge', helperMaxLines: 3, helperText: 'Leave empty to use your store\'s shipping fee.'),
             ),
           ],
           _title('Payment'),

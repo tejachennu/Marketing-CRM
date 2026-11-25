@@ -384,11 +384,15 @@ class _ProductsTabState extends State<ProductsTab> with AutomaticKeepAliveClient
                 ],
               ],
             ),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
+            // Add product across the width, the other actions two to a row in equal boxes (they wrapped
+            // one under another in uneven widths)
+            if (manage)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: FilledButton.icon(onPressed: () => _edit(), icon: const Icon(Icons.add, size: 18), label: const Text('Add product')),
+              ),
+            ButtonGrid(
               children: [
-                if (manage) FilledButton.icon(onPressed: () => _edit(), icon: const Icon(Icons.add, size: 18), label: const Text('Add product')),
                 if (manage) OutlinedButton.icon(onPressed: () => uploadProductsSheet(context, () => _load(1)), icon: const Icon(Icons.upload_file, size: 18), label: const Text('Upload spreadsheet')),
                 if (canEdit && _catalogLinked)
                   OutlinedButton.icon(onPressed: () => _share(const ShareTarget.catalog()), icon: const Icon(Icons.menu_book_outlined, size: 18), label: const Text('Send catalog')),
@@ -720,43 +724,34 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
             ],
           ),
           gap(),
-          Row(
+          // Two to a row only when their names fit (on phones they read "Category (optio…")
+          PairedFields(
             children: [
-              Expanded(
-                child: TextField(
-                  controller: _category,
-                  maxLength: 60,
-                  decoration: const InputDecoration(labelText: 'Category (optional)', hintText: 'Shirts', counterText: ''),
-                ),
+              TextField(
+                controller: _category,
+                maxLength: 60,
+                decoration: const InputDecoration(labelText: 'Category (optional)', hintText: 'Shirts', counterText: ''),
               ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: TextField(
-                  controller: _stock,
-                  keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(labelText: 'In stock (optional)', hintText: 'Not tracked'),
-                ),
+              TextField(
+                controller: _stock,
+                keyboardType: TextInputType.number,
+                decoration: const InputDecoration(labelText: 'In stock (optional)', hintText: 'Not tracked'),
               ),
             ],
           ),
           gap(),
-          Row(
+          PairedFields(
             children: [
-              Expanded(
-                child: TextField(
-                  controller: _weight,
-                  keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(labelText: 'Weight (grams)', hintText: 'For couriers'),
-                ),
+              TextField(
+                controller: _weight,
+                keyboardType: TextInputType.number,
+                decoration: const InputDecoration(labelText: 'Weight (grams)', hintText: 'For couriers'),
               ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: TextField(
-                  controller: _hsn,
-                  keyboardType: TextInputType.number,
-                  maxLength: 8,
-                  decoration: const InputDecoration(labelText: 'HSN code', hintText: 'For GST', counterText: ''),
-                ),
+              TextField(
+                controller: _hsn,
+                keyboardType: TextInputType.number,
+                maxLength: 8,
+                decoration: const InputDecoration(labelText: 'HSN code', hintText: 'For GST', counterText: ''),
               ),
             ],
           ),
@@ -818,7 +813,7 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
             keyboardType: TextInputType.url,
             minLines: 1,
             maxLines: 4,
-            decoration: const InputDecoration(labelText: 'More photos (optional)', hintText: 'One link per line, up to 8', helperText: 'Shown in the gallery on your store page.'),
+            decoration: const InputDecoration(labelText: 'More photos (optional)', hintText: 'One link per line, up to 8', helperMaxLines: 3, helperText: 'Shown in the gallery on your store page.'),
           ),
           _uploadButton('Add a photo from the phone', main: false),
           gap(),

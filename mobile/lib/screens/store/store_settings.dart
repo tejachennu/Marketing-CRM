@@ -367,6 +367,8 @@ class _StoreSettingsTabState extends State<StoreSettingsTab> with AutomaticKeepA
         Card(
           margin: const EdgeInsets.only(bottom: 12),
           child: SwitchListTile(
+            // Room above and below, like the other boxes (the words touched the box's edges)
+            contentPadding: const EdgeInsets.fromLTRB(16, 8, 12, 8),
             value: _on,
             onChanged: (v) => setState(() => _on = v),
             title: const Text('Take orders on WhatsApp', style: TextStyle(fontWeight: FontWeight.w700)),
@@ -380,6 +382,8 @@ class _StoreSettingsTabState extends State<StoreSettingsTab> with AutomaticKeepA
         Card(
           margin: const EdgeInsets.only(bottom: 12),
           child: SwitchListTile(
+            // Room above and below, like the other boxes (the words touched the box's edges)
+            contentPadding: const EdgeInsets.fromLTRB(16, 8, 12, 8),
             value: _assistantEditable ? _assistant : true,
             onChanged: _assistantEditable ? (v) => setState(() => _assistant = v) : null,
             title: const Text('AI shopping assistant', style: TextStyle(fontWeight: FontWeight.w700)),
@@ -607,20 +611,20 @@ class _StoreSettingsTabState extends State<StoreSettingsTab> with AutomaticKeepA
           TextField(
             controller: _shipping,
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            decoration: const InputDecoration(labelText: 'Shipping fee', helperText: 'Added to every order.'),
+            decoration: const InputDecoration(labelText: 'Shipping fee', helperText: 'Added to every order.', helperMaxLines: 2),
           ),
           const SizedBox(height: 12),
           TextField(
             controller: _freeAbove,
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            decoration: const InputDecoration(labelText: 'Free shipping on orders from', helperText: 'Use 0 to always charge the shipping fee.'),
+            decoration: const InputDecoration(labelText: 'Free shipping on orders from', helperText: 'Use 0 to always charge the shipping fee.', helperMaxLines: 2),
           ),
           const SizedBox(height: 12),
           if (_expressEditable)
             TextField(
               controller: _express,
               keyboardType: const TextInputType.numberWithOptions(decimal: true),
-              decoration: const InputDecoration(labelText: 'Express delivery charge', helperText: 'Added when the customer picks express in the address form.'),
+              decoration: const InputDecoration(labelText: 'Express delivery charge', helperText: 'Added when the customer picks express in the address form.', helperMaxLines: 2),
             )
           else
             hint('Customers who pick express delivery in the address form are charged a further ${formatMoney(defaultExpressFee, currency)}.'),

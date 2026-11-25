@@ -26,8 +26,8 @@ interface RecentOrder {
 
 const STATE_ICON: Record<CheckState, { icon: LucideIcon; tone: string }> = {
   ok: { icon: CheckCircle2, tone: 'text-[#1D5BEA]' },
-  warning: { icon: AlertTriangle, tone: 'text-amber-500' },
-  error: { icon: XCircle, tone: 'text-rose-500' },
+  warning: { icon: AlertTriangle, tone: 'text-[#b91c1c]' },
+  error: { icon: XCircle, tone: 'text-[#b91c1c]' },
   skipped: { icon: MinusCircle, tone: 'text-slate-400' },
   unknown: { icon: Loader2, tone: 'text-slate-400 animate-spin' },
 }
@@ -199,7 +199,7 @@ export function OrderFlowTab({
       <section className={`${cardClass} p-4 sm:p-5`}>
         <div className="flex items-start justify-between gap-3 mb-4">
           <div className="flex items-start gap-3">
-            <span className={`h-11 w-11 shrink-0 rounded-2xl flex items-center justify-center ${meta === null ? 'bg-slate-100 text-slate-400 dark:bg-slate-800' : ready ? 'bg-[#dfe8fd] text-[#174bc4] dark:bg-[#0E1B3D]/60 dark:text-[#5f86ee]' : 'bg-rose-100 text-rose-600 dark:bg-rose-950/50 dark:text-rose-400'}`}>
+            <span className={`h-11 w-11 shrink-0 rounded-2xl flex items-center justify-center ${meta === null ? 'bg-slate-100 text-slate-400 dark:bg-slate-800' : ready ? 'bg-[#dfe8fd] text-[#174bc4] dark:bg-[#0E1B3D]/60 dark:text-[#5f86ee]' : 'bg-[#fdf0f0] text-[#b91c1c] dark:bg-red-950/50 dark:text-red-300'}`}>
               {meta === null ? <Loader2 size={20} className="animate-spin" /> : ready ? <Rocket size={20} /> : <AlertCircle size={20} />}
             </span>
             <div>
@@ -323,17 +323,17 @@ export function OrderFlowTab({
                         const Icon = entry.sender_type === 'contact' ? ShoppingCart : failed ? XCircle : CheckCircle2
                         return (
                           <li key={index} className="flex items-start gap-2 text-[11.5px] leading-snug">
-                            <Icon size={13} className={`shrink-0 mt-px ${entry.sender_type === 'contact' ? 'text-slate-400' : failed ? 'text-rose-500' : 'text-[#1D5BEA]'}`} />
+                            <Icon size={13} className={`shrink-0 mt-px ${entry.sender_type === 'contact' ? 'text-slate-400' : failed ? 'text-[#b91c1c]' : 'text-[#1D5BEA]'}`} />
                             <span className="min-w-0">
-                              <span className={failed ? 'text-rose-700 dark:text-rose-300' : 'text-slate-600 dark:text-slate-300'}>{trailText(entry.body)}</span>
-                              {failed && entry.error_message && <span className="block text-rose-600 dark:text-rose-400">{entry.error_message}</span>}
+                              <span className={failed ? 'text-[#b91c1c] dark:text-red-300' : 'text-slate-600 dark:text-slate-300'}>{trailText(entry.body)}</span>
+                              {failed && entry.error_message && <span className="block text-[#b91c1c] dark:text-red-300">{entry.error_message}</span>}
                             </span>
                           </li>
                         )
                       })}
                     </ul>
                     {!delivered && (
-                      <p className="mt-2 flex items-start gap-1.5 text-[11.5px] font-medium text-rose-700 dark:text-rose-300 bg-rose-50 dark:bg-rose-950/40 rounded-lg p-2">
+                      <p className="mt-2 flex items-start gap-1.5 text-[11.5px] font-medium text-[#b91c1c] dark:text-red-300 bg-[#fdf0f0] dark:bg-red-950/40 rounded-lg p-2">
                         <AlertCircle size={13} className="shrink-0 mt-px" />
                         {failure ? 'No checkout message reached this customer. Fix the reason above, then open the order and use “Send reminder”.' : 'No checkout message was recorded for this order. It came in while the store was set up differently, or before this was tracked.'}
                       </p>

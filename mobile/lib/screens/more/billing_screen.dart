@@ -760,6 +760,7 @@ class _BillingScreenState extends State<BillingScreen> {
               Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
+                  color: Colors.white,
                   border: Border.all(color: Brand.line),
                   borderRadius: BorderRadius.circular(16),
                 ),
@@ -780,11 +781,8 @@ class _BillingScreenState extends State<BillingScreen> {
                                       value: percent / 100,
                                       strokeWidth: 9,
                                       backgroundColor: Brand.line,
-                                      color: aiPaused
-                                          ? Brand.red
-                                          : percent <= 20
-                                          ? const Color(0xFFF59E0B)
-                                          : Brand.blue,
+                                      // Red only when it needs attention (low or paused)
+                                      color: aiPaused || percent <= 20 ? Brand.red : Brand.blue,
                                     ),
                                     Center(
                                       child: Column(
@@ -809,7 +807,7 @@ class _BillingScreenState extends State<BillingScreen> {
                                           : percent <= 20
                                           ? 'Running low'
                                           : 'Running',
-                                      tone: aiPaused ? PillTone.red : PillTone.blue,
+                                      tone: aiPaused || percent <= 20 ? PillTone.red : PillTone.blue,
                                     ),
                                     const SizedBox(height: 6),
                                     Text(
@@ -878,7 +876,8 @@ class _BillingScreenState extends State<BillingScreen> {
                 Container(
                   margin: const EdgeInsets.only(bottom: 10),
                   padding: const EdgeInsets.all(14),
-                  decoration: BoxDecoration(color: Brand.page, borderRadius: BorderRadius.circular(14)),
+                  // White cards (grey on the grey page could not be seen)
+                  decoration: BoxDecoration(color: Colors.white, border: Border.all(color: Brand.line), borderRadius: BorderRadius.circular(14)),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -889,7 +888,18 @@ class _BillingScreenState extends State<BillingScreen> {
                       const SizedBox(height: 2),
                       Text('${u['headline']}', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
                       const SizedBox(height: 6),
-                      for (final (i, step) in (u['steps'] as List? ?? const []).indexed) Text('${i + 1}. $step', style: const TextStyle(fontSize: 13, color: Brand.textSoft)),
+                      // The number on its own, so a step that wraps lines up under its words
+                      for (final (i, step) in (u['steps'] as List? ?? const []).indexed)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 2),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              SizedBox(width: 18, child: Text('${i + 1}.', style: const TextStyle(fontSize: 13, color: Brand.muted, fontWeight: FontWeight.w600))),
+                              Expanded(child: Text('$step', style: const TextStyle(fontSize: 13, color: Brand.textSoft))),
+                            ],
+                          ),
+                        ),
                     ],
                   ),
                 ),
@@ -900,38 +910,54 @@ class _BillingScreenState extends State<BillingScreen> {
               if (payments.isEmpty)
                 const Text('No payments yet. Your plan and AI credit payments will show here.', style: TextStyle(color: Brand.muted))
               else
-                for (final p in payments)
-                  ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    leading: const Icon(Icons.receipt_long_outlined),
-                    title: Text(_paymentName(p, plans), style: const TextStyle(fontWeight: FontWeight.w600)),
-                    subtitle: Text(_date(p['date'])),
-                    trailing: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: [
-                        Text(formatRupees(p['amount']), style: const TextStyle(fontWeight: FontWeight.w700)),
-                        const Text(
-                          'Paid',
-                          style: TextStyle(fontSize: 12, color: Brand.blue, fontWeight: FontWeight.w600),
+                Card(
+                  child: Column(
+                    children: [
+                      for (final (i, p) in payments.indexed) ...[
+                        if (i > 0) const Divider(height: 1, indent: 60),
+                        ListTile(
+                          leading: const Icon(Icons.receipt_long_outlined),
+                          title: Text(_paymentName(p, plans), maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15)),
+                          subtitle: Text(_date(p['date'])),
+                          trailing: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            crossAxisAlignment: CrossAxisAlignment.end,
+                            children: [
+                              Text(formatRupees(p['amount']), style: const TextStyle(fontWeight: FontWeight.w700)),
+                              const Text(
+                                'Paid',
+                                style: TextStyle(fontSize: 12, color: Brand.blue, fontWeight: FontWeight.w600),
+                              ),
+                            ],
+                          ),
                         ),
                       ],
-                    ),
+                    ],
                   ),
+                ),
             ],
             // Questions
             const SectionLabel('Common questions'),
-            for (final (q, a) in _faq)
-              Theme(
-                data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
-                child: ExpansionTile(
-                  tilePadding: EdgeInsets.zero,
-                  childrenPadding: const EdgeInsets.only(bottom: 10),
-                  expandedCrossAxisAlignment: CrossAxisAlignment.start,
-                  title: Text(q, style: const TextStyle(fontWeight: FontWeight.w600)),
-                  children: [Text(a, style: const TextStyle(color: Brand.textSoft))],
-                ),
+            Card(
+              clipBehavior: Clip.antiAlias,
+              child: Column(
+                children: [
+                  for (final (i, (q, a)) in _faq.indexed) ...[
+                    if (i > 0) const Divider(height: 1, indent: 16),
+                    Theme(
+                      data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+                      child: ExpansionTile(
+                        tilePadding: const EdgeInsets.symmetric(horizontal: 16),
+                        childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
+                        expandedCrossAxisAlignment: CrossAxisAlignment.start,
+                        title: Text(q, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15)),
+                        children: [Text(a, style: const TextStyle(color: Brand.textSoft))],
+                      ),
+                    ),
+                  ],
+                ],
               ),
+            ),
           ],
         ),
       ),

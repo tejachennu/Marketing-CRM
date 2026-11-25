@@ -104,7 +104,7 @@ export function CourierPanel({ orgId, orderId, canEdit, onChanged, showToast }: 
             <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${attention ? 'bg-[#fdf0f0] text-[#b91c1c]' : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200'}`}>{SHIPMENT_STATUS_LABELS[active.status] || active.status}</span>
             <span className="text-[11px] text-slate-500">via {PROVIDER_NAMES[active.provider]}</span>
           </div>
-          {active.awb && <p className="text-slate-700 dark:text-slate-300">AWB <span className="font-mono">{active.awb}</span>{active.cod && ' · Cash on Delivery'}{active.charge !== null && ` · ${money(active.charge)}`}</p>}
+          {active.awb && <p className="text-slate-700 dark:text-slate-300">AWB <span className="font-mono">{active.awb}</span>{active.cod && ' · Cash on Delivery'}{active.charge != null && ` · ${money(active.charge)}`}</p>}
           {active.status_text && <p className="text-xs text-slate-500">{active.status_text}</p>}
           {active.expected_at && <p className="text-xs text-slate-500">Expected by {active.expected_at}</p>}
           {(active.warnings || []).map((w) => <p key={w} className="text-xs text-[#b91c1c]">{w}</p>)}

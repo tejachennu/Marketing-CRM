@@ -327,9 +327,9 @@ class _WebsiteScreenState extends State<WebsiteScreen> {
                 children: [
                   Text(_link!.replaceFirst(RegExp('^https?://'), ''), style: const TextStyle(fontWeight: FontWeight.w600)),
                   const SizedBox(height: 8),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
+                  // Equal buttons, two to a row (they wrapped in uneven widths)
+                  ButtonGrid(
+                    minWidth: 104,
                     children: [
                       OutlinedButton.icon(
                         onPressed: () async {

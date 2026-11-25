@@ -37,7 +37,7 @@ export function ReviewsTab({ orgId, canManage, showToast }: { orgId: string; can
               {r.rating <= 2 && <span className="text-[11px] font-bold rounded-full bg-[#fdf0f0] text-[#b91c1c] px-2 py-0.5">Low rating</span>}
               {!r.published && <span className="text-[11px] font-bold rounded-full bg-slate-100 text-slate-600 px-2 py-0.5">Hidden</span>}
             </div>
-            <p className="text-xs text-slate-500 mt-0.5">{r.customer_name || 'A customer'}{r.order?.order_number ? ` · order #${r.order.order_number}` : ''} · {new Date(r.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}</p>
+            <p className="text-xs text-slate-500 mt-0.5">{r.customer_name || 'A customer'}{r.order?.order_number ? ` · order #${r.order.order_number}` : ''}{r.created_at && !Number.isNaN(Date.parse(r.created_at)) ? ` · ${new Date(r.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}` : ''}</p>
             {r.body && <p className="mt-1.5 text-[13.5px] text-slate-700 dark:text-slate-200 break-words">{r.body}</p>}
             {Array.isArray(r.photos) && r.photos.length > 0 && (
               <div className="mt-2 flex gap-2 overflow-x-auto">

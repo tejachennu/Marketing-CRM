@@ -32,13 +32,14 @@ type ProductForm = typeof EMPTY_FORM
 
 type CatalogFilter = 'all' | 'attention' | 'not_sent'
 
+// Palette only: red for the two that need someone to act
 const CATALOG_CHIP: Record<CatalogState, string> = {
-  in_catalog: 'bg-white/90 text-[#174bc4]',
-  in_review: 'bg-amber-100 text-amber-800',
-  rejected: 'bg-rose-600 text-white',
-  sending: 'bg-sky-100 text-sky-800',
-  error: 'bg-rose-600 text-white',
-  not_sent: 'bg-white/90 text-slate-600',
+  in_catalog: 'bg-white/95 text-[#174bc4]',
+  in_review: 'bg-white/95 text-[#4a5672] ring-1 ring-inset ring-[#d5ddeb]',
+  rejected: 'bg-[#b91c1c] text-white',
+  sending: 'bg-[#dfe8fd] text-[#163d9c]',
+  error: 'bg-[#b91c1c] text-white',
+  not_sent: 'bg-white/95 text-[#4a5672]',
 }
 
 const ORIGIN_COUNTRIES: Array<[string, string]> = [
@@ -412,9 +413,9 @@ export function ProductsTab({ orgId, currency, canEdit, canManageStore, catalogL
 
   return (
     <div className="space-y-3">
-      <div className={`${cardClass} p-3 flex flex-col lg:flex-row lg:items-center justify-between gap-3`}>
-        <div className="flex flex-col sm:flex-row sm:items-center gap-2 min-w-0">
-          <div className="relative w-full sm:w-64">
+      <div className={`${cardClass} p-3 flex flex-col gap-3`}>
+        <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-2 min-w-0">
+          <div className="relative w-full sm:w-64 sm:shrink-0">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={15} />
             <input type="text" inputMode="search" aria-label="Search products" placeholder="Search by name or SKU" value={search} onChange={(event) => setSearch(event.target.value)} className={`${inputClass} pl-9 pr-8`} />
             {search && (
@@ -434,7 +435,7 @@ export function ProductsTab({ orgId, currency, canEdit, canManageStore, catalogL
                 type="button"
                 aria-pressed={availability === option.id}
                 onClick={() => setAvailability(option.id)}
-                className={`h-8 px-3 rounded-md text-xs font-semibold cursor-pointer transition-colors ${
+                className={`h-8 max-sm:h-10 px-3 rounded-md text-xs font-semibold cursor-pointer transition-colors ${
                   availability === option.id ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm' : 'text-slate-600 dark:text-slate-400'
                 }`}
               >
@@ -443,7 +444,7 @@ export function ProductsTab({ orgId, currency, canEdit, canManageStore, catalogL
             ))}
           </div>
           {catalogLinked && (
-            <select aria-label="Filter by place in the WhatsApp catalog" value={catalogFilter} onChange={(event) => setCatalogFilter(event.target.value as CatalogFilter)} className={`${inputClass} h-9 sm:w-52`}>
+            <select aria-label="Filter by place in the WhatsApp catalog" value={catalogFilter} onChange={(event) => setCatalogFilter(event.target.value as CatalogFilter)} className={`${inputClass} sm:w-52`}>
               <option value="all">Any catalog status</option>
               <option value="attention">Needs attention{catalogCounts.attention ? ` (${catalogCounts.attention})` : ''}</option>
               <option value="not_sent">Not in catalog{catalogCounts.notSent ? ` (${catalogCounts.notSent})` : ''}</option>
@@ -451,7 +452,8 @@ export function ProductsTab({ orgId, currency, canEdit, canManageStore, catalogL
           )}
         </div>
 
-        <div className="flex items-center gap-2 flex-wrap">
+        {/* Phones: two equal buttons a row under Add product (they stacked in uneven widths) */}
+        <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center sm:justify-end [&>button]:max-sm:whitespace-normal [&>button]:max-sm:leading-tight">
           {canEdit && catalogLinked && (
             <button type="button" onClick={() => setShare({ kind: 'catalog' })} title="Send a button that opens your whole catalog in WhatsApp" className={secondaryButton}>
               <BookOpen size={13} /> Send catalog
@@ -472,7 +474,8 @@ export function ProductsTab({ orgId, currency, canEdit, canManageStore, catalogL
               <button type="button" onClick={() => setImporting(true)} className={secondaryButton}>
                 <FileSpreadsheet size={13} /> Upload spreadsheet
               </button>
-              <button type="button" onClick={openNew} className={primaryButton}>
+              {/* First and full width on phones, last on wider screens */}
+              <button type="button" onClick={openNew} className={`${primaryButton} max-sm:order-first max-sm:col-span-2`}>
                 <Plus size={14} /> Add product
               </button>
             </>
@@ -503,7 +506,7 @@ export function ProductsTab({ orgId, currency, canEdit, canManageStore, catalogL
         </div>
       ) : error ? (
         <div role="alert" className={`${cardClass} py-12 px-6 text-center`}>
-          <AlertCircle size={26} className="mx-auto text-rose-500" />
+          <AlertCircle size={26} className="mx-auto text-[#b91c1c]" />
           <p className="mt-2 text-sm font-semibold text-slate-800 dark:text-slate-100">Products could not be loaded</p>
           <p className="mt-1 text-xs text-slate-500 break-words">{error}</p>
           <button type="button" onClick={() => load(page)} className={`${primaryButton} mt-3`}>
@@ -529,7 +532,8 @@ export function ProductsTab({ orgId, currency, canEdit, canManageStore, catalogL
         </div>
       ) : (
         <>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+          <div className="@container">
+          <div className="grid grid-cols-1 @md:grid-cols-2 @3xl:grid-cols-3 @6xl:grid-cols-4 gap-3 sm:gap-4">
             {products.map((product) => {
               const available = inStock(product)
               const isPicked = picked.has(product.id)
@@ -566,26 +570,26 @@ export function ProductsTab({ orgId, currency, canEdit, canManageStore, catalogL
                       <h3 className="font-bold text-sm text-slate-900 dark:text-white truncate" title={product.title}>{product.title}</h3>
                       <p className="text-[11px] text-slate-500 truncate">SKU {product.retailer_id}{product.category ? ` · ${product.category}` : ''}</p>
                       {catalogIssue ? (
-                        <p className="mt-1 text-xs text-rose-600 dark:text-rose-400 line-clamp-2" title={catalogIssue}>{catalogIssue}</p>
+                        <p className="mt-1 text-xs text-[#b91c1c] dark:text-red-300 line-clamp-2" title={catalogIssue}>{catalogIssue}</p>
                       ) : (
                         product.description && <p className="mt-1 text-xs text-slate-500 dark:text-slate-400 line-clamp-2">{product.description}</p>
                       )}
                     </div>
-                    <div className="mt-auto pt-2.5 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between gap-2">
-                      <span className="font-bold text-base text-slate-900 dark:text-white tabular-nums">{formatMoney(product.price, product.currency)}</span>
-                      <div className="flex items-center gap-0.5">
+                    <div className="mt-auto pt-2.5 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between gap-2 min-w-0">
+                      <span className="font-bold text-base text-slate-900 dark:text-white tabular-nums truncate">{formatMoney(product.price, product.currency)}</span>
+                      <div className="flex items-center gap-0.5 shrink-0">
                         {canManageStore && (
                           <>
                             <button type="button" aria-label={`Edit ${product.title}`} title="Edit" onClick={() => openEdit(product)} className={iconButton}>
                               <Pencil size={14} />
                             </button>
-                            <button type="button" aria-label={`Remove ${product.title}`} title="Remove" onClick={() => deleteProduct(product)} className={`${iconButton} hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30`}>
+                            <button type="button" aria-label={`Remove ${product.title}`} title="Remove" onClick={() => deleteProduct(product)} className={`${iconButton} hover:text-[#b91c1c] hover:bg-[#fdf0f0] dark:hover:bg-red-950/30`}>
                               <Trash2 size={14} />
                             </button>
                           </>
                         )}
                         {canEdit && (
-                          <button type="button" onClick={() => setShare({ kind: 'product', product })} className={`${primaryButton} h-8 px-3 ml-1`}>
+                          <button type="button" onClick={() => setShare({ kind: 'product', product })} className={`${primaryButton} h-8 px-3 ml-1`} title="Send this product to a customer">
                             <Send size={12} /> Share
                           </button>
                         )}
@@ -595,6 +599,7 @@ export function ProductsTab({ orgId, currency, canEdit, canManageStore, catalogL
                 </div>
               )
             })}
+          </div>
           </div>
           <Pager page={page} pages={pagination.pages} total={pagination.total} pageSize={PAGE_SIZE} shown={products.length} noun={filtered ? 'matching products' : 'products'} onPage={(target) => load(target)} />
         </>
@@ -645,7 +650,7 @@ export function ProductsTab({ orgId, currency, canEdit, canManageStore, catalogL
                 : 'This product is saved in this CRM. Link your Meta catalog in Store settings to sell it from the WhatsApp cart.'}
             </p>
             {editedIssues.length > 0 && (
-              <div className="p-2.5 rounded-lg bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/60 text-xs text-amber-900 dark:text-amber-100">
+              <div className="p-2.5 rounded-lg bg-[#fdf0f0] dark:bg-red-950/40 border border-[#f5c9c9] dark:border-red-900/60 text-xs text-[#b91c1c] dark:text-red-200">
                 <p className="font-semibold">Your WhatsApp catalog said this about the product</p>
                 <ul className="mt-1 list-disc pl-4 space-y-0.5">
                   {editedIssues.map((issue) => <li key={issue}>{issue}</li>)}
@@ -653,7 +658,7 @@ export function ProductsTab({ orgId, currency, canEdit, canManageStore, catalogL
               </div>
             )}
             {formError && (
-              <p role="alert" className="flex items-start gap-2 p-2.5 rounded-lg bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/60 text-xs text-rose-700 dark:text-rose-200">
+              <p role="alert" className="flex items-start gap-2 p-2.5 rounded-lg bg-[#fdf0f0] dark:bg-red-950/40 border border-[#f5c9c9] dark:border-red-900/60 text-xs text-[#b91c1c] dark:text-red-200">
                 <AlertCircle size={14} className="shrink-0 mt-px" /> {formError}
               </p>
             )}
@@ -1035,7 +1040,7 @@ function ShareModal({ orgId, target, catalogLinked, onClose, onSent, onError }: 
         </div>
 
         {caution && (
-          <p role="status" className="flex items-start gap-2 p-2.5 rounded-lg bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/60 text-xs text-amber-900 dark:text-amber-100">
+          <p role="status" className="flex items-start gap-2 p-2.5 rounded-lg bg-[#fdf0f0] dark:bg-red-950/40 border border-[#f5c9c9] dark:border-red-900/60 text-xs text-[#b91c1c] dark:text-red-200">
             <AlertCircle size={14} className="shrink-0 mt-px" /> {caution}
           </p>
         )}

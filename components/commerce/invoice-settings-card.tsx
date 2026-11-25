@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import { Check, FileText, Loader2 } from 'lucide-react'
 import { GST_RATES, type InvoiceSettings } from '@/lib/commerce/invoice'
-import { cardClass, hintClass, inputClass, labelClass, primaryButton, type ShowToast } from './ui'
+import { cardClass, hintClass, inputClass, labelClass, primaryButton, textareaClass, type ShowToast } from './ui'
 
 /** Store settings → GST invoices: the shop's GSTIN and what its invoices show. */
 export function InvoiceSettingsCard({ orgId, showToast }: { orgId: string; showToast: ShowToast }) {
@@ -56,7 +56,7 @@ export function InvoiceSettingsCard({ orgId, showToast }: { orgId: string; showT
         </div>
         <div className="sm:col-span-2">
           <label className={labelClass} htmlFor="inv-address">Address on the invoice (optional)</label>
-          <textarea id="inv-address" rows={2} className={inputClass} placeholder="Uses the shop's contact address when empty" maxLength={300} value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} />
+          <textarea id="inv-address" rows={2} className={textareaClass} placeholder="Uses the shop's contact address when empty" maxLength={300} value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} />
         </div>
         <div>
           <label className={labelClass} htmlFor="inv-rate">Usual GST rate</label>

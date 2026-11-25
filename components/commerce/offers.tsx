@@ -95,8 +95,8 @@ export function Offers({ orgId, canManage, showToast }: { orgId: string; canMana
           {list.map((d) => {
             const state = stateOf(d)
             return (
-              <li key={d.id} className={`${cardClass} p-3 sm:p-4 flex flex-wrap items-center gap-3`}>
-                <div className="min-w-0 flex-1 basis-56">
+              <li key={d.id} className={`${cardClass} p-3 sm:p-4 flex items-start gap-2 sm:gap-3`}>
+                <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
                     {d.code ? <span className="font-mono text-[13px] font-bold rounded-md bg-slate-100 dark:bg-slate-800 px-2 py-0.5 text-slate-900 dark:text-white">{d.code}</span> : <span className="text-[11px] font-bold rounded-full bg-slate-100 dark:bg-slate-800 px-2 py-0.5 text-slate-700 dark:text-slate-200">Applies by itself</span>}
                     <span className={`text-[11px] font-bold rounded-full px-2 py-0.5 ${state.red ? 'bg-[#fdf0f0] text-[#b91c1c]' : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300'}`}>{state.text}</span>
@@ -108,9 +108,12 @@ export function Offers({ orgId, canManage, showToast }: { orgId: string; canMana
                     {d.ends_at ? ` · till ${day(d.ends_at)}` : ''}
                   </p>
                 </div>
-                {d.code && <button type="button" className={iconButton} aria-label={`Copy ${d.code}`} onClick={() => navigator.clipboard?.writeText(d.code!).then(() => showToast('success', 'Code copied.'))}><Copy size={14} /></button>}
-                {canManage && <button type="button" className={iconButton} aria-label={`Edit ${d.title}`} onClick={() => edit(d)}><Pencil size={14} /></button>}
-                {canManage && <button type="button" className={iconButton} aria-label={`Remove ${d.title}`} onClick={() => remove(d)}><Trash2 size={14} /></button>}
+                {/* The buttons stay together on the right (on phones the bin dropped to a line of its own) */}
+                <div className="flex items-center gap-0.5 shrink-0 -mr-1 -mt-1 sm:mt-0">
+                  {d.code && <button type="button" className={iconButton} aria-label={`Copy ${d.code}`} title="Copy the code" onClick={() => navigator.clipboard?.writeText(d.code!).then(() => showToast('success', 'Code copied.'))}><Copy size={14} /></button>}
+                  {canManage && <button type="button" className={iconButton} aria-label={`Edit ${d.title}`} title="Change" onClick={() => edit(d)}><Pencil size={14} /></button>}
+                  {canManage && <button type="button" className={`${iconButton} hover:text-[#b91c1c] hover:bg-[#fdf0f0] dark:hover:bg-red-950/30`} aria-label={`Remove ${d.title}`} title="Remove" onClick={() => remove(d)}><Trash2 size={14} /></button>}
+                </div>
               </li>
             )
           })}

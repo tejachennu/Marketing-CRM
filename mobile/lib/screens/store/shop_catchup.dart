@@ -249,23 +249,34 @@ class _CourierBoxState extends State<CourierBox> {
       padding: const EdgeInsets.only(bottom: 10),
       child: Panel(
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          const Padding(padding: EdgeInsets.only(bottom: 6), child: Text('Courier', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15))),
-          for (final s in shipments)
+          // Titled like the order's other boxes
+          const Padding(padding: EdgeInsets.only(bottom: 6), child: Text('Courier', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Brand.muted))),
+          for (final (i, s) in shipments.indexed)
             Padding(
-              padding: const EdgeInsets.only(bottom: 8),
+              padding: EdgeInsets.only(bottom: i < shipments.length - 1 || _busy == 'checking' || (canEdit && ready.isNotEmpty && open.isEmpty) ? 10 : 0),
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Text('${s['courier_name'] ?? (s['provider'] == 'shiprocket' ? 'Shiprocket' : 'Delhivery')} · ${_shipmentLabels[s['status']] ?? s['status']}', style: const TextStyle(fontWeight: FontWeight.w600)),
                 if (s['awb'] != null) Text('AWB ${s['awb']}${s['status_text'] != null ? ' · ${s['status_text']}' : ''}', style: const TextStyle(color: Brand.muted, fontSize: 13)),
+                // Outlined buttons from the left edge, like the rest of the order page (text buttons sat
+                // indented with a large empty gap under them)
+                if (canEdit) const SizedBox(height: 8),
                 if (canEdit)
-                  Wrap(spacing: 6, children: [
-                    if ('${s['label_url'] ?? ''}'.startsWith('https://')) TextButton(onPressed: () => openLink(context, '${s['label_url']}'), child: const Text('Label')),
-                    if (s['awb'] != null && s['status'] != 'cancelled') TextButton(onPressed: _busy != null ? null : () => _post({'action': 'refresh', 'shipmentId': s['id']}), child: const Text('Where is it?')),
+                  Wrap(spacing: 8, runSpacing: 8, children: [
+                    if ('${s['label_url'] ?? ''}'.startsWith('https://'))
+                      OutlinedButton.icon(onPressed: () => openLink(context, '${s['label_url']}'), icon: const Icon(Icons.description_outlined, size: 18), label: const Text('Label')),
+                    if (s['awb'] != null && s['status'] != 'cancelled')
+                      OutlinedButton.icon(
+                        onPressed: _busy != null ? null : () => _post({'action': 'refresh', 'shipmentId': s['id']}),
+                        icon: _busy == 'refresh' ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.my_location, size: 18),
+                        label: const Text('Where is it?'),
+                      ),
                     if (['booked', 'pickup_scheduled'].contains(s['status']))
-                      TextButton(
+                      OutlinedButton(
+                        style: OutlinedButton.styleFrom(foregroundColor: Brand.red, side: const BorderSide(color: Color(0xFFF5C9C9))),
                         onPressed: _busy != null ? null : () async {
                           if (await confirmAction(context, title: 'Cancel this booking?', message: 'Only before the courier picks it up.', yes: 'Cancel booking', destructive: true)) await _post({'action': 'cancel', 'shipmentId': s['id']});
                         },
-                        child: const Text('Cancel', style: TextStyle(color: Brand.red)),
+                        child: const Text('Cancel booking'),
                       ),
                   ]),
               ]),

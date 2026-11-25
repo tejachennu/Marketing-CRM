@@ -1,8 +1,10 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../data/app_state.dart';
-import '../../data/format.dart' show istNow, showPhone;
+import '../../data/format.dart' show istNow, shortRupees, showPhone;
 import '../../ui/theme.dart';
 import '../../ui/widgets.dart';
 import 'store_logic.dart';
@@ -15,6 +17,11 @@ import 'store_screen.dart' show NoteBox, confirmAction, openLink, plain;
 Widget _title(String text) => Padding(
   padding: const EdgeInsets.only(bottom: 6),
   child: Text(text, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
+);
+/// A box on the order page: titled like the order's own boxes (Customer, Items, Payment), not in bold black.
+Widget _boxTitle(String text) => Padding(
+  padding: const EdgeInsets.only(bottom: 6),
+  child: Text(text, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Brand.muted)),
 );
 Widget _hint(String text) => Padding(
   padding: const EdgeInsets.only(top: 4),
@@ -83,7 +90,7 @@ class _OrderInvoiceBoxState extends State<OrderInvoiceBox> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _title('Invoice'),
+            _boxTitle('Invoice'),
             if (inv != null)
               Row(
                 children: [
@@ -101,6 +108,7 @@ class _OrderInvoiceBoxState extends State<OrderInvoiceBox> {
               Row(
                 children: [
                   const Expanded(child: Text('Made by itself when the order is shipped or delivered.', style: TextStyle(color: Brand.muted, fontSize: 13))),
+                  const SizedBox(width: 8),
                   OutlinedButton(onPressed: _busy ? null : _make, child: Text(_busy ? 'Making…' : 'Make now')),
                 ],
               )
@@ -244,15 +252,17 @@ class _OrderReturnsBoxState extends State<OrderReturnsBox> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _title('Returns and refunds'),
+            _boxTitle('Returns and refunds'),
             if (ask != null) ...[
               Text('${returnLabels[ask['status']] ?? 'Return'}: ${ask['reason']}${'${ask['note'] ?? ''}'.isNotEmpty ? ' — “${ask['note']}”' : ''}', style: TextStyle(color: ask['status'] == 'asked' ? Brand.red : Brand.text, fontWeight: FontWeight.w600)),
+              // A little room between the ask and its buttons (they touched)
+              if (ask['status'] == 'asked' && canEdit) const SizedBox(height: 8),
               if (ask['status'] == 'asked' && canEdit)
-                Wrap(spacing: 8, children: [
+                Wrap(spacing: 8, runSpacing: 8, children: [
                   OutlinedButton(onPressed: _busy != null ? null : () => _post({'action': 'accept'}, 'Return accepted. The customer was told on WhatsApp.'), child: const Text('Accept')),
                   OutlinedButton(onPressed: _busy != null ? null : () => _post({'action': 'decline'}, 'Return declined. The customer was told on WhatsApp.'), child: const Text('Decline')),
                 ]),
-              const SizedBox(height: 6),
+              const SizedBox(height: 10),
             ],
             for (final r in refunds.cast<Map>())
               Padding(
@@ -275,6 +285,7 @@ class _OrderReturnsBoxState extends State<OrderReturnsBox> {
             if (left > 0 && canEdit)
               Row(children: [
                 Expanded(child: Text(((s['refunded'] as num?) ?? 0) > 0 ? '${formatMoney(left, currency)} of ${formatMoney(paid, currency)} can still be refunded.' : 'Paid ${formatMoney(paid, currency)}.', style: const TextStyle(color: Brand.muted, fontSize: 13))),
+                const SizedBox(width: 8),
                 OutlinedButton.icon(onPressed: _busy != null ? null : _refund, icon: const Icon(Icons.undo, size: 18), label: const Text('Refund')),
               ]),
           ],
@@ -375,6 +386,16 @@ class _ShopReportsScreenState extends State<ShopReportsScreen> {
     return ('${pct > 0 ? '▲' : '▼'} ${pct.abs()}% vs $when', pct < 0);
   }
 
+  /// A round top for the chart's scale: 4,500 → 5,000; 17,200 → 20,000.
+  static num _niceTop(num peak) {
+    if (peak <= 0) return 1;
+    final step = math.pow(10, (math.log(peak) / math.ln10).floor());
+    for (final m in const [1, 1.5, 2, 2.5, 3, 4, 5, 6, 8, 10]) {
+      if (m * step >= peak) return m * step;
+    }
+    return 10 * step;
+  }
+
   String _dayLabel(String day, {bool short = false}) {
     final d = DateTime.tryParse(day);
     if (d == null) return day;
@@ -399,6 +420,8 @@ class _ShopReportsScreenState extends State<ShopReportsScreen> {
             Container(
               color: Colors.white,
               child: Column(
+                // From the left edge, in line with the chips below (the period chips sat centred)
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   // Wraps on small phones, so "Pick dates" is always in sight
                   Padding(
@@ -461,6 +484,10 @@ class _ShopReportsScreenState extends State<ShopReportsScreen> {
     final topQty = products.fold<num>(1, (m, p) => _n(p['quantity']) > m ? _n(p['quantity']) : m);
     final carts = (r['carts'] as Map?) ?? const {};
     final labelEvery = (daily.length / 7).ceil().clamp(1, 99);
+    // The chart's scale (the bars had no numbers beside them): a round top, its half and 0
+    final axisTop = _showOrders ? math.max(2, (peak / 2).ceil() * 2) : _niceTop(peak);
+    String axisLabel(num n) => _showOrders ? '${n.round()}' : (widget.currency.toUpperCase() == 'INR' ? shortRupees(n) : formatMoney(n.round(), widget.currency));
+    final textScale = MediaQuery.textScalerOf(context).scale(1);
     // A picked period that ends before today has no "Today"
     final endsToday = daily.isEmpty || '${daily.last['day']}' == _ymd(istNow());
 
@@ -551,17 +578,23 @@ class _ShopReportsScreenState extends State<ShopReportsScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(
-                children: [
-                  Expanded(child: _title(_showOrders ? 'Orders each day' : 'Sales each day')),
-                  SegmentedButton<bool>(
+              // Title and the Sales | Orders switch; the switch goes under the title on small phones and
+              // with large text (the title was squeezed to one word a line)
+              LayoutBuilder(
+                builder: (context, box) {
+                  final title = _title(_showOrders ? 'Orders each day' : 'Sales each day');
+                  final toggle = SegmentedButton<bool>(
                     showSelectedIcon: false,
-                    style: const ButtonStyle(visualDensity: VisualDensity.compact, tapTargetSize: MaterialTapTargetSize.shrinkWrap),
+                    style: const ButtonStyle(visualDensity: VisualDensity.compact),
                     segments: const [ButtonSegment(value: false, label: Text('Sales')), ButtonSegment(value: true, label: Text('Orders'))],
                     selected: {_showOrders},
                     onSelectionChanged: (v) => setState(() => _showOrders = v.first),
-                  ),
-                ],
+                  );
+                  if (box.maxWidth < 260 * textScale) {
+                    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [title, toggle, const SizedBox(height: 8)]);
+                  }
+                  return Row(children: [Expanded(child: title), toggle]);
+                },
               ),
               if (daily.length == 1)
                 Text('${endsToday ? 'Today' : _dayLabel('${daily.last['day']}')}: ${money(daily.last['sales'])} from ${daily.last['orders']} ${_n(daily.last['orders']) == 1 ? 'order' : 'orders'}.', style: const TextStyle(color: Brand.textSoft))
@@ -574,10 +607,38 @@ class _ShopReportsScreenState extends State<ShopReportsScreen> {
                     style: const TextStyle(fontSize: 12.5, color: Brand.textSoft),
                   );
                 }),
-                const SizedBox(height: 8),
+                const SizedBox(height: 10),
                 SizedBox(
                   height: 120,
                   child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      // The scale
+                      SizedBox(
+                        width: 44 * textScale,
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: [
+                            for (final n in [axisTop, axisTop / 2, 0])
+                              Text(axisLabel(n), maxLines: 1, style: const TextStyle(fontSize: 10, height: 1, color: Brand.faint)),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Stack(
+                          children: [
+                            // Lines at the top, the middle and 0
+                            Positioned.fill(
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  for (var k = 0; k < 3; k++) Container(height: 1, color: k == 2 ? Brand.border : Brand.lineSoft),
+                                ],
+                              ),
+                            ),
+                            Row(
                     crossAxisAlignment: CrossAxisAlignment.end,
                     children: [
                       for (var i = 0; i < daily.length; i++)
@@ -590,7 +651,7 @@ class _ShopReportsScreenState extends State<ShopReportsScreen> {
                               child: Align(
                                 alignment: Alignment.bottomCenter,
                                 child: FractionallySizedBox(
-                                  heightFactor: peak > 0 && value(daily[i]) > 0 ? (value(daily[i]) / peak).clamp(0.04, 1.0).toDouble() : 0.02,
+                                  heightFactor: value(daily[i]) > 0 ? (value(daily[i]) / axisTop).clamp(0.03, 1.0).toDouble() : 0.02,
                                   child: Container(
                                     decoration: BoxDecoration(
                                       color: value(daily[i]) == 0 ? Brand.line : (_picked == i ? Brand.navy : Brand.blue),
@@ -604,24 +665,49 @@ class _ShopReportsScreenState extends State<ShopReportsScreen> {
                         ),
                     ],
                   ),
-                ),
-                const SizedBox(height: 4),
-                Row(
-                  children: [
-                    for (var i = 0; i < daily.length; i++)
-                      Expanded(
-                        child: Text(
-                          i == daily.length - 1 ? '' : (daily.length - 1 - i) % labelEvery == 0 ? _dayLabel('${daily[i]['day']}', short: daily.length <= 7) : '',
-                          textAlign: TextAlign.center,
-                          maxLines: 1,
-                          overflow: TextOverflow.visible,
-                          softWrap: false,
-                          style: const TextStyle(fontSize: 10, color: Brand.muted),
+                          ],
                         ),
                       ),
-                  ],
+                    ],
+                  ),
                 ),
-                Align(alignment: Alignment.centerRight, child: Text(endsToday ? 'Today' : _dayLabel('${daily.last['day']}'), style: const TextStyle(fontSize: 10, color: Brand.muted))),
+                const SizedBox(height: 4),
+                // Dates under the bars, placed by position: "Today" on the same line as the others (it
+                // dropped to a line of its own), every other date left out when they would touch
+                Padding(
+                  padding: EdgeInsets.only(left: 44 * textScale + 6),
+                  child: SizedBox(
+                    height: 14 * textScale,
+                    child: LayoutBuilder(
+                      builder: (context, box) {
+                        final gap = box.maxWidth * labelEvery / daily.length;
+                        final skipOdd = gap < 40 * textScale;
+                        return Stack(
+                          clipBehavior: Clip.none,
+                          children: [
+                            for (var i = 0; i < daily.length; i++)
+                              if ((daily.length - 1 - i) % labelEvery == 0 && !(skipOdd && ((daily.length - 1 - i) ~/ labelEvery).isOdd))
+                                if (i == daily.length - 1)
+                                  Positioned(
+                                    right: 0,
+                                    top: 0,
+                                    child: Text(endsToday ? 'Today' : _dayLabel('${daily.last['day']}'), style: const TextStyle(fontSize: 10, color: Brand.muted)),
+                                  )
+                                else
+                                  Positioned(
+                                    left: (i + 0.5) / daily.length * box.maxWidth,
+                                    top: 0,
+                                    child: FractionalTranslation(
+                                      translation: const Offset(-0.5, 0),
+                                      child: Text(_dayLabel('${daily[i]['day']}', short: daily.length <= 7), maxLines: 1, softWrap: false, style: const TextStyle(fontSize: 10, color: Brand.muted)),
+                                    ),
+                                  ),
+                          ],
+                        );
+                      },
+                    ),
+                  ),
+                ),
                 _hint('Tap a bar to see that day.'),
               ],
             ],
@@ -662,7 +748,11 @@ class _ShopReportsScreenState extends State<ShopReportsScreen> {
                               ),
                             ),
                             const SizedBox(width: 8),
-                            Text('${products[i]['quantity']} sold', style: const TextStyle(color: Brand.muted, fontSize: 12)),
+                            // A fixed width, so every bar is measured against the same length
+                            SizedBox(
+                              width: 58 * textScale,
+                              child: Text('${products[i]['quantity']} sold', textAlign: TextAlign.right, maxLines: 1, style: const TextStyle(color: Brand.muted, fontSize: 12)),
+                            ),
                           ],
                         ),
                       ),
@@ -694,7 +784,7 @@ class _ShopReportsScreenState extends State<ShopReportsScreen> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text('${c['name']}', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w600)),
-                            Text('${'${c['phone'] ?? ''}'.isEmpty ? 'No phone' : showPhone(c['phone'])} · ${c['orders']} ${_n(c['orders']) == 1 ? 'order' : 'orders'}', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Brand.muted, fontSize: 12.5)),
+                            Text('${'${c['phone'] ?? ''}'.isEmpty ? 'No phone' : showPhone(c['phone'])} · ${c['orders']} ${_n(c['orders']) == 1 ? 'order' : 'orders'}', maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Brand.muted, fontSize: 12.5)),
                           ],
                         ),
                       ),
@@ -966,14 +1056,20 @@ class _ShopOffersScreenState extends State<ShopOffersScreen> {
                           title: const Text('Loyalty points', style: TextStyle(fontWeight: FontWeight.w700)),
                           subtitle: const Text('Points back on delivered orders, used on the next order (1 point = ₹1). Customers sign in on your store to use them.'),
                         ),
+                        // Three boxes side by side only when their names fit ("Points…", "Use fr…" on phones)
+                        if (l['on'] == true) const SizedBox(height: 8),
                         if (l['on'] == true)
-                          Row(children: [
-                            Expanded(child: TextFormField(initialValue: '${l['percent']}', keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: const InputDecoration(labelText: 'Points back (%)'), onChanged: (v) => l['percent'] = num.tryParse(v) ?? 0)),
-                            const SizedBox(width: 8),
-                            Expanded(child: TextFormField(initialValue: '${l['minUse']}', keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Use from'), onChanged: (v) => l['minUse'] = int.tryParse(v) ?? 0)),
-                            const SizedBox(width: 8),
-                            Expanded(child: TextFormField(initialValue: '${l['maxPercent']}', keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'At most %'), onChanged: (v) => l['maxPercent'] = int.tryParse(v) ?? 0)),
-                          ]),
+                          LayoutBuilder(builder: (context, box) {
+                            final fields = [
+                              TextFormField(initialValue: '${l['percent']}', keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: const InputDecoration(labelText: 'Points back (%)'), onChanged: (v) => l['percent'] = num.tryParse(v) ?? 0),
+                              TextFormField(initialValue: '${l['minUse']}', keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Use from'), onChanged: (v) => l['minUse'] = int.tryParse(v) ?? 0),
+                              TextFormField(initialValue: '${l['maxPercent']}', keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'At most %'), onChanged: (v) => l['maxPercent'] = int.tryParse(v) ?? 0),
+                            ];
+                            if (box.maxWidth >= MediaQuery.textScalerOf(context).scale(440)) {
+                              return Row(children: [for (final (i, f) in fields.indexed) ...[if (i > 0) const SizedBox(width: 8), Expanded(child: f)]]);
+                            }
+                            return Column(children: [for (final (i, f) in fields.indexed) ...[if (i > 0) const SizedBox(height: 10), f]]);
+                          }),
                         Align(alignment: Alignment.centerRight, child: TextButton(onPressed: _saveLoyalty, child: const Text('Save points'))),
                       ]),
                     ),
@@ -1070,7 +1166,7 @@ class _OfferFormState extends State<_OfferForm> {
           TextField(controller: _title, maxLength: 80, decoration: const InputDecoration(labelText: 'Name shown to customers (optional)', counterText: '')),
           if (!_automatic) ...[
             gap,
-            TextField(controller: _phone, keyboardType: TextInputType.phone, decoration: const InputDecoration(labelText: 'Only for one customer (optional)', hintText: 'Their phone number', helperText: 'Only orders with this phone can use the code.')),
+            TextField(controller: _phone, keyboardType: TextInputType.phone, decoration: const InputDecoration(labelText: 'Only for one customer (optional)', hintText: 'Their phone number', helperMaxLines: 3, helperText: 'Only orders with this phone can use the code.')),
           ],
           CheckboxListTile(contentPadding: EdgeInsets.zero, value: _first, onChanged: (v) => setState(() => _first = v == true), title: const Text('First order only')),
           CheckboxListTile(contentPadding: EdgeInsets.zero, value: _once, onChanged: (v) => setState(() => _once = v == true), title: const Text('Once per customer')),
@@ -1180,12 +1276,12 @@ Widget invoiceSettingsScreen() => _SettingsScreen(
     const SizedBox(height: 14),
     DropdownButtonFormField<String>(
       initialValue: '${num.tryParse('${v['defaultRate'] ?? 0}') ?? 0}'.replaceAll(RegExp(r'\.0$'), ''),
-      decoration: const InputDecoration(labelText: 'Usual GST rate', helperText: 'For products without their own rate.'),
+      decoration: const InputDecoration(labelText: 'Usual GST rate', helperMaxLines: 3, helperText: 'For products without their own rate.'),
       items: [for (final r in {...gstRates, '${num.tryParse('${v['defaultRate'] ?? 0}') ?? 0}'.replaceAll(RegExp(r'\.0$'), '')}) DropdownMenuItem(value: r, child: Text('$r%'))],
       onChanged: (x) => update(() => v['defaultRate'] = num.tryParse(x ?? '0') ?? 0),
     ),
     const SizedBox(height: 14),
-    TextFormField(initialValue: '${v['prefix'] ?? 'WEB'}', textCapitalization: TextCapitalization.characters, maxLength: 5, decoration: const InputDecoration(labelText: 'Invoice number starts with', helperText: 'Like WEB/26-27/0001. Numbers start again each April.', counterText: ''), onChanged: (x) => v['prefix'] = x),
+    TextFormField(initialValue: '${v['prefix'] ?? 'WEB'}', textCapitalization: TextCapitalization.characters, maxLength: 5, decoration: const InputDecoration(labelText: 'Invoice number starts with', helperMaxLines: 3, helperText: 'Like WEB/26-27/0001. Numbers start again each April.', counterText: ''), onChanged: (x) => v['prefix'] = x),
   ],
 );
 

@@ -154,7 +154,8 @@ export default function CommercePage() {
     <div ref={scroller} className="h-full overflow-y-auto bg-slate-50 dark:bg-[#0b141a] text-slate-900 dark:text-slate-100">
       <div className="max-w-7xl mx-auto p-4 pb-24 md:p-8 md:pb-10 space-y-5">
         {/* Header */}
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+        {/* The tabs sit on their own row: next to the title, Website, Order flow and Store settings were cut off */}
+        <div className="flex flex-col gap-4">
           <div className="flex items-center gap-3">
             <div className="h-11 w-11 shrink-0 rounded-2xl bg-[#1D5BEA] flex items-center justify-center text-white shadow-sm">
               <ShoppingBag size={20} />
@@ -166,7 +167,7 @@ export default function CommercePage() {
           </div>
 
           {/* Phones: the tabs are in the bottom bar */}
-          <div role="tablist" aria-label="Commerce sections" className="max-md:hidden inline-flex max-w-full overflow-x-auto no-scrollbar gap-1 p-1 rounded-xl bg-white dark:bg-[#111b21] border border-slate-200 dark:border-slate-800 shadow-[0_1px_2px_rgba(11,20,26,0.05)]">
+          <div role="tablist" aria-label="Commerce sections" className="max-md:hidden self-start flex flex-wrap max-w-full gap-1 p-1 rounded-xl bg-white dark:bg-[#111b21] border border-slate-200 dark:border-slate-800 shadow-[0_1px_2px_rgba(11,20,26,0.05)]">
             {tabs.map(({ id, label, icon: Icon, count }) => (
               <button
                 key={id}
@@ -187,15 +188,15 @@ export default function CommercePage() {
         </div>
 
         {loadError && (
-          <div role="alert" className="p-3 rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/60 text-xs font-medium text-rose-700 dark:text-rose-200 flex items-center gap-2">
+          <div role="alert" className="p-3 rounded-xl bg-[#fdf0f0] dark:bg-red-950/40 border border-[#f5c9c9] dark:border-red-900/60 text-xs font-medium text-[#b91c1c] dark:text-red-200 flex items-center gap-2">
             <AlertCircle size={16} className="shrink-0" />
             {loadError}
           </div>
         )}
 
         {storeOff && (
-          <div role="alert" className="p-3.5 rounded-xl bg-amber-50 dark:bg-amber-950/30 border border-amber-300 dark:border-amber-800/70 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
-            <p className="flex items-start gap-2 text-[13px] text-amber-900 dark:text-amber-200">
+          <div role="alert" className="p-3.5 rounded-xl bg-[#fdf0f0] dark:bg-red-950/30 border border-[#f5c9c9] dark:border-red-900/60 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+            <p className="flex items-start gap-2 text-[13px] text-[#b91c1c] dark:text-red-200">
               <PauseCircle size={16} className="shrink-0 mt-0.5" />
               <span><strong className="font-semibold">Your store is switched off.</strong> Carts that customers send on WhatsApp are not turned into orders. To stop customers sending carts at all, turn off the cart in store settings.</span>
             </p>
@@ -241,7 +242,9 @@ export default function CommercePage() {
           </div>
         )}
 
-        {/* Totals for the whole store, whatever the list below is filtered to */}
+        {/* Totals for the whole store, whatever the list below is filtered to. Only with the orders: the
+            other tabs never load them (the tiles showed dashes there), and Reports has its own numbers. */}
+        {activeTab === 'orders' && (
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
           <Metric
             label="Revenue received"
@@ -250,16 +253,17 @@ export default function CommercePage() {
             icon={Wallet}
             tone="text-[#1D5BEA]"
           />
-          <Metric label="Orders" value={summary ? summary.total.toLocaleString() : '—'} note="WhatsApp, shop and phone orders" icon={Package} tone="text-blue-500" />
-          <Metric label="Awaiting customer" value={summary ? summary.awaiting.toLocaleString() : '—'} note="Address or payment not completed" icon={Clock} tone="text-amber-500" />
+          <Metric label="Orders" value={summary ? summary.total.toLocaleString('en-IN') : '—'} note="WhatsApp, shop and phone orders" icon={Package} />
+          <Metric label="Awaiting customer" value={summary ? summary.awaiting.toLocaleString('en-IN') : '—'} note="Address or payment not completed" icon={Clock} />
           <Metric
             label="To ship"
-            value={summary ? summary.toShip.toLocaleString() : '—'}
+            value={summary ? summary.toShip.toLocaleString('en-IN') : '—'}
             note={summary && summary.refundDue > 0 ? `${summary.refundDue} canceled after payment: refund due` : 'Paid or COD confirmed'}
             icon={Truck}
-            tone="text-violet-500"
+            attention={Boolean(summary && summary.refundDue > 0)}
           />
         </div>
+        )}
 
         {orgId && activeTab === 'orders' && (
           <OrdersTab orgId={orgId} canEdit={canEdit} collectsAddress={setup.addressFlow} currency={currency} summary={summary} onSummary={setSummary} showToast={showToast} />
@@ -349,7 +353,7 @@ export default function CommercePage() {
           role={toast.kind === 'error' ? 'alert' : 'status'}
           aria-live="polite"
           className={`fixed bottom-20 md:bottom-6 left-1/2 -translate-x-1/2 z-[60] w-[calc(100%-2rem)] max-w-md flex items-start gap-2.5 px-4 py-3 rounded-xl shadow-2xl text-xs font-medium ${
-            toast.kind === 'error' ? 'bg-rose-600 text-white' : 'bg-slate-900 text-white dark:bg-white dark:text-slate-900'
+            toast.kind === 'error' ? 'bg-[#b91c1c] text-white' : 'bg-[#0E1B3D] text-white dark:bg-white dark:text-slate-900'
           }`}
         >
           {toast.kind === 'error' ? <AlertCircle size={16} className="shrink-0 mt-px" /> : <CheckCircle2 size={16} className="shrink-0 mt-px text-[#5f86ee] dark:text-[#1D5BEA]" />}
