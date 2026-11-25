@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'dart:ui' show PlatformDispatcher;
 
 import 'package:flutter/material.dart';
@@ -111,6 +112,13 @@ class _ExplainerScreenState extends State<ExplainerScreen> with SingleTickerProv
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    // The clips' lengths, so each scene lasts as long as its words
+    narrator.warmUp().then((_) {
+      if (!mounted || _ended) return;
+      // The first scene started before the lengths were known: it now lasts as long as its words
+      _clock.duration = _sceneLength();
+      if (_clock.isAnimating) _clock.forward();
+    });
     // Screen readers: start paused, so the words are not swapped while they are being read
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted && MediaQuery.accessibleNavigationOf(context) && !_paused) _togglePause();
@@ -160,7 +168,7 @@ class _ExplainerScreenState extends State<ExplainerScreen> with SingleTickerProv
     if (!mounted || turn != _voiceTurn) return;
     _voiceDone = true;
     // A short breath after the words before the next scene
-    if (_waitingForVoice) await Future<void>.delayed(const Duration(milliseconds: 400));
+    if (_waitingForVoice) await Future<void>.delayed(const Duration(milliseconds: 250));
     if (mounted && turn == _voiceTurn && _waitingForVoice && !_paused) _advance();
   }
 
@@ -186,10 +194,19 @@ class _ExplainerScreenState extends State<ExplainerScreen> with SingleTickerProv
 
   void _startScene() {
     _waitingForVoice = false;
-    _clock.duration = Duration(milliseconds: _scenes[_scene].ms);
+    _clock.duration = _sceneLength();
     _clock.value = widget.holdAt ?? 0;
     if (widget.autoplay && widget.holdAt == null && !_paused) _clock.forward();
     _speakScene();
+  }
+
+  /// With a recorded voice a scene lasts as long as its words and a short breath, so the voice flows with no gaps;
+  /// otherwise its own length.
+  Duration _sceneLength() {
+    final scene = _scenes[_scene];
+    final lang = _speakingLang;
+    final voice = _sound && widget.holdAt == null ? narrator.lengthMs(spokenWords(scene, lang), lang) : null;
+    return Duration(milliseconds: voice != null ? math.max(2500, voice + 250) : scene.ms);
   }
 
   void _onStatus(AnimationStatus status) {

@@ -1,7 +1,8 @@
 # The videos' recorded voice
 
-Every scene of the explainer videos (`lib/screens/explainers/explainer_content.dart`) is read aloud: its title, then its
-line, in English, Telugu and Hindi, in a warm voice with a natural Indian accent. The words are written the way they
+Every scene of the explainer videos is read aloud from a spoken script (`lib/screens/explainers/explainer_narration.dart`:
+natural Tenglish, Hinglish and Indian English, not the captions), in a warm voice with a natural Indian accent made by
+Sarvam AI (speaker kavitha). Each scene lasts as long as its words (`assets/voice/durations.json`). The words are written the way they
 are spoken (`spokenWords`: "24 by 7", "A I"). The clips live in `assets/voice/`
 (one per scene and language, about 3.4 MB in all) and the player plays them (`RecordedNarrator` in `narrator.dart`).
 A line with no clip is read by the phone's own text-to-speech, so changing words never breaks a video, but please make
@@ -10,8 +11,10 @@ the voice again after changing any words (a test fails until you do):
 ```bash
 cd mobile
 VOICE_LINES=design/voice/lines.json flutter test test/voice_lines.dart
-VOICE_MODEL=<OpenAI speech model> python3 design/voice/make_voice.py
+ENGINE=sarvam SARVAM_API_KEY=<your key> VOICE_MODEL=<Sarvam model> SARVAM_SPEAKER=kavitha python3 design/voice/make_voice.py
 ```
+
+(OpenAI instead: leave out `ENGINE`, set `VOICE_MODEL` to OpenAI's speech model.) Never commit a key.
 
 `make_voice.py` makes only the missing clips, removes clips no line uses any more, and writes `durations.json`. It
 needs ffmpeg and an OpenAI key: in the cloud session the network proxy adds the saved key; on a computer set

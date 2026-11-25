@@ -102,11 +102,11 @@ void main() {
         final clip = voiceClipName(spokenWords(scenes[i], lang), lang);
         final voice = (voiceMs[clip] ?? 0).toInt();
         timeline.add({'start_ms': (frame * 1000 / fps).round(), 'clip': clip});
-        // As in the player: the picture plays, then waits for the words (plus a short breath)
-        final total = voice > 0 ? (voice + 400 > scenes[i].ms ? voice + 400 : scenes[i].ms) : scenes[i].ms;
+        // As in the player: the scene lasts as long as its words and a short breath
+        final total = voice > 0 ? (voice + 250 > 2500 ? voice + 250 : 2500) : scenes[i].ms;
         final n = (total / 1000 * fps).round();
         for (var f = 0; f < n; f++) {
-          final played = (f / fps * 1000) / scenes[i].ms;
+          final played = (f / fps * 1000) / total;
           await shoot(ExplainerScreen(startId: id, startScene: i, holdAt: played > 1 ? 1 : played, autoplay: false, lang: lang));
         }
       }

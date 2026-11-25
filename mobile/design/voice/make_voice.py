@@ -9,9 +9,12 @@ are removed. durations.json (milliseconds per clip) is for the video recorder (t
 Needs: ffmpeg, and an OpenAI key that the request can use. In the cloud session the network proxy adds the saved key;
 elsewhere set OPENAI_API_KEY. VOICE_MODEL must name the OpenAI speech model (see OpenAI's docs). No key or model name
 is kept in this file. --all makes every clip again (after changing VOICES or HOW).
+ENGINE=sarvam uses Sarvam AI instead (SARVAM_API_KEY, SARVAM_SPEAKER, SARVAM_PACE; VOICE_MODEL = Sarvam's model).
 
     cd mobile && VOICE_MODEL=... python3 design/voice/make_voice.py [--all]
+    cd mobile && ENGINE=sarvam SARVAM_API_KEY=... VOICE_MODEL=... SARVAM_SPEAKER=kavitha python3 design/voice/make_voice.py --all
 """
+import base64
 import json
 import os
 import subprocess
@@ -29,6 +32,13 @@ DURATIONS = HERE / 'durations.json'
 
 MODEL = os.environ.get('VOICE_MODEL')
 KEY = os.environ.get('OPENAI_API_KEY', 'proxy-injected')
+# ENGINE=sarvam uses Sarvam AI (voices made for Indian languages; owner, 25 Nov 2026: "please try sarvam"):
+# SARVAM_API_KEY from the environment, VOICE_MODEL = Sarvam's model, SARVAM_SPEAKER = one of its speakers.
+ENGINE = os.environ.get('ENGINE', 'openai')
+SARVAM_KEY = os.environ.get('SARVAM_API_KEY', '')
+SARVAM_SPEAKER = os.environ.get('SARVAM_SPEAKER', 'kavitha')
+SARVAM_PACE = float(os.environ.get('SARVAM_PACE', '1.0'))
+SARVAM_LANG = {'en': 'en-IN', 'te': 'te-IN', 'hi': 'hi-IN'}
 
 # The voice and the way of speaking for each language, as ChatGPT advised for a natural Indian sound (owner, 25 Nov
 # 2026: "not a natural accent, ask ChatGPT the correct prompt"). VOICE_EN / VOICE_TE / VOICE_HI change the voice.
@@ -77,16 +87,24 @@ def speak(line: dict) -> tuple[str, str]:
     target = ASSETS / f'{name}.m4a'
     if target.exists() and not REDO:
         return name, 'kept'
-    body = json.dumps({'model': MODEL, 'voice': VOICES[line['lang']], 'input': line['text'], 'instructions': HOW[line['lang']], 'response_format': 'wav'}).encode()
-    req = urllib.request.Request(
-        'https://api.openai.com/v1/audio/speech',
-        data=body,
-        headers={'Authorization': f'Bearer {KEY}', 'Content-Type': 'application/json'},
-    )
+    if ENGINE == 'sarvam':
+        body = json.dumps({
+            'text': line['text'], 'target_language_code': SARVAM_LANG[line['lang']], 'speaker': SARVAM_SPEAKER,
+            'model': MODEL, 'pace': SARVAM_PACE, 'speech_sample_rate': 24000, 'enable_preprocessing': True,
+        }).encode()
+        req = urllib.request.Request('https://api.sarvam.ai/text-to-speech', data=body, headers={'api-subscription-key': SARVAM_KEY, 'Content-Type': 'application/json'})
+    else:
+        body = json.dumps({'model': MODEL, 'voice': VOICES[line['lang']], 'input': line['text'], 'instructions': HOW[line['lang']], 'response_format': 'wav'}).encode()
+        req = urllib.request.Request(
+            'https://api.openai.com/v1/audio/speech',
+            data=body,
+            headers={'Authorization': f'Bearer {KEY}', 'Content-Type': 'application/json'},
+        )
     for attempt in range(3):
         try:
             with urllib.request.urlopen(req, timeout=120) as r:
-                wav = r.read()
+                raw = r.read()
+            wav = base64.b64decode(json.loads(raw)['audios'][0]) if ENGINE == 'sarvam' else raw
             break
         except urllib.error.HTTPError as e:
             if attempt == 2 or e.code in (400, 401, 403):
@@ -114,7 +132,10 @@ def duration_ms(path: Path) -> int:
 
 def main() -> int:
     if not MODEL:
-        print('Set VOICE_MODEL to the OpenAI speech model.', file=sys.stderr)
+        print('Set VOICE_MODEL to the speech model (OpenAI, or Sarvam with ENGINE=sarvam).', file=sys.stderr)
+        return 2
+    if ENGINE == 'sarvam' and not SARVAM_KEY:
+        print('Set SARVAM_API_KEY for ENGINE=sarvam.', file=sys.stderr)
         return 2
     lines = json.loads(LINES.read_text())
     for line in lines:
@@ -134,6 +155,8 @@ def main() -> int:
             removed += 1
     durations = {clip.stem: duration_ms(clip) for clip in sorted(ASSETS.glob('*.m4a'))}
     DURATIONS.write_text(json.dumps(durations, indent=1, sort_keys=True) + '\n')
+    # The app reads the lengths too: each scene lasts as long as its words
+    (ASSETS / 'durations.json').write_text(json.dumps(durations, separators=(',', ':'), sort_keys=True) + '\n')
     size = sum(c.stat().st_size for c in ASSETS.glob('*.m4a'))
     print(f'{len(lines)} lines: {made} made, {len(lines) - made - len(failed)} kept, {removed} removed, {len(failed)} failed; {size / 1e6:.1f} MB')
     for n, r in failed:

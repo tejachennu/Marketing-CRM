@@ -8,6 +8,7 @@ import 'package:wama_mobile/data/app_state.dart';
 import 'package:wama_mobile/screens/explainers/explainer_player.dart';
 import 'package:wama_mobile/ui/theme.dart';
 import 'package:wama_mobile/screens/explainers/explainer_content.dart';
+import 'package:wama_mobile/screens/explainers/explainer_narration.dart';
 import 'package:wama_mobile/screens/explainers/narrator.dart';
 
 import 'release_helpers.dart';
@@ -19,6 +20,12 @@ class FakeNarrator implements Narrator {
   Set<String> voices = {'en', 'te', 'hi'};
   int stops = 0;
   Completer<bool>? _reading;
+
+  @override
+  Future<void> warmUp() async {}
+
+  @override
+  int? lengthMs(String text, String lang) => null;
 
   @override
   Future<bool> canSpeak(String lang) async => voices.contains(lang);
@@ -188,14 +195,18 @@ void main() {
     expect(phone.stops, 1);
   });
 
-  test('the words said for a scene: title then line, "×" said "by", short capital words spelt out', () {
+  test('the words said: the spoken script (Tenglish / Hinglish), "×" said "by", short capital words spelt out', () {
     final scene = grow.scenes[0];
-    expect(spokenWords(scene, 'en'), startsWith('Your shop, open on WhatsApp 24 by 7.'));
+    expect(spokenWords(scene, 'en'), startsWith('Your shop stays open on WhatsApp, 24 by 7.'));
     expect(spokenWords(scene, 'te'), contains('24 by 7'));
+    expect(spokenWords(scene, 'te'), contains('Customer'), reason: 'everyday English words stay in English, as people speak');
     expect(spokenWords(scene, 'hi'), contains('24 by 7'));
+    // Every scene of every video has its own spoken words, in each language
+    for (final ex in explainers) {
+      expect(narration[ex.id]?.length, ex.scenes.length, reason: ex.id);
+    }
     final replies = explainers.firstWhere((e) => e.id == 'replies').scenes.last;
-    expect(spokenWords(replies, 'en'), contains('Your A I assistant'));
-    expect(spokenWords(replies, 'te'), contains('A I'));
+    expect(spokenWords(replies, 'en'), contains('A I assistant'));
     expect(spokenWords(replies, 'en'), isNot(contains(' AI ')));
   });
 }

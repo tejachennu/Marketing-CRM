@@ -122,11 +122,15 @@ Email: `HOSTINGER_SMTP_*`, `SENDGRID_*`. Other: `NEXT_PUBLIC_APP_URL`, `CRON_SEC
   "for the videos audio is not coming"; "ee screen baledu ... we are also giving a website for ecommerce and frontdesk ...
   all sides nunchi customer attraction ... product sale").
   - **Recorded voice with a natural Indian accent** (owner: "you can add voice to a video, do it yourself, natural Indian
-    accent"): every scene line in English / Telugu / Hindi is a clip in `mobile/assets/voice/` (105 clips, 3.4 MB, AAC
-    mono 32 kbps), made with OpenAI's speech service in the `coral` voice told to speak like a friendly Hyderabad
-    business advisor (`mobile/design/voice/make_voice.py`; lines from `test/voice_lines.dart`; steps in
-    `design/voice/README.md`; the key comes from the cloud environment's saved network secret for api.openai.com, the
-    model from `VOICE_MODEL`, never in the repo). `RecordedNarrator` (just_audio) plays the clip named
+    accent", then "try sarvam", then "Indians use some English words in the middle ... cut cut ga undi, translation oka
+    flow ledu"): the voice says a **spoken script**, not the captions: `lib/screens/explainers/explainer_narration.dart`
+    (one `Tx` per scene: natural Hyderabad Tenglish, Hinglish with everyday English words in English letters, simple
+    Indian English; flows scene to scene; written with ChatGPT from the videos' content, checked here; no app name, no
+    made-up numbers). Clips in `mobile/assets/voice/` (105, 4.0 MB, AAC mono 32 kbps) made with **Sarvam AI** (speaker
+    `kavitha`, `ENGINE=sarvam`; OpenAI is the other engine) by `mobile/design/voice/make_voice.py` (lines from
+    `test/voice_lines.dart`; steps in `design/voice/README.md`; keys from the environment / command line and the model
+    from `VOICE_MODEL`, never in the repo). `assets/voice/durations.json`: each scene lasts as long as its clip + 250 ms
+    (no gaps; the animation stretches to it). `RecordedNarrator` (just_audio) plays the clip named
     `<lang>_<FNV-1a of "lang|text">`; a line without a clip falls back to the phone's text-to-speech. A test fails when
     words change without new clips. `test/record_videos.dart` + `design/voice/mux_videos.py` make MP4s with the voice.
   - Voice: `mobile/lib/screens/explainers/narrator.dart` (`Narrator`; `PhoneNarrator` = the phone's text-to-speech via
