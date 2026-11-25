@@ -49,7 +49,7 @@ export async function withAuthSchema(step: () => PromiseLike<any>, setup: { ensu
 // Set SIGNUP_CODE=on to ask for the code again.
 export const signupCodeOn = () => String(process.env.SIGNUP_CODE || '').trim().toLowerCase() === 'on'
 
-export interface SignupInput { email: string; password: string; fullName: string; companyName: string }
+export interface SignupInput { email: string; password: string; fullName: string; companyName: string; phone: string | null }
 
 /** The sign-up form, checked. */
 export function parseSignup(body: any): { value: SignupInput } | { error: string } {
@@ -61,7 +61,9 @@ export function parseSignup(body: any): { value: SignupInput } | { error: string
   if (!companyName) return { error: 'Enter your business name.' }
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return { error: 'Please enter a valid email address' }
   if (password.length < 6) return { error: 'Password must be at least 6 characters long' }
-  return { value: { email, password, fullName, companyName } }
+  const phone = readPhone(body?.phone)
+  if (phone === false) return { error: 'Please enter a valid mobile number with its country code.' }
+  return { value: { email, password, fullName, companyName, phone } }
 }
 
 export const newCode = () => String(randomInt(0, 1_000_000)).padStart(6, '0')
@@ -127,4 +129,16 @@ export function signupCodeEmail(code: string, name: string) {
   <p style="font-size:13px;color:#6B7894">It works for ${CODE_MINUTES} minutes. If you did not try to sign up, you can ignore this email.</p>
 </div>`,
   }
+}
+
+/**
+ * The business's mobile number at sign-up: "+<country code><number>", 8 to 15 digits in all. Empty = not given (null);
+ * anything else that does not fit = false.
+ */
+export function readPhone(value: unknown): string | null | false {
+  const raw = typeof value === 'string' ? value.trim() : ''
+  if (!raw) return null
+  const digits = raw.replace(/[^\d]/g, '')
+  if (!raw.startsWith('+') || digits.length < 8 || digits.length > 15) return false
+  return `+${digits}`
 }

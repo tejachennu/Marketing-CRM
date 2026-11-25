@@ -796,7 +796,7 @@ export default function DashboardLayout({
   const needsWhatsapp = Boolean(billing && !billing.exempt && billing.whatsappMode !== 'shared' && whatsappConnected === false && !isPlatformAdmin)
   const whatsappPage = (path: string) => path === '/dashboard' || ['/dashboard/campaigns', '/dashboard/templates', '/dashboard/flows', '/dashboard/tickets'].some((base) => path === base || path.startsWith(`${base}/`))
 
-  // Starter (₹999, no own WhatsApp): no Marketing Copilot and no tickets drawer (the server refuses them too)
+  // Starter (₹300, no own WhatsApp): no Marketing Copilot and no tickets drawer (the server refuses them too)
   const planHas = (feature: PlanFeature) => !billing || billing.exempt || isPlatformAdmin || !billing.allows || billing.allows[feature] !== false
   const aiOnPlan = planHas('ai_replies')
   const ticketsOnPlan = planHas('tickets')

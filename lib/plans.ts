@@ -56,15 +56,15 @@ export const PLANS: Plan[] = [
   {
     id: 'starter',
     name: 'Starter',
-    tagline: 'Bills, GST invoices and reports, without connecting WhatsApp',
-    amountPaise: 99_900,
+    tagline: 'Front Desk or E-commerce without connecting WhatsApp: bills, invoices and reports',
+    amountPaise: 30_000,
     whatsapp: 'shared',
-    limits: { messaging: false, connectors: 1, connectorKeys: ['salon'], team: 3, aiMonthly: 0, ads: false, videos: 0 },
+    limits: { messaging: false, connectors: 1, connectorKeys: ['salon', 'ecommerce'], team: 3, aiMonthly: 0, ads: false, videos: 0 },
     features: [
-      'Front Desk: bookings, walk-ins and GST bills',
-      'Sales, staff and commission reports',
-      'Your own booking page with a link and QR code',
-      'Booking confirmations and reminders on WhatsApp from WAMA\'s number',
+      'Front Desk or E-commerce: one at a time, switch any time',
+      'Bills and GST invoices, shared as a link',
+      'Sales, staff and order reports',
+      'Booking and order confirmations from WAMA CRM\'s WhatsApp number',
       'WhatsApp messages at Meta\'s price, no extra charge',
       'Up to 3 team members',
     ],
@@ -191,7 +191,8 @@ export function upgradeMessage(feature: PlanFeature): string {
  */
 export function connectorBlockReason(limits: PlanLimits, alreadyOn: ConnectorKey[], key: ConnectorKey): string | null {
   if (limits.connectorKeys.length && !limits.connectorKeys.includes(key)) {
-    return 'Your plan includes Front Desk only. Upgrade to Growth or Pro in Billing to add this connector.'
+    const names: Record<ConnectorKey, string> = { salon: 'Front Desk', ecommerce: 'E-commerce', pipeline: 'Sales Pipeline' }
+    return `Your plan includes ${limits.connectorKeys.map((k) => names[k]).join(' and ')} only. Upgrade to Growth or Pro in Billing to add this connector.`
   }
   if (limits.connectors < 1) return 'Your plan has no connectors. Choose a plan in Billing to add one.'
   // One connector at a time: switching this one on switches the other off (connectorSwitch), never a refusal

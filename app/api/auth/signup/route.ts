@@ -67,6 +67,8 @@ export async function POST(request: NextRequest) {
         {
           name: companyName,
           slug: `${slug}-${randomBytes(4).toString('hex')}`,
+          contact_email: email,
+          ...(parsed.value.phone ? { contact_phone: parsed.value.phone } : {}),
         },
       ])
       .select()
@@ -105,151 +107,14 @@ export async function POST(request: NextRequest) {
     // The plan picked on the pricing page (?plan=…): the trial starts on it
     await startPlan(supabase, orgData.id, body.plan)
 
-    // Create demo data
-    const { data: stagesData } = await supabase
-      .from('pipeline_stages')
-      .insert([
-        { organization_id: orgData.id, name: 'New', position: 1, color: '#6366f1' },
-        { organization_id: orgData.id, name: 'Contacted', position: 2, color: '#8b5cf6' },
-        { organization_id: orgData.id, name: 'Qualified', position: 3, color: '#ec4899' },
-        { organization_id: orgData.id, name: 'Negotiating', position: 4, color: '#f59e0b' },
-        { organization_id: orgData.id, name: 'Closed Won', position: 5, color: '#10b981' },
-      ])
-      .select()
-
-    // Create demo contacts
-    const { data: contactsData } = await supabase
-      .from('contacts')
-      .insert([
-        {
-          organization_id: orgData.id,
-          first_name: 'John',
-          last_name: 'Smith',
-          phone_number: '+16475523753',
-          email: 'john@example.com',
-          company: 'Tech Corp',
-        },
-        {
-          organization_id: orgData.id,
-          first_name: 'Sarah',
-          last_name: 'Johnson',
-          phone_number: '+14165551234',
-          email: 'sarah@example.com',
-          company: 'Innovation Inc',
-        },
-        {
-          organization_id: orgData.id,
-          first_name: 'Michael',
-          last_name: 'Chen',
-          phone_number: '+18005551234',
-          email: 'michael@example.com',
-          company: 'Digital Solutions',
-        },
-      ])
-      .select()
-
-    // Create demo leads
-    if (contactsData) {
-      await supabase.from('leads').insert([
-        {
-          organization_id: orgData.id,
-          contact_id: contactsData[0].id,
-          title: 'Enterprise License',
-          description: 'Interested in annual enterprise plan',
-          pipeline_stage_id: stagesData?.[0]?.id,
-          value: 5000,
-          priority: 'high',
-        },
-        {
-          organization_id: orgData.id,
-          contact_id: contactsData[1].id,
-          title: 'SaaS Subscription',
-          description: 'Looking for cloud-based solution',
-          pipeline_stage_id: stagesData?.[0]?.id,
-          value: 10000,
-          priority: 'medium',
-        },
-        {
-          organization_id: orgData.id,
-          contact_id: contactsData[2].id,
-          title: 'Integration Services',
-          description: 'Need API integration support',
-          pipeline_stage_id: stagesData?.[0]?.id,
-          value: 7500,
-          priority: 'high',
-        },
-      ])
-
-      // Create demo conversations
-      const { data: convsData } = await supabase
-        .from('conversations')
-        .insert([
-          {
-            organization_id: orgData.id,
-            contact_id: contactsData[0].id,
-            is_active: true,
-          },
-          {
-            organization_id: orgData.id,
-            contact_id: contactsData[1].id,
-            is_active: true,
-          },
-          {
-            organization_id: orgData.id,
-            contact_id: contactsData[2].id,
-            is_active: true,
-          },
-        ])
-        .select()
-
-      // Create demo messages
-      if (convsData) {
-        await supabase.from('messages').insert([
-          {
-            organization_id: orgData.id,
-            conversation_id: convsData[0].id,
-            sender_type: 'contact',
-            body: 'Hi! I am interested in your services.',
-            created_at: new Date(Date.now() - 3600000).toISOString(),
-          },
-          {
-            organization_id: orgData.id,
-            conversation_id: convsData[0].id,
-            sender_type: 'user',
-            body: 'Thank you for reaching out! How can I help you today?',
-            created_at: new Date(Date.now() - 3000000).toISOString(),
-          },
-          {
-            organization_id: orgData.id,
-            conversation_id: convsData[0].id,
-            sender_type: 'contact',
-            body: 'I would like to learn more about your pricing.',
-            created_at: new Date(Date.now() - 2400000).toISOString(),
-          },
-          {
-            organization_id: orgData.id,
-            conversation_id: convsData[1].id,
-            sender_type: 'contact',
-            body: 'Hello, are you available?',
-            created_at: new Date(Date.now() - 1800000).toISOString(),
-          },
-          {
-            organization_id: orgData.id,
-            conversation_id: convsData[1].id,
-            sender_type: 'user',
-            body: 'Yes, I am here. What can I do for you?',
-            created_at: new Date(Date.now() - 1200000).toISOString(),
-          },
-          {
-            organization_id: orgData.id,
-            conversation_id: convsData[2].id,
-            sender_type: 'contact',
-            body: 'Can you help me with integration?',
-            created_at: new Date(Date.now() - 600000).toISOString(),
-          },
-        ])
-      }
-    }
+    // The usual deal stages; no made-up contacts, deals or chats (owner: "why all this test data is showing")
+    await supabase.from('pipeline_stages').insert([
+      { organization_id: orgData.id, name: 'New', position: 1, color: '#6366f1' },
+      { organization_id: orgData.id, name: 'Contacted', position: 2, color: '#8b5cf6' },
+      { organization_id: orgData.id, name: 'Qualified', position: 3, color: '#ec4899' },
+      { organization_id: orgData.id, name: 'Negotiating', position: 4, color: '#f59e0b' },
+      { organization_id: orgData.id, name: 'Closed Won', position: 5, color: '#10b981' },
+    ]).then(() => undefined, () => undefined)
 
     return NextResponse.json(
       {

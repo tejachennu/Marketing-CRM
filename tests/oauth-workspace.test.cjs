@@ -9,7 +9,9 @@ const PERSON = { id: '11111111-1111-4111-8111-111111111111', email: 'priya@examp
 
 test('Google sign-in: the business step needs a name; a plan is kept only when it is a real one', () => {
   assert.match(O.parseBusinessStep({}).error, /business name/)
-  assert.deepEqual(O.parseBusinessStep({ companyName: '  Glow   Salon ', plan: 'pro_2' }), { companyName: 'Glow Salon', fullName: null, plan: 'pro_2' })
+  assert.deepEqual(O.parseBusinessStep({ companyName: '  Glow   Salon ', plan: 'pro_2' }), { companyName: 'Glow Salon', fullName: null, plan: 'pro_2', phone: null })
+  assert.equal(O.parseBusinessStep({ companyName: 'Glow', phone: '+91 98765 43210' }).phone, '+919876543210')
+  assert.match(O.parseBusinessStep({ companyName: 'Glow', phone: '98765' }).error, /mobile number/)
   assert.equal(O.parseBusinessStep({ companyName: 'Glow', plan: 'gold' }).plan, null)
   assert.match(O.slugFor('Glow Salon & Spa!'), /^glow-salon-spa-[0-9a-f]{8}$/)
 })

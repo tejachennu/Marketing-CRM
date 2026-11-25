@@ -14,7 +14,9 @@ test('Sign-up codes: the migration file is run word for word', () => {
 })
 
 test('Sign-up form is checked in plain words', () => {
-  assert.deepEqual(O.parseSignup({ email: ' Owner@Glow.in ', password: 'secret1', fullName: 'Teja', companyName: 'Glow' }).value, { email: 'owner@glow.in', password: 'secret1', fullName: 'Teja', companyName: 'Glow' })
+  assert.deepEqual(O.parseSignup({ email: ' Owner@Glow.in ', password: 'secret1', fullName: 'Teja', companyName: 'Glow' }).value, { email: 'owner@glow.in', password: 'secret1', fullName: 'Teja', companyName: 'Glow', phone: null })
+  assert.equal(O.parseSignup({ email: 'x@y.in', password: 'secret1', fullName: 'A', companyName: 'B', phone: '+971 50 123 4567' }).value.phone, '+971501234567')
+  assert.match(O.parseSignup({ email: 'x@y.in', password: 'secret1', fullName: 'A', companyName: 'B', phone: '9876543210' }).error, /country code/)
   assert.equal(O.parseSignup({ email: 'x@y.in', password: '123', fullName: 'A', companyName: 'B' }).error, 'Password must be at least 6 characters long')
   assert.equal(O.parseSignup({ email: 'bad', password: 'secret1', fullName: 'A', companyName: 'B' }).error, 'Please enter a valid email address')
   assert.equal(O.parseSignup({ email: 'x@y.in', password: 'secret1', companyName: 'B' }).error, 'Enter your name.')

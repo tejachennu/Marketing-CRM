@@ -92,8 +92,11 @@ function sender(config: SharedConfig) {
   return { whatsapp_provider: 'facebook', whatsapp_api_token: config.token, whatsapp_phone_number_id: config.phoneNumberId, whatsapp_graph_api_version: config.graphVersion }
 }
 
+/** What WAMA's own number can send: Front Desk's four messages, and a shop order confirmation (owner, 25 Nov 2026) */
+export type SharedPurpose = MessagePurpose | 'order'
+
 export interface SharedTemplate {
-  purpose: MessagePurpose
+  purpose: SharedPurpose
   name: string
   body: string
   /** What fills {{1}}, {{2}}, … ('phone' = the business's phone number) */
@@ -136,12 +139,18 @@ export const SHARED_TEMPLATES: SharedTemplate[] = [
     params: ['first_name', 'business', 'phone'],
     button: { text: 'Give feedback', path: '/f/' },
     example: ['Priya', 'Glow Salon', '+91 98480 12345'],
+  },  {
+    purpose: 'order',
+    name: 'wama_order_confirmed',
+    body: `Hi {{1}}, thank you for your order at {{2}}. Order {{3}} for {{4}} is confirmed. ${NO_REPLY} To talk to the shop, call {{5}}. Thank you.`,
+    params: ['first_name', 'business', 'bill_number', 'amount', 'phone'],
+    example: ['Priya', 'Sri Lakshmi Fashions', 'ORD-261125-0042', '₹1,299', '+91 98480 12345'],
   },
 ]
 
 export const SHARED_LANGUAGE = 'en'
 
-export function sharedTemplateFor(purpose: MessagePurpose): SharedTemplate | null {
+export function sharedTemplateFor(purpose: SharedPurpose): SharedTemplate | null {
   return SHARED_TEMPLATES.find((template) => template.purpose === purpose) || null
 }
 
@@ -193,7 +202,7 @@ async function graph(config: SharedConfig, path: string, init: { method?: string
 }
 
 /** Each shared template and its status on Meta (APPROVED, PENDING, REJECTED or missing). */
-export async function sharedTemplateStatus(config: SharedConfig | null, fetcher: typeof fetch = fetch): Promise<{ name: string; purpose: MessagePurpose; status: string; reason?: string | null }[]> {
+export async function sharedTemplateStatus(config: SharedConfig | null, fetcher: typeof fetch = fetch): Promise<{ name: string; purpose: SharedPurpose; status: string; reason?: string | null }[]> {
   if (!config?.wabaId) throw new Error("WAMA's number has no WhatsApp Business Account ID, so its templates cannot be read.")
   const data = await graph(config, `${config.wabaId}/message_templates?fields=name,status,language,rejected_reason&limit=200`, {}, fetcher)
   const found = (data?.data || []).filter((t: any) => t.language === SHARED_LANGUAGE)
@@ -238,7 +247,7 @@ export type SharedSendResult = { sent: boolean; error?: string; walletEmpty?: bo
  * Send one Front Desk message from WAMA's number for a business. Paid from its message wallet first;
  * given back when Meta refuses it. Nothing is sent when the wallet is short.
  */
-export async function sendShared(db: any, organizationId: string, phone: string, purpose: MessagePurpose, values: Partial<Record<FieldKey, string>>): Promise<SharedSendResult> {
+export async function sendShared(db: any, organizationId: string, phone: string, purpose: SharedPurpose, values: Partial<Record<FieldKey, string>>): Promise<SharedSendResult> {
   const { config } = await findSharedNumber(db)
   if (!config) return { sent: false, error: "WhatsApp messages from WAMA's number are not switched on yet." }
   const template = sharedTemplateFor(purpose)

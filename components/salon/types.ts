@@ -53,7 +53,7 @@ export interface StaffMember {
 }
 
 export interface SalonSetup {
-  /** The plan has the business's own WhatsApp (false on Starter ₹999): booking flow and own templates need it */
+  /** The plan has the business's own WhatsApp (false on Starter ₹300): booking flow and own templates need it */
   ownWhatsApp?: boolean
   settings: SalonSettings
   services: Service[]

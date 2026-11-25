@@ -5,6 +5,7 @@
  * (Supabase links the two), so no second workspace is ever made.
  */
 
+import { readPhone } from './signup-otp'
 import { randomBytes } from 'node:crypto'
 import { startPlan } from '../billing-service'
 import { isPlanId } from '../plans'
@@ -22,12 +23,14 @@ export async function personFromToken(anon: any, token: string | null | undefine
 }
 
 /** Check the "Name your business" step. */
-export function parseBusinessStep(body: any): { companyName: string; fullName: string | null; plan: string | null } | { error: string } {
+export function parseBusinessStep(body: any): { companyName: string; fullName: string | null; plan: string | null; phone: string | null } | { error: string } {
   const companyName = String(body?.companyName || '').replace(/\s+/g, ' ').trim().slice(0, 80)
   if (companyName.length < 2) return { error: 'Please type your business name.' }
   const fullName = String(body?.fullName || '').replace(/\s+/g, ' ').trim().slice(0, 80) || null
   const plan = isPlanId(body?.plan) ? String(body.plan) : null
-  return { companyName, fullName, plan }
+  const phone = readPhone(body?.phone)
+  if (phone === false) return { error: 'Please enter a valid mobile number with its country code.' }
+  return { companyName, fullName, plan, phone }
 }
 
 export function slugFor(companyName: string): string {
@@ -40,11 +43,11 @@ export function slugFor(companyName: string): string {
  * person as its owner, the usual deal stages, and the trial on the plan they picked. Returns the
  * profile. When a profile already exists (a second tap, or two tabs), it is returned as it is.
  */
-export async function createWorkspaceFor(db: any, person: OAuthPerson, step: { companyName: string; fullName: string | null; plan: string | null }) {
+export async function createWorkspaceFor(db: any, person: OAuthPerson, step: { companyName: string; fullName: string | null; plan: string | null; phone?: string | null }) {
   const { data: existing } = await db.from('users').select('*').eq('id', person.id).maybeSingle()
   if (existing) return { user: existing, created: false }
 
-  const { data: org, error: orgError } = await db.from('organizations').insert([{ name: step.companyName, slug: slugFor(step.companyName), contact_email: person.email }]).select().single()
+  const { data: org, error: orgError } = await db.from('organizations').insert([{ name: step.companyName, slug: slugFor(step.companyName), contact_email: person.email, ...(step.phone ? { contact_phone: step.phone } : {}) }]).select().single()
   if (orgError) throw new Error(orgError.message)
 
   const fullName = step.fullName || person.name || person.email.split('@')[0]

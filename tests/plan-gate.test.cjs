@@ -22,8 +22,10 @@ test('Starter keeps Front Desk: bookings, bills, invoices, reports, contacts, bi
   }
 })
 
-test('Starter cannot use the E-commerce or Sales Pipeline connectors', () => {
-  assert.match(G.planRefusal(starter, '/api/commerce/orders'), /Front Desk only/)
+test('Starter (₹300) has Front Desk and E-commerce, not the Sales Pipeline or the WhatsApp catalog', () => {
+  assert.equal(G.planRefusal(starter, '/api/commerce/orders'), null)
+  assert.equal(G.planRefusal(starter, '/api/commerce/storefront'), null)
+  assert.match(G.planRefusal(starter, '/api/commerce/catalog'), /Upgrade/)
   assert.match(G.planRefusal(starter, '/api/pipeline/leads'), /Sales Pipeline/)
 })
 

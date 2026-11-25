@@ -96,6 +96,7 @@ export async function applySubscription(db: any, organizationId: string, subscri
     await checked(db.from('organization_billing').update({
       razorpay_subscription_id: subscription.id, pending_subscription_id: null, pending_plan: null,
       plan: subscriptionPlan(subscription), subscription_plan: subscriptionPlan(subscription), status: 'active', cancel_at_period_end: false,
+      whatsapp_mode: getPlan(subscriptionPlan(subscription)).whatsapp === 'shared' ? 'shared' : 'own',
       ...(periodEnd ? { current_period_end: periodEnd } : {}),
       ...(subscription.customer_id ? { razorpay_customer_id: subscription.customer_id } : {}),
       updated_at: now,
@@ -310,7 +311,8 @@ export async function changePlan(db: any, organizationId: string, target: PlanId
       await cancelSubscription(current.id, fetcher, false).catch((error: any) => console.warn('[Billing] Could not stop the trial auto-pay:', error?.message))
       autoPayCleared = true
     }
-    const update: Record<string, any> = { plan: target, pending_plan: null, pending_subscription_id: null, updated_at: stamp }
+    // The plan decides whose WhatsApp sends: WAMA's number on Starter, the business's own on Growth and Pro
+    const update: Record<string, any> = { plan: target, whatsapp_mode: getPlan(target).whatsapp === 'shared' ? 'shared' : 'own', pending_plan: null, pending_subscription_id: null, updated_at: stamp }
     if (autoPayCleared) Object.assign(update, { razorpay_subscription_id: null, subscription_plan: null, status: 'trialing', current_period_end: null, cancel_at_period_end: false })
     await checked(db.from('organization_billing').update(update).eq('organization_id', organizationId))
     return { kind: 'switched', plan: target, autoPayCleared }

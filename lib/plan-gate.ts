@@ -1,6 +1,6 @@
 /**
  * What each plan may reach on the server (owner, 24 Nov 2026: "without Meta just for billing and invoice generate and
- * analytics we can 999 ... if they connected Meta our plans will come ... be secure"). Starter (₹999) is Front Desk
+ * analytics we can 999 ... if they connected Meta our plans will come ... be secure"). Starter (₹300 since 25 Nov 2026; was ₹999) is Front Desk or E-commerce
  * without the business's own WhatsApp: bookings, bills, GST invoices and reports. Everything that needs the business's
  * own WhatsApp (Meta) — the inbox, tickets, templates, campaigns, flows, Instagram, the AI that answers chats — and the
  * other connectors come with Growth and Pro. The pages already hide these; this makes the server refuse them too, for

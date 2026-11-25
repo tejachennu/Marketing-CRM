@@ -80,7 +80,7 @@ test('Shared number: templates name the business, give its phone and say no repl
     assert.equal(t.example.length, t.params.length)
     assert.ok(t.params.includes('business') && t.params.includes('phone'))
   }
-  assert.deepEqual(SW.SHARED_TEMPLATES.map((t) => t.purpose).sort(), ['bill', 'booking', 'feedback', 'reminder'])
+  assert.deepEqual(SW.SHARED_TEMPLATES.map((t) => t.purpose).sort(), ['bill', 'booking', 'feedback', 'order', 'reminder'])
   const def = SW.sharedTemplateDefinition(SW.sharedTemplateFor('bill'), 'https://wamacrm.magnetora.in/')
   assert.equal(def.category, 'UTILITY')
   assert.equal(def.components[1].buttons[0].url, 'https://wamacrm.magnetora.in/i/{{1}}')

@@ -134,7 +134,7 @@ class _PlanEndedScreenState extends State<PlanEndedScreen> {
               child: const Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  _Point('Plans from ₹999 a month, cancel any time'),
+                  _Point('Plans from ₹300 a month, cancel any time'),
                   _Point('Pay with UPI or card'),
                   _Point('The app opens again as soon as you pay'),
                 ],

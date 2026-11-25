@@ -6,7 +6,7 @@ import { TRIAL_DAYS } from '@/lib/billing'
 
 export const metadata = {
   title: 'Pricing | WAMA CRM by Magnetora AI',
-  description: 'WAMA CRM plans: Starter ₹999, Growth ₹2,500 and Pro from ₹6,000 a month. 14-day free trial. WhatsApp messages at Meta\'s price.',
+  description: 'WAMA CRM plans: Starter ₹300 (no WhatsApp needed), Growth ₹2,500 and Pro from ₹6,000 a month. 14-day free trial. WhatsApp messages at Meta\'s price.',
 }
 
 // Prices can change through the environment (Meta's message price): build the page on each request

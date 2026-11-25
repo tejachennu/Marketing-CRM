@@ -9,6 +9,8 @@ import { decideDiscount, recordDiscountUse } from '@/lib/commerce/discount-store
 import { markRecovered } from '@/lib/commerce/cart-reminders'
 import { askCodCheck } from '@/lib/commerce/cod-check'
 import { sendPush } from '@/lib/push'
+import { sendShared } from '@/lib/shared-whatsapp'
+import { usesSharedNumber } from '@/lib/salon/whatsapp'
 import { checkRateLimit } from '@/lib/rate-limiter'
 import { createStorePayment, storeRazorpayKeys } from '@/lib/commerce/store-payments'
 import { onlineGateway } from '@/lib/payments/gateway'
@@ -146,6 +148,15 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     }
 
     await sendPush(db, { organizationId: page.organization.id }, { kind: 'order', title: `New website order · ${total}`, body: `${parsed.order.customer.name} · ${parsed.order.handover === 'delivery' ? 'delivery' : 'pick up'} · #${order.order_number}`, open: 'orders', tag: `order:${order.id}` })
+    // Without its own WhatsApp (₹300 plan), WAMA CRM's number confirms the order to the customer (best effort)
+    if (parsed.order.customer.phone && await usesSharedNumber(db, page.organization.id).catch(() => false)) {
+      await sendShared(db, page.organization.id, parsed.order.customer.phone, 'order', {
+        first_name: String(parsed.order.customer.name || '').split(' ')[0] || 'there',
+        business: String(page.organization.name || ''),
+        bill_number: String(order.order_number),
+        amount: total,
+      }).catch((error: any) => console.error('[Store order] Confirmation from WAMA number failed:', error?.message))
+    }
     return NextResponse.json({ success: true, orderNumber: order.order_number, total: Number(order.total_amount), shipping: Number(order.shipping_fee), currency: order.currency })
   } catch (error: any) {
     console.error('[Store page order]', error?.message)

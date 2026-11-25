@@ -272,7 +272,7 @@ test('Razorpay: the plan is found by its notes in a shared account, or created o
     const created = fakeFetch({ 'GET /plans?count=100': { items: [other, old] }, 'POST /plans': { id: 'plan_new' } })
     assert.equal(await R.ensurePlan('starter', created), 'plan_new')
     const body = JSON.parse(created.calls[1].init.body)
-    assert.deepEqual([body.period, body.item.amount, body.item.currency, body.notes.app, body.notes.plan], ['monthly', 99900, 'INR', 'wamacrm', 'starter'])
+    assert.deepEqual([body.period, body.item.amount, body.item.currency, body.notes.app, body.notes.plan], ['monthly', 30000, 'INR', 'wamacrm', 'starter'])
     // A plan pinned in the environment is used as it is
     await withEnv({ RAZORPAY_PLAN_PRO_2: 'plan_pinned' }, async () => assert.equal(await R.ensurePlan('pro_2', fakeFetch({})), 'plan_pinned'))
   })
@@ -644,19 +644,20 @@ const MW = require('../lib/message-wallet.ts')
 
 test('Plans: five plans at the agreed prices; the old ₹3,000 plan reads as Growth', () => {
   assert.deepEqual(P.PLANS.map((p) => [p.id, p.amountPaise / 100, p.whatsapp]), [
-    ['starter', 999, 'shared'], ['growth', 2500, 'own'], ['pro_1', 6000, 'own'], ['pro_2', 9000, 'own'], ['pro_3', 12000, 'own'],
+    ['starter', 300, 'shared'], ['growth', 2500, 'own'], ['pro_1', 6000, 'own'], ['pro_2', 9000, 'own'], ['pro_3', 12000, 'own'],
   ])
   assert.equal(P.planIdOf('pro_monthly'), 'growth')
   assert.equal(P.planIdOf(undefined), 'growth')
   assert.equal(P.getPlan('pro_2').limits.videos, 4)
 })
 
-test('Plans: Starter has no inbox or campaigns and Front Desk only; Growth has one connector', () => {
+test('Plans: Starter (₹300, no own WhatsApp) has no inbox or campaigns, Front Desk or E-commerce; Growth has one connector', () => {
   const starter = P.limitsOf('starter')
   assert.equal(P.planAllows(starter, 'campaigns'), false)
   assert.equal(P.planAllows(starter, 'inbox'), false)
-  assert.match(P.connectorBlockReason(starter, [], 'ecommerce'), /Front Desk only/)
+  assert.match(P.connectorBlockReason(starter, [], 'pipeline'), /Front Desk and E-commerce only/)
   assert.equal(P.connectorBlockReason(starter, [], 'salon'), null)
+  assert.equal(P.connectorBlockReason(starter, [], 'ecommerce'), null)
   const growth = P.limitsOf('growth')
   assert.equal(P.planAllows(growth, 'campaigns'), true)
   // Never a refusal: switching swaps (connectorSwitch switches the other off)
@@ -872,7 +873,7 @@ test('Console: set a plan, limits, WAMA\'s number and message wallet money by ha
   await W2.applyWorkspaceAction(db, 'org-1', { action: 'add_message_credit', amount: 250 }, 'admin-1', NOW)
   assert.equal(db.tables.organization_billing[0].message_balance, 250)
   const summary = W2.summarizeWorkspace({ id: 'org-1', name: 'x', slug: 'x', created_at: iso(-1) }, db.tables.organization_billing[0], 1, NOW)
-  assert.deepEqual([summary.billing.plan, summary.billing.price, summary.billing.messageBalance], ['starter', 999, 250])
+  assert.deepEqual([summary.billing.plan, summary.billing.price, summary.billing.messageBalance], ['starter', 300, 250])
 })
 
 test('Console: what needs attention on a workspace, most pressing first', () => {
@@ -889,7 +890,7 @@ test('Console: what needs attention on a workspace, most pressing first', () => 
   assert.deepEqual(kinds(org, row({ billing_exempt: true })), [])
 })
 
-test('Connectors: one at a time; switching one on switches the others off; Starter keeps Front Desk only', () => {
+test('Connectors: one at a time; switching one on switches the others off; Starter keeps Front Desk or E-commerce', () => {
   const growth = P.limitsOf('growth')
   // E-commerce and Sales Pipeline start switched on: turning on Front Desk switches both off
   assert.deepEqual(P.connectorSwitch(growth, ['ecommerce', 'pipeline'], 'salon'), { ok: true, switchOff: ['ecommerce', 'pipeline'] })
@@ -898,9 +899,10 @@ test('Connectors: one at a time; switching one on switches the others off; Start
   assert.deepEqual(P.connectorSwitch(P.limitsOf('pro_1'), ['ecommerce', 'pipeline'], 'salon'), { ok: true, switchOff: ['ecommerce', 'pipeline'] })
   assert.deepEqual(P.connectorSwitch(P.limitsOf('growth', { connectors: 3 }), ['ecommerce'], 'salon'), { ok: true, switchOff: ['ecommerce'] })
   assert.deepEqual(P.connectorSwitch(growth, [], 'salon'), { ok: true, switchOff: [] })
-  const starter = P.connectorSwitch(P.limitsOf('starter'), ['salon'], 'ecommerce')
+  assert.deepEqual(P.connectorSwitch(P.limitsOf('starter'), ['salon'], 'ecommerce'), { ok: true, switchOff: ['salon'] })
+  const starter = P.connectorSwitch(P.limitsOf('starter'), ['salon'], 'pipeline')
   assert.equal(starter.ok, false)
-  assert.match(starter.reason, /Front Desk only/)
+  assert.match(starter.reason, /Front Desk and E-commerce only/)
 })
 
 test('Connectors: one at a time for every workspace, old ₹3,000 plan and exempt ones too', () => {
