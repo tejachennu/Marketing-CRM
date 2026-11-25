@@ -57,7 +57,13 @@ bool _https(Object? v) => RegExp(r'^https://[^\s]+\.[^\s]+').hasMatch('${v ?? ''
 
 /// Where a Google Maps link points, when the link says it (as the server reads it).
 ({double latitude, double longitude})? mapsCoordinates(String? url) {
-  final text = Uri.decodeFull(url ?? '');
+  // A link being typed (or one with a bare %, like ".../offer-50%-off") cannot be decoded: read it as it is
+  String text;
+  try {
+    text = Uri.decodeFull(url ?? '');
+  } catch (_) {
+    text = url ?? '';
+  }
   for (final p in [
     RegExp(r'@(-?\d{1,2}\.\d+),(-?\d{1,3}\.\d+)'),
     RegExp(r'!3d(-?\d{1,2}\.\d+)!4d(-?\d{1,3}\.\d+)'),
@@ -381,6 +387,9 @@ class _StepSheetState extends State<_StepSheet> {
   final _option = TextEditingController();
   bool _uploading = false;
   bool _tried = false;
+
+  /// What went wrong with the last photo (shown in the sheet: a toast would sit behind it).
+  String? _photoError;
   late String? _style = widget.servicesStyle;
 
   String get _type => '${s['type']}';
@@ -419,17 +428,21 @@ class _StepSheetState extends State<_StepSheet> {
   Future<void> _pickPhoto() async {
     final app = AppScope.read(context);
     final file = await FilePicker.pickFile(type: FileType.custom, allowedExtensions: ['jpg', 'jpeg', 'png']);
-    if (file == null) return;
-    setState(() => _uploading = true);
+    if (file == null || !mounted) return;
+    setState(() {
+      _uploading = true;
+      _photoError = null;
+    });
     try {
       final bytes = await file.readAsBytes();
-      if (bytes.length > 5 * 1024 * 1024) throw Exception('That photo is too big. WhatsApp takes photos up to 5 MB.');
+      // Uploads over about 4.5 MB are refused by the server, so the same 4 MB as the website photos
+      if (bytes.length > 4 * 1024 * 1024) throw Exception('That photo is too big. Use a photo under 4 MB.');
       final up = await app.uploadFile(bytes, file.name);
       final url = '${up['url'] ?? ''}';
       if (!url.startsWith('https://')) throw Exception('The photo could not be stored. Paste a link to it instead.');
-      setState(() => _url.text = url);
+      if (mounted) setState(() => _url.text = url);
     } catch (e) {
-      if (mounted) toast(context, '$e'.replaceFirst('Exception: ', ''));
+      if (mounted) setState(() => _photoError = '$e'.replaceFirst('Exception: ', ''));
     } finally {
       if (mounted) setState(() => _uploading = false);
     }
@@ -452,7 +465,8 @@ class _StepSheetState extends State<_StepSheet> {
       ),
     );
     return Padding(
-      padding: EdgeInsets.fromLTRB(20, 0, 20, 16 + MediaQuery.of(context).viewInsets.bottom),
+      // The keyboard, or else the phone's navigation bar (the sheet runs to the screen's edge)
+      padding: EdgeInsets.fromLTRB(20, 0, 20, 16 + MediaQuery.of(context).viewInsets.bottom + MediaQuery.of(context).padding.bottom),
       child: SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -539,7 +553,8 @@ class _StepSheetState extends State<_StepSheet> {
                   Expanded(
                     child: TextField(
                       controller: _option,
-                      maxLength: 24,
+                      // WhatsApp buttons show 20 letters; longer answers reach customers cut short
+                      maxLength: 20,
                       decoration: const InputDecoration(hintText: 'Add an answer, like Yes', counterText: ''),
                       onSubmitted: (_) => setState(() {
                         final o = _option.text.trim();
@@ -591,6 +606,14 @@ class _StepSheetState extends State<_StepSheet> {
                   ),
                 ],
               ),
+              if (_photoError != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: Text(
+                    _photoError!,
+                    style: const TextStyle(color: Brand.red, fontWeight: FontWeight.w600, fontSize: 13),
+                  ),
+                ),
               field(_url, 'or a link to the photo', hint: 'https://…jpg', keyboard: TextInputType.url),
               field(_text, 'Caption (optional)', hint: '20% off on facials this week', lines: 2, max: 600),
             ],
@@ -638,8 +661,16 @@ class _StepSheetState extends State<_StepSheet> {
             const SizedBox(height: 16),
             FilledButton(
               onPressed: () {
-                setState(() => _tried = true);
-                if (problem != null) return;
+                setState(() {
+                  _tried = true;
+                  // An answer typed but not added with Add still counts
+                  final o = _option.text.trim();
+                  if (_type == 'choice' && o.isNotEmpty && !_options.contains(o) && _options.length < 10) {
+                    _options.add(o);
+                    _option.clear();
+                  }
+                });
+                if (stepProblem(_result) != null) return;
                 Navigator.pop(context, _result);
               },
               child: const Text('Done'),
@@ -669,6 +700,8 @@ class ChatBubble extends StatelessWidget {
     ),
   );
 }
+
+String _clip(String text, int max) => text.length > max ? '${text.substring(0, max - 1)}…' : text;
 
 /// A message with reply buttons (no list name) or a list (with its rows shown under it).
 /// With [onTap], the buttons and rows can be tapped (the Try it screen).
@@ -708,7 +741,8 @@ class ListBubble extends StatelessWidget {
                         const Icon(Icons.reply, size: 16, color: Color(0xFF027EB5)),
                         const SizedBox(width: 6),
                         Flexible(
-                          child: Text(rows[i], style: blue, overflow: TextOverflow.ellipsis),
+                          // WhatsApp cuts reply buttons at 20 letters, as the server sends them
+                          child: Text(_clip(rows[i], 20), style: blue, overflow: TextOverflow.ellipsis),
                         ),
                       ],
                     ),
@@ -842,7 +876,9 @@ class MediaBubble extends StatelessWidget {
                   children: [
                     const Icon(Icons.open_in_new, size: 15, color: Color(0xFF027EB5)),
                     const SizedBox(width: 6),
-                    Text(button ?? 'Open map', style: blue),
+                    Flexible(
+                      child: Text(button ?? 'Open map', style: blue, overflow: TextOverflow.ellipsis),
+                    ),
                   ],
                 ),
               ),

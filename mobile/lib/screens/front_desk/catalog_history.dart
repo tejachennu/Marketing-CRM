@@ -44,6 +44,9 @@ class CatalogScreen extends StatefulWidget {
 class _CatalogScreenState extends State<CatalogScreen> {
   List<Map<String, dynamic>>? _items;
   String _hint = '';
+
+  /// Why the catalog could not be loaded (not the same as an empty catalog).
+  String _error = '';
   String _query = '';
   String _group = 'All';
   final Set<String> _ticked = {};
@@ -67,13 +70,14 @@ class _CatalogScreenState extends State<CatalogScreen> {
       setState(() {
         _items = [for (final p in (data['products'] as List? ?? const [])) Map<String, dynamic>.from(p)];
         _hint = '${data['hint'] ?? ''}';
+        _error = '';
       });
     } catch (e) {
       if (!mounted) return;
-      setState(() {
-        _items = [];
-        _hint = '$e'.replaceFirst('Exception: ', '');
-      });
+      final message = '$e'.replaceFirst('Exception: ', '');
+      // Loading again over a list already shown: keep the list, say what went wrong
+      if (_items != null) return toast(context, message);
+      setState(() => _error = message);
     }
   }
 
@@ -89,15 +93,31 @@ class _CatalogScreenState extends State<CatalogScreen> {
   Future<void> _add() async {
     setState(() => _busy = true);
     final count = _ticked.length;
-    final ok = await saveSetup(
-      context,
-      (app) =>
-          app.ask('/api/salon/catalog', {'product_ids': _ticked.toList(), 'billable': _billable, 'duration_minutes': _minutes, 'tax_rate': _gst, 'category': _category.isEmpty ? null : _category}),
-      done: 'Added $count from the catalog${_billable ? '' : ' (not on bills)'}.',
-    );
+    var added = 0;
+    final ok = await saveSetup(context, (app) async {
+      final data = await app.ask('/api/salon/catalog', {
+        'product_ids': _ticked.toList(),
+        'billable': _billable,
+        'duration_minutes': _minutes,
+        'tax_rate': _gst,
+        'category': _category.isEmpty ? null : _category,
+      });
+      added = (data['services'] as List? ?? const []).length;
+      return data;
+    });
     if (!mounted) return;
     setState(() => _busy = false);
-    if (ok) Navigator.pop(context);
+    if (!ok) return;
+    // Say what the server really added: it takes up to 300 at a time
+    final left = count - added;
+    if (left <= 0) {
+      toast(context, 'Added $added from the catalog${_billable ? '' : ' (not on bills)'}.');
+      Navigator.pop(context);
+      return;
+    }
+    toast(context, 'Added $added. $left ${left == 1 ? 'was' : 'were'} not added; tick ${left == 1 ? 'it' : 'them'} and add again.');
+    setState(_ticked.clear);
+    _load();
   }
 
   Future<void> _refresh() async {
@@ -133,7 +153,25 @@ class _CatalogScreenState extends State<CatalogScreen> {
         title: const Text('Add from catalog'),
         actions: [if (linked > 0) IconButton(tooltip: 'Update names and prices', onPressed: _busy ? null : _refresh, icon: const Icon(Icons.sync))],
       ),
-      body: items == null
+      body: items == null && _error.isNotEmpty
+          ? ListView(
+              padding: const EdgeInsets.all(16),
+              children: [
+                EmptyState(
+                  icon: Icons.cloud_off,
+                  title: 'Could not load the catalog',
+                  text: _error,
+                  action: OutlinedButton(
+                    onPressed: () {
+                      setState(() => _error = '');
+                      _load();
+                    },
+                    child: const Text('Try again'),
+                  ),
+                ),
+              ],
+            )
+          : items == null
           ? const Center(child: CircularProgressIndicator())
           : items.isEmpty
           ? ListView(

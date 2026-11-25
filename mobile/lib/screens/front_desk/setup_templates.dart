@@ -58,15 +58,24 @@ class _TemplatesSetupState extends State<TemplatesSetup> {
     WidgetsBinding.instance.addPostFrameCallback((_) => _load());
   }
 
-  Future<void> _save(Map<String, dynamic> choices) async {
+  /// Save which template goes out for each message. Problems go to [onError] (inside the sheet, where a toast would
+  /// sit behind it), or else a toast. Returns whether it worked.
+  Future<bool> _save(Map<String, dynamic> choices, {ValueChanged<String>? onError, bool quiet = false}) async {
     final app = AppScope.read(context);
     try {
       await app.ask('/api/salon/templates', {'choices': choices}, method: 'PUT');
       await app.load('setup', '/api/salon/setup', force: true);
       await _load();
-      if (mounted) toast(context, 'Saved.');
+      if (mounted && !quiet) toast(context, 'Saved.');
+      return true;
     } catch (e) {
-      if (mounted) toast(context, '$e'.replaceFirst('Exception: ', ''));
+      final message = '$e'.replaceFirst('Exception: ', '');
+      if (onError != null) {
+        onError(message);
+      } else if (mounted) {
+        toast(context, message);
+      }
+      return false;
     }
   }
 
@@ -88,12 +97,23 @@ class _TemplatesSetupState extends State<TemplatesSetup> {
           : ListView(
               padding: const EdgeInsets.all(16),
               children: [
-                Text(
-                  data['connected'] == false
-                      ? '${data['message'] ?? 'Connect WhatsApp on the web to use templates.'}'
-                      : 'WhatsApp only delivers a template to customers who have not written in 24 hours. Nothing goes from a template until you set it up here.',
-                  style: TextStyle(color: data['connected'] == false ? Brand.red : Brand.textSoft, height: 1.4),
-                ),
+                // Meta could not be reached (or WhatsApp is not connected): say so, rather than "no templates yet"
+                if ('${data['message'] ?? ''}'.trim().isNotEmpty || data['connected'] == false) ...[
+                  Text(
+                    '${data['message'] ?? 'Connect WhatsApp on the web to use templates.'}',
+                    style: const TextStyle(color: Brand.red, fontWeight: FontWeight.w600, height: 1.4),
+                  ),
+                  if (data['connected'] != false)
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: TextButton.icon(onPressed: _load, icon: const Icon(Icons.refresh, size: 18), label: const Text('Check again')),
+                    ),
+                ],
+                if (data['connected'] != false)
+                  const Text(
+                    'WhatsApp only delivers a template to customers who have not written in 24 hours. Nothing goes from a template until you set it up here.',
+                    style: TextStyle(color: Brand.textSoft, height: 1.4),
+                  ),
                 const SizedBox(height: 12),
                 for (final e in purposes.entries) ...[
                   Panel(
@@ -123,7 +143,12 @@ class _TemplatesSetupState extends State<TemplatesSetup> {
   }
 
   Future<void> _edit(String purpose, Map<String, dynamic> data) async {
-    final account = [for (final t in (data['account'] as List? ?? const [])) Map<String, dynamic>.from(t)].where((t) => t['status'] == 'APPROVED').toList();
+    // Only bills and feedback have a link to open: a template with a link button cannot be filled for the others
+    final hasLink = purposes[purpose]!.$3.contains('link');
+    final approved = [for (final t in (data['account'] as List? ?? const [])) Map<String, dynamic>.from(t)].where((t) => t['status'] == 'APPROVED').toList();
+    final account = approved.where((t) => hasLink || t['urlButton'] != true).toList();
+    final leftOut = approved.length - account.length;
+    final checkProblem = '${data['message'] ?? ''}'.trim();
     final choices = Map<String, dynamic>.from(data['choices'] as Map? ?? const {});
     final current = choices[purpose] == null ? null : Map<String, dynamic>.from(choices[purpose] as Map);
     final suggestion = Map<String, dynamic>.from((data['suggestions'] as Map?)?[purpose] as Map? ?? const {});
@@ -133,6 +158,8 @@ class _TemplatesSetupState extends State<TemplatesSetup> {
     var urlField = current?['url_field'] as String?;
     final body = TextEditingController(text: '${(suggestion['draft'] as Map?)?['body'] ?? ''}');
     var useSuggestion = false;
+    var saving = false;
+    var sent = false; // the suggested template already went to Meta (a second try only saves the choice)
     String? error;
 
     await showModalBottomSheet<void>(
@@ -148,8 +175,25 @@ class _TemplatesSetupState extends State<TemplatesSetup> {
           if (fields.length > blanks) fields = fields.sublist(0, blanks);
           // A saved field this screen does not offer would break the list; start it again
           fields = [for (final f in fields) allowed.contains(f) ? f : allowed.first];
+          // Save, then close only when it worked; problems show here in the sheet
+          Future<void> keep(Map<String, dynamic> next, {String? done}) async {
+            set(() {
+              saving = true;
+              error = null;
+            });
+            final ok = await _save(next, quiet: done != null, onError: (e) => error = e);
+            if (!sheet.mounted) return;
+            if (ok) {
+              Navigator.pop(sheet);
+              if (done != null && mounted) toast(context, done);
+            } else {
+              set(() => saving = false);
+            }
+          }
+
           return Padding(
-            padding: EdgeInsets.fromLTRB(20, 0, 20, 16 + MediaQuery.of(sheet).viewInsets.bottom),
+            // Above the keyboard, or else above the phone's navigation bar (the sheet runs to the screen's edge)
+            padding: EdgeInsets.fromLTRB(20, 0, 20, 16 + MediaQuery.of(sheet).viewInsets.bottom + MediaQuery.of(sheet).padding.bottom),
             child: SingleChildScrollView(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -167,7 +211,20 @@ class _TemplatesSetupState extends State<TemplatesSetup> {
                   ),
                   const SizedBox(height: 12),
                   if (!useSuggestion) ...[
-                    if (account.isEmpty) const Text('No approved templates yet. Use the suggested one, or create one on the web.', style: TextStyle(color: Brand.muted)),
+                    if (account.isEmpty)
+                      Text(
+                        checkProblem.isNotEmpty
+                            ? 'Could not check your templates right now. Try again in a while.'
+                            : leftOut > 0
+                            ? 'No approved template without a link button. Use the suggested one, or create one on the web.'
+                            : 'No approved templates yet. Use the suggested one, or create one on the web.',
+                        style: TextStyle(color: checkProblem.isNotEmpty ? Brand.red : Brand.muted),
+                      ),
+                    if (account.isNotEmpty && leftOut > 0)
+                      Text(
+                        '$leftOut template${leftOut == 1 ? ' has' : 's have'} a link button and cannot be used here: this message has no link to open.',
+                        style: const TextStyle(fontSize: 12.5, color: Brand.muted),
+                      ),
                     for (final t in account)
                       ListTile(
                         contentPadding: EdgeInsets.zero,
@@ -178,7 +235,7 @@ class _TemplatesSetupState extends State<TemplatesSetup> {
                         onTap: () => set(() {
                           picked = t;
                           fields = [];
-                          urlField = t['urlButton'] == true ? 'link' : null;
+                          urlField = t['urlButton'] == true && hasLink ? 'link' : null;
                         }),
                         title: Text('${t['name']}', style: const TextStyle(fontWeight: FontWeight.w700)),
                         subtitle: Text('${t['body']}', maxLines: 2, overflow: TextOverflow.ellipsis),
@@ -238,45 +295,56 @@ class _TemplatesSetupState extends State<TemplatesSetup> {
                         Expanded(
                           child: OutlinedButton(
                             style: OutlinedButton.styleFrom(foregroundColor: Brand.red),
-                            onPressed: () async {
-                              Navigator.pop(sheet);
-                              await _save({...choices}..remove(purpose));
-                            },
+                            onPressed: saving ? null : () => keep({...choices}..remove(purpose)),
                             child: const Text('Stop using'),
                           ),
                         ),
                       if (current != null) const SizedBox(width: 10),
                       Expanded(
                         child: FilledButton(
-                          onPressed: () async {
-                            if (!useSuggestion) {
-                              if (picked == null) return set(() => error = 'Pick a template.');
-                              Navigator.pop(sheet);
-                              await _save({
-                                ...choices,
-                                purpose: {'name': picked!['name'], 'language': picked!['language'], 'fields': fields, 'url_field': picked!['urlButton'] == true ? (urlField ?? 'link') : null},
-                              });
-                              return;
-                            }
-                            final wanted = (suggestion['fields'] as List? ?? const []).length;
-                            final found = RegExp(r'\{\{\s*(\d+)\s*\}\}').allMatches(body.text).map((m) => m.group(1)).toSet().length;
-                            if (body.text.trim().length < 10) return set(() => error = 'Write the message.');
-                            if (found != wanted) return set(() => error = 'Keep all $wanted blanks ({{1}} to {{$wanted}}).');
-                            final app = AppScope.read(context);
-                            try {
-                              final draft = {...Map<String, dynamic>.from(suggestion['draft'] as Map), 'body': body.text.trim()};
-                              await app.ask('/api/whatsapp-templates', {'draft': draft});
-                              if (sheet.mounted) Navigator.pop(sheet);
-                              await _save({
-                                ...choices,
-                                purpose: {'name': draft['name'], 'language': draft['language'] ?? 'en', 'fields': suggestion['fields'], 'url_field': suggestion['urlField']},
-                              });
-                              if (mounted) toast(context, 'Sent to Meta. It works once approved.');
-                            } catch (e) {
-                              set(() => error = '$e'.replaceFirst('Exception: ', ''));
-                            }
-                          },
-                          child: Text(useSuggestion ? 'Send for approval' : 'Save'),
+                          onPressed: saving
+                              ? null
+                              : () async {
+                                  if (!useSuggestion) {
+                                    if (picked == null) return set(() => error = 'Pick a template.');
+                                    await keep({
+                                      ...choices,
+                                      purpose: {'name': picked!['name'], 'language': picked!['language'], 'fields': fields, 'url_field': picked!['urlButton'] == true && hasLink ? (urlField ?? 'link') : null},
+                                    });
+                                    return;
+                                  }
+                                  final wanted = (suggestion['fields'] as List? ?? const []).length;
+                                  final found = RegExp(r'\{\{\s*(\d+)\s*\}\}').allMatches(body.text).map((m) => m.group(1)).toSet().length;
+                                  if (body.text.trim().length < 10) return set(() => error = 'Write the message.');
+                                  if (found != wanted) return set(() => error = 'Keep all $wanted blanks ({{1}} to {{$wanted}}).');
+                                  final app = AppScope.read(context);
+                                  final draft = {...Map<String, dynamic>.from(suggestion['draft'] as Map), 'body': body.text.trim()};
+                                  if (!sent) {
+                                    set(() {
+                                      saving = true;
+                                      error = null;
+                                    });
+                                    try {
+                                      await app.ask('/api/whatsapp-templates', {'draft': draft});
+                                      sent = true;
+                                    } catch (e) {
+                                      if (sheet.mounted) {
+                                        set(() {
+                                          saving = false;
+                                          error = '$e'.replaceFirst('Exception: ', '');
+                                        });
+                                      }
+                                      return;
+                                    }
+                                  }
+                                  await keep({
+                                    ...choices,
+                                    purpose: {'name': draft['name'], 'language': draft['language'] ?? 'en', 'fields': suggestion['fields'], 'url_field': suggestion['urlField']},
+                                  }, done: 'Sent to Meta. It works once approved.');
+                                },
+                          child: saving
+                              ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Brand.blue))
+                              : Text(useSuggestion ? (sent ? 'Save' : 'Send for approval') : 'Save'),
                         ),
                       ),
                     ],

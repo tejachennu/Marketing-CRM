@@ -9,6 +9,7 @@ import '../../ui/whatsapp_lock.dart';
 import '../../ui/widgets.dart';
 import 'booking_flow_screen.dart';
 import 'catalog_history.dart';
+import 'logic.dart';
 import 'setup_templates.dart';
 import 'members_screen.dart';
 import 'website_settings_screen.dart';
@@ -30,8 +31,9 @@ List<Map<String, dynamic>> allServices(AppState app) => [for (final s in (setupO
 List<Map<String, dynamic>> allStaff(AppState app) => [for (final s in (setupOf(app)['staff'] as List? ?? const [])) Map<String, dynamic>.from(s)];
 Map<String, dynamic> settingsOf(AppState app) => Map<String, dynamic>.from(setupOf(app)['settings'] as Map? ?? const {});
 
-/// Save something on the server, then bring the setup up to date. Shows what went wrong.
-Future<bool> saveSetup(BuildContext context, Future<Object?> Function(AppState app) task, {String? done}) async {
+/// Save something on the server, then bring the setup up to date. Shows what went wrong: as a toast, or through
+/// [onError] (inside a bottom sheet, where a toast would sit behind the sheet and never be seen).
+Future<bool> saveSetup(BuildContext context, Future<Object?> Function(AppState app) task, {String? done, ValueChanged<String>? onError}) async {
   final app = AppScope.read(context);
   try {
     await task(app);
@@ -39,9 +41,80 @@ Future<bool> saveSetup(BuildContext context, Future<Object?> Function(AppState a
     if (done != null && context.mounted) toast(context, done);
     return true;
   } catch (e) {
-    if (context.mounted) toast(context, '$e'.replaceFirst('Exception: ', ''));
+    final message = '$e'.replaceFirst('Exception: ', '');
+    if (onError != null) {
+      onError(message);
+    } else if (context.mounted) {
+      toast(context, message);
+    }
     return false;
   }
+}
+
+/// Asks before leaving a page whose changes are not saved yet (Android back, a swipe or the back arrow).
+class DiscardGuard extends StatelessWidget {
+  const DiscardGuard({super.key, required this.changed, required this.child});
+  final bool changed;
+  final Widget child;
+  @override
+  Widget build(BuildContext context) => PopScope(
+    canPop: !changed,
+    onPopInvokedWithResult: (didPop, _) async {
+      if (didPop) return;
+      final leave = await showDialog<bool>(
+        context: context,
+        builder: (d) => AlertDialog(
+          title: const Text('Discard your changes?'),
+          content: const Text('What you changed here is not saved yet.'),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(d, false), child: const Text('Keep editing')),
+            TextButton(
+              onPressed: () => Navigator.pop(d, true),
+              style: TextButton.styleFrom(foregroundColor: Brand.red),
+              child: const Text('Discard'),
+            ),
+          ],
+        ),
+      );
+      if (leave == true && context.mounted) Navigator.pop(context);
+    },
+    child: child,
+  );
+}
+
+/// A red line for a problem inside a bottom sheet.
+class SheetError extends StatelessWidget {
+  const SheetError(this.message, {super.key});
+  final String? message;
+  @override
+  Widget build(BuildContext context) => message == null
+      ? const SizedBox.shrink()
+      : Padding(
+          padding: const EdgeInsets.only(top: 10),
+          child: Text(
+            message!,
+            style: const TextStyle(color: Brand.red, fontWeight: FontWeight.w600),
+          ),
+        );
+}
+
+/// A small spinner for a button that is busy saving (the button is greyed out meanwhile).
+class _Spinner extends StatelessWidget {
+  const _Spinner();
+  @override
+  Widget build(BuildContext context) => const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Brand.blue));
+}
+
+/// The bottom padding of a sheet: above the keyboard, or else above the phone's navigation bar (sheets run to the
+/// screen's bottom edge; padding.bottom is 0 while the keyboard is up).
+double sheetBottom(BuildContext sheet) => 16 + MediaQuery.of(sheet).viewInsets.bottom + MediaQuery.of(sheet).padding.bottom;
+
+/// The business phone can be a landline (+91 40 2345 6789), so only its length is checked, as on the web.
+String? _businessPhoneError(String full) {
+  final digits = full.replaceAll(RegExp(r'\D'), '');
+  if (digits.isEmpty) return null;
+  if (digits.length < 8 || digits.length > 15) return 'That number looks too ${digits.length < 8 ? 'short' : 'long'}. Check it and the country code.';
+  return null;
 }
 
 class SetupScreen extends StatelessWidget {
@@ -106,7 +179,13 @@ class SetupScreen extends StatelessWidget {
                       tile(Icons.card_membership_outlined, 'Memberships', 'Cards, plans, sell at the counter', const MembersScreen()),
                       const Divider(indent: 56),
                       if (app.whatsappOn)
-                        tile(Icons.event_available_outlined, 'Booking flow', ((settings['booking_flow'] as Map?)?['enabled'] == true) ? 'On · customers book in taps' : 'Off', const BookingFlowScreen())
+                        // With changes still waiting to sync, so a flow saved offline does not read "Off"
+                        tile(
+                          Icons.event_available_outlined,
+                          'Booking flow',
+                          ((FrontDesk(app).settings['booking_flow'] as Map?)?['enabled'] == true) ? 'On · customers book in taps' : 'Off',
+                          const BookingFlowScreen(),
+                        )
                       else
                         tile(Icons.lock_outline, 'Booking flow', 'Locked · connect WhatsApp first', const WhatsAppLockedScreen(feature: 'Booking flow')),
                       const Divider(indent: 56),
@@ -429,6 +508,8 @@ Future<void> _editService(BuildContext context, Map<String, dynamic>? service, L
   var active = service?['active'] != false;
   var billable = service?['billable'] != false;
   var tried = false;
+  var saving = false;
+  String? error;
   await showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
@@ -441,8 +522,24 @@ Future<void> _editService(BuildContext context, Map<String, dynamic>? service, L
         final priceErr = tried && (priceValue == null || priceValue < 0 || priceValue > 1000000) ? 'Enter a price from ₹0 to ₹10,00,000.' : null;
         final minutesErr = tried && (minuteValue == null || minuteValue < 5 || minuteValue > 600) ? 'Between 5 minutes and 10 hours.' : null;
         final sacErr = tried && sac.text.trim().isNotEmpty && !RegExp(r'^\d{4,8}$').hasMatch(sac.text.trim()) ? 'A SAC code is 4 to 8 digits.' : null;
+        // One save at a time (a second tap would add the service twice); the sheet closes only when it worked
+        Future<void> run(Future<Object?> Function(AppState app) task, String done) async {
+          if (saving) return;
+          set(() {
+            saving = true;
+            error = null;
+          });
+          final ok = await saveSetup(sheet, task, done: done, onError: (e) => error = e);
+          if (!sheet.mounted) return;
+          if (ok) {
+            Navigator.pop(sheet);
+          } else {
+            set(() => saving = false);
+          }
+        }
+
         return Padding(
-          padding: EdgeInsets.fromLTRB(20, 0, 20, 16 + MediaQuery.of(sheet).viewInsets.bottom),
+          padding: EdgeInsets.fromLTRB(20, 0, 20, sheetBottom(sheet)),
           child: SingleChildScrollView(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -544,6 +641,7 @@ Future<void> _editService(BuildContext context, Map<String, dynamic>? service, L
                       ],
                     ),
                   ),
+                SheetError(error),
                 const SizedBox(height: 8),
                 Row(
                   children: [
@@ -551,48 +649,47 @@ Future<void> _editService(BuildContext context, Map<String, dynamic>? service, L
                       Expanded(
                         child: OutlinedButton(
                           style: OutlinedButton.styleFrom(foregroundColor: Brand.red),
-                          onPressed: () async {
-                            final ok = await _confirm(sheet, 'Remove ${service!['name']}?', 'Past bookings and bills keep it. It stops being offered.');
-                            if (!ok || !sheet.mounted) return;
-                            if (await saveSetup(sheet, (app) => app.ask('/api/salon/services?organizationId=${app.orgId}&id=${service['id']}', {}, method: 'DELETE'), done: 'Removed.') &&
-                                sheet.mounted) {
-                              Navigator.pop(sheet);
-                            }
-                          },
+                          onPressed: saving
+                              ? null
+                              : () async {
+                                  final ok = await _confirm(sheet, 'Remove ${service!['name']}?', 'Past bookings and bills keep it. It stops being offered.');
+                                  if (!ok || !sheet.mounted) return;
+                                  await run((app) => app.ask('/api/salon/services?organizationId=${app.orgId}&id=${service['id']}', {}, method: 'DELETE'), 'Removed.');
+                                },
                           child: const Text('Remove'),
                         ),
                       ),
                     if (editing) const SizedBox(width: 10),
                     Expanded(
                       child: FilledButton(
-                        onPressed: () async {
-                          set(() => tried = true);
-                          if (textError(name.text, what: 'the service name', min: 2, max: 80) != null ||
-                              priceValue == null ||
-                              priceValue < 0 ||
-                              priceValue > 1000000 ||
-                              minuteValue == null ||
-                              minuteValue < 5 ||
-                              minuteValue > 600) {
-                            return;
-                          }
-                          if (sac.text.trim().isNotEmpty && !RegExp(r'^\d{4,8}$').hasMatch(sac.text.trim())) return;
-                          final body = {
-                            if (editing) 'id': service!['id'],
-                            'name': name.text.trim(),
-                            'category': category,
-                            'price': priceValue,
-                            'duration_minutes': minuteValue,
-                            'tax_rate': tax,
-                            'sac_code': sac.text.trim().isEmpty ? null : sac.text.trim(),
-                            'active': active,
-                            'billable': billable,
-                          };
-                          if (await saveSetup(sheet, (app) => app.ask('/api/salon/services', body, method: editing ? 'PATCH' : 'POST'), done: '${name.text.trim()} saved.') && sheet.mounted) {
-                            Navigator.pop(sheet);
-                          }
-                        },
-                        child: const Text('Save'),
+                        onPressed: saving
+                            ? null
+                            : () async {
+                                set(() => tried = true);
+                                if (textError(name.text, what: 'the service name', min: 2, max: 80) != null ||
+                                    priceValue == null ||
+                                    priceValue < 0 ||
+                                    priceValue > 1000000 ||
+                                    minuteValue == null ||
+                                    minuteValue < 5 ||
+                                    minuteValue > 600) {
+                                  return;
+                                }
+                                if (sac.text.trim().isNotEmpty && !RegExp(r'^\d{4,8}$').hasMatch(sac.text.trim())) return;
+                                final body = {
+                                  if (editing) 'id': service!['id'],
+                                  'name': name.text.trim(),
+                                  'category': category,
+                                  'price': priceValue,
+                                  'duration_minutes': minuteValue,
+                                  'tax_rate': tax,
+                                  'sac_code': sac.text.trim().isEmpty ? null : sac.text.trim(),
+                                  'active': active,
+                                  'billable': billable,
+                                };
+                                await run((app) => app.ask('/api/salon/services', body, method: editing ? 'PATCH' : 'POST'), '${name.text.trim()} saved.');
+                              },
+                        child: saving ? const _Spinner() : const Text('Save'),
                       ),
                     ),
                   ],
@@ -632,6 +729,28 @@ class _CategoriesSheet extends StatefulWidget {
 
 class _CategoriesSheetState extends State<_CategoriesSheet> {
   final _new = TextEditingController();
+  bool _busy = false;
+
+  /// What went wrong, shown in the sheet (a toast would sit behind it).
+  String? _error;
+
+  /// Save one change; problems show in the sheet. Returns whether it worked.
+  Future<bool> _save(Future<Object?> Function(AppState app) task, {String? done}) async {
+    if (_busy) return false;
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    final ok = await saveSetup(context, task, done: done, onError: (e) => _error = e);
+    if (mounted) setState(() => _busy = false);
+    return ok;
+  }
+
+  @override
+  void dispose() {
+    _new.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -643,7 +762,7 @@ class _CategoriesSheetState extends State<_CategoriesSheet> {
     }
     int count(String c) => services.where((s) => '${s['category'] ?? 'General'}'.toLowerCase() == c.toLowerCase()).length;
     return Padding(
-      padding: EdgeInsets.fromLTRB(20, 0, 20, 16 + MediaQuery.of(context).viewInsets.bottom),
+      padding: EdgeInsets.fromLTRB(20, 0, 20, sheetBottom(context)),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -662,86 +781,92 @@ class _CategoriesSheetState extends State<_CategoriesSheet> {
               ),
               const SizedBox(width: 8),
               FilledButton(
-                onPressed: () {
-                  final name = _new.text.trim();
-                  if (name.isEmpty) return;
-                  if (cats.any((c) => c.toLowerCase() == name.toLowerCase())) return toast(context, 'There is already a category called $name.');
-                  saveSetup(context, (app) => app.ask('/api/salon/categories', {'name': name}), done: 'Category added.');
-                  _new.clear();
-                },
-                child: const Text('Add'),
+                onPressed: _busy
+                    ? null
+                    : () async {
+                        final name = _new.text.trim();
+                        if (name.isEmpty) return;
+                        if (cats.any((c) => c.toLowerCase() == name.toLowerCase())) return setState(() => _error = 'There is already a category called $name.');
+                        // The typed name stays until it is saved, so nothing is lost when it fails
+                        if (await _save((app) => app.ask('/api/salon/categories', {'name': name}), done: 'Category added.') && mounted) _new.clear();
+                      },
+                child: _busy ? const _Spinner() : const Text('Add'),
               ),
             ],
           ),
+          SheetError(_error),
           const SizedBox(height: 8),
-          ConstrainedBox(
-            constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.5),
-            child: ListView(
-              shrinkWrap: true,
-              children: [
-                for (var i = 0; i < cats.length; i++)
-                  ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    title: Text(cats[i], style: const TextStyle(fontWeight: FontWeight.w700)),
-                    subtitle: Text(count(cats[i]) == 0 ? 'No services' : '${count(cats[i])} services'),
-                    trailing: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        IconButton(
-                          visualDensity: VisualDensity.compact,
-                          onPressed: i == 0
-                              ? null
-                              : () => saveSetup(
-                                  context,
-                                  (app) => app.ask('/api/salon/categories', {
-                                    'categories': [...cats]
-                                      ..insert(i - 1, cats[i])
-                                      ..removeAt(i + 1),
-                                  }, method: 'PUT'),
-                                ),
-                          icon: const Icon(Icons.arrow_upward, size: 18),
-                        ),
-                        IconButton(
-                          visualDensity: VisualDensity.compact,
-                          onPressed: () async {
-                            final controller = TextEditingController(text: cats[i]);
-                            final to = await showDialog<String>(
-                              context: context,
-                              builder: (d) => AlertDialog(
-                                title: const Text('Rename category'),
-                                content: TextField(controller: controller, autofocus: true, maxLength: 40),
-                                actions: [
-                                  TextButton(onPressed: () => Navigator.pop(d), child: const Text('Cancel')),
-                                  TextButton(onPressed: () => Navigator.pop(d, controller.text.trim()), child: const Text('Save')),
-                                ],
-                              ),
-                            );
-                            if (to == null || to.isEmpty || to == cats[i] || !context.mounted) return;
-                            saveSetup(context, (app) => app.ask('/api/salon/categories', {'from': cats[i], 'to': to}, method: 'PATCH'), done: 'Renamed. Its services moved too.');
-                          },
-                          icon: const Icon(Icons.edit_outlined, size: 18),
-                        ),
-                        IconButton(
-                          visualDensity: VisualDensity.compact,
-                          onPressed: cats.length == 1 && count(cats[i]) > 0
-                              ? null
-                              : () async {
-                                  final moveTo = cats.firstWhere((c) => c != cats[i], orElse: () => 'General');
-                                  final ok = await _confirm(context, 'Remove "${cats[i]}"?', count(cats[i]) > 0 ? 'Its ${count(cats[i])} services move to "$moveTo".' : 'It has no services.');
-                                  if (!ok || !context.mounted) return;
-                                  saveSetup(
-                                    context,
-                                    (app) =>
-                                        app.ask('/api/salon/categories?organizationId=${app.orgId}&name=${Uri.encodeComponent(cats[i])}&moveTo=${Uri.encodeComponent(moveTo)}', {}, method: 'DELETE'),
-                                    done: 'Removed.',
-                                  );
-                                },
-                          icon: const Icon(Icons.delete_outline, size: 18, color: Brand.red),
-                        ),
-                      ],
+          // Flexible: with the keyboard up the list shrinks and scrolls instead of running off the screen
+          Flexible(
+            child: ConstrainedBox(
+              constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.5),
+              child: ListView(
+                shrinkWrap: true,
+                children: [
+                  for (var i = 0; i < cats.length; i++)
+                    ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: Text(cats[i], style: const TextStyle(fontWeight: FontWeight.w700)),
+                      subtitle: Text(count(cats[i]) == 0 ? 'No services' : '${count(cats[i])} services'),
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          IconButton(
+                            visualDensity: VisualDensity.compact,
+                            onPressed: i == 0 || _busy
+                                ? null
+                                : () => _save(
+                                    (app) => app.ask('/api/salon/categories', {
+                                      'categories': [...cats]
+                                        ..insert(i - 1, cats[i])
+                                        ..removeAt(i + 1),
+                                    }, method: 'PUT'),
+                                  ),
+                            icon: const Icon(Icons.arrow_upward, size: 18),
+                          ),
+                          IconButton(
+                            visualDensity: VisualDensity.compact,
+                            onPressed: _busy
+                                ? null
+                                : () async {
+                                    final controller = TextEditingController(text: cats[i]);
+                                    final to = await showDialog<String>(
+                                      context: context,
+                                      builder: (d) => AlertDialog(
+                                        title: const Text('Rename category'),
+                                        content: TextField(controller: controller, autofocus: true, maxLength: 40),
+                                        actions: [
+                                          TextButton(onPressed: () => Navigator.pop(d), child: const Text('Cancel')),
+                                          TextButton(onPressed: () => Navigator.pop(d, controller.text.trim()), child: const Text('Save')),
+                                        ],
+                                      ),
+                                    );
+                                    if (to == null || to.isEmpty || to == cats[i] || !context.mounted) return;
+                                    await _save((app) => app.ask('/api/salon/categories', {'from': cats[i], 'to': to}, method: 'PATCH'), done: 'Renamed. Its services moved too.');
+                                  },
+                            icon: const Icon(Icons.edit_outlined, size: 18),
+                          ),
+                          IconButton(
+                            visualDensity: VisualDensity.compact,
+                            onPressed: _busy || (cats.length == 1 && count(cats[i]) > 0)
+                                ? null
+                                : () async {
+                                    final moveTo = cats.firstWhere((c) => c != cats[i], orElse: () => 'General');
+                                    final ok = await _confirm(context, 'Remove "${cats[i]}"?', count(cats[i]) > 0 ? 'Its ${count(cats[i])} services move to "$moveTo".' : 'It has no services.');
+                                    if (!ok || !context.mounted) return;
+                                    await _save(
+                                      (app) =>
+                                          app.ask('/api/salon/categories?organizationId=${app.orgId}&name=${Uri.encodeComponent(cats[i])}&moveTo=${Uri.encodeComponent(moveTo)}', {}, method: 'DELETE'),
+                                      done: 'Removed.',
+                                    );
+                                  },
+                            icon: const Icon(Icons.delete_outline, size: 18, color: Brand.red),
+                          ),
+                        ],
+                      ),
                     ),
-                  ),
-              ],
+                ],
+              ),
             ),
           ),
         ],
@@ -820,6 +945,8 @@ Future<void> _editStaff(BuildContext context, Map<String, dynamic>? member, List
   final serviceIds = <String>{for (final id in (member?['service_ids'] as List? ?? const [])) '$id'};
   var active = member?['active'] != false;
   var tried = false;
+  var saving = false;
+  String? error;
   await showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
@@ -830,8 +957,24 @@ Future<void> _editStaff(BuildContext context, Map<String, dynamic>? member, List
         final nameErr = tried ? textError(name.text, what: 'a name', max: 60) : null;
         final phoneErr = tried ? phoneError(phone) : null;
         final pctErr = tried && (pct == null || pct < 0 || pct > 100) ? 'Between 0 and 100.' : null;
+        // One save at a time (a second tap would add the person twice); the sheet closes only when it worked
+        Future<void> run(Future<Object?> Function(AppState app) task, String done) async {
+          if (saving) return;
+          set(() {
+            saving = true;
+            error = null;
+          });
+          final ok = await saveSetup(sheet, task, done: done, onError: (e) => error = e);
+          if (!sheet.mounted) return;
+          if (ok) {
+            Navigator.pop(sheet);
+          } else {
+            set(() => saving = false);
+          }
+        }
+
         return Padding(
-          padding: EdgeInsets.fromLTRB(20, 0, 20, 16 + MediaQuery.of(sheet).viewInsets.bottom),
+          padding: EdgeInsets.fromLTRB(20, 0, 20, sheetBottom(sheet)),
           child: SingleChildScrollView(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -888,6 +1031,7 @@ Future<void> _editStaff(BuildContext context, Map<String, dynamic>? member, List
                   title: const Text('Working', style: TextStyle(fontWeight: FontWeight.w700)),
                   subtitle: const Text('Off: on leave or no longer with you'),
                 ),
+                SheetError(error),
                 const SizedBox(height: 8),
                 Row(
                   children: [
@@ -895,34 +1039,34 @@ Future<void> _editStaff(BuildContext context, Map<String, dynamic>? member, List
                       Expanded(
                         child: OutlinedButton(
                           style: OutlinedButton.styleFrom(foregroundColor: Brand.red),
-                          onPressed: () async {
-                            if (!await _confirm(sheet, 'Remove ${member['name']}?', 'Their past appointments stay on record.') || !sheet.mounted) return;
-                            if (await saveSetup(sheet, (app) => app.ask('/api/salon/staff?organizationId=${app.orgId}&id=${member['id']}', {}, method: 'DELETE'), done: 'Removed.') && sheet.mounted) {
-                              Navigator.pop(sheet);
-                            }
-                          },
+                          onPressed: saving
+                              ? null
+                              : () async {
+                                  if (!await _confirm(sheet, 'Remove ${member['name']}?', 'Their past appointments stay on record.') || !sheet.mounted) return;
+                                  await run((app) => app.ask('/api/salon/staff?organizationId=${app.orgId}&id=${member['id']}', {}, method: 'DELETE'), 'Removed.');
+                                },
                           child: const Text('Remove'),
                         ),
                       ),
                     if (editing) const SizedBox(width: 10),
                     Expanded(
                       child: FilledButton(
-                        onPressed: () async {
-                          set(() => tried = true);
-                          if (textError(name.text, what: 'a name', max: 60) != null || phoneError(phone) != null || pct == null || pct < 0 || pct > 100) return;
-                          final body = {
-                            if (editing) 'id': member['id'],
-                            'name': name.text.trim(),
-                            'phone': phone.isEmpty ? null : phone,
-                            'commission_percent': pct,
-                            'service_ids': serviceIds.toList(),
-                            'active': active,
-                          };
-                          if (await saveSetup(sheet, (app) => app.ask('/api/salon/staff', body, method: editing ? 'PATCH' : 'POST'), done: '${name.text.trim()} saved.') && sheet.mounted) {
-                            Navigator.pop(sheet);
-                          }
-                        },
-                        child: const Text('Save'),
+                        onPressed: saving
+                            ? null
+                            : () async {
+                                set(() => tried = true);
+                                if (textError(name.text, what: 'a name', max: 60) != null || phoneError(phone) != null || pct == null || pct < 0 || pct > 100) return;
+                                final body = {
+                                  if (editing) 'id': member['id'],
+                                  'name': name.text.trim(),
+                                  'phone': phone.isEmpty ? null : phone,
+                                  'commission_percent': pct,
+                                  'service_ids': serviceIds.toList(),
+                                  'active': active,
+                                };
+                                await run((app) => app.ask('/api/salon/staff', body, method: editing ? 'PATCH' : 'POST'), '${name.text.trim()} saved.');
+                              },
+                        child: saving ? const _Spinner() : const Text('Save'),
                       ),
                     ),
                   ],
@@ -959,6 +1103,56 @@ class _BusinessSetupState extends State<BusinessSetup> {
   late String _type = '${s['business_type'] ?? 'salon'}';
   bool _tried = false;
   bool _logoBusy = false;
+  bool _saving = false;
+
+  /// The details as they were when the page opened, to ask before leaving with changes not saved.
+  late final String _start = _snap;
+  String get _snap => [_name.text, _phone, _address.text, _gst.text, _email.text, _prefix.text, _note.text, _includeTax].join('|');
+
+  @override
+  void dispose() {
+    for (final c in [_name, _address, _gst, _email, _prefix, _note]) {
+      c.dispose();
+    }
+    super.dispose();
+  }
+
+  Future<void> _save() async {
+    setState(() => _tried = true);
+    if (_saving ||
+        textError(_name.text, what: 'the business name', max: 100) != null ||
+        _businessPhoneError(_phone) != null ||
+        _gstErr != null ||
+        emailError(_email.text) != null ||
+        _prefixErr != null) {
+      return;
+    }
+    setState(() => _saving = true);
+    final ok = await saveSetup(
+      context,
+      // Only the business details: the hours, booking flow and templates are left as they are on the server (this
+      // phone's copy of them may be older than changes made on the web or another phone)
+      (app) => app.ask('/api/salon/settings', {
+        'business_name': _name.text.trim(),
+        'phone': _phone,
+        'address': _address.text.trim(),
+        'gstin': _gst.text.trim().toUpperCase(),
+        'email': _email.text.trim(),
+        'invoice_prefix': _prefix.text.trim().toUpperCase(),
+        'invoice_note': _note.text.trim(),
+        'prices_include_tax': _includeTax,
+        // The server turns this on when it is missing, so keep what is set
+        'voice_replies': settingsOf(app)['voice_replies'] != false,
+      }, method: 'PUT'),
+      done: 'Saved. New bills use these details.',
+    );
+    if (!mounted) return;
+    if (ok) {
+      Navigator.pop(context);
+    } else {
+      setState(() => _saving = false);
+    }
+  }
 
   String? get _gstErr => _tried && _gst.text.trim().isNotEmpty && !_gstin.hasMatch(_gst.text.trim().toUpperCase()) ? 'A GSTIN has 15 characters, like 36ABCDE1234F1Z5.' : null;
   String? get _prefixErr => _tried && !RegExp(r'^[A-Za-z0-9/-]{1,12}$').hasMatch(_prefix.text.trim()) ? 'Up to 12 letters or numbers, like GLOW.' : null;
@@ -984,161 +1178,151 @@ class _BusinessSetupState extends State<BusinessSetup> {
   Widget build(BuildContext context) {
     final app = AppScope.of(context);
     final logo = settingsOf(app)['logo_url'];
-    return Scaffold(
-      appBar: AppBar(title: const Text('Business details')),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          Panel(
-            child: Row(
+    return DiscardGuard(
+      changed: _snap != _start && !_saving,
+      child: Scaffold(
+        appBar: AppBar(title: const Text('Business details')),
+        body: ListView(
+          padding: const EdgeInsets.all(16),
+          children: [
+            Panel(
+              child: Row(
+                children: [
+                  Container(
+                    width: 72,
+                    height: 72,
+                    decoration: BoxDecoration(
+                      color: Brand.page,
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: Brand.border),
+                    ),
+                    clipBehavior: Clip.antiAlias,
+                    child: _logoBusy
+                        ? const Center(child: CircularProgressIndicator(strokeWidth: 2))
+                        : logo != null
+                        ? Image.network(
+                            '$logo',
+                            fit: BoxFit.contain,
+                            errorBuilder: (_, _, _) => const Icon(Icons.image_outlined, color: Brand.faint),
+                          )
+                        : const Icon(Icons.add_photo_alternate_outlined, color: Brand.faint),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text('Logo', style: TextStyle(fontWeight: FontWeight.w700)),
+                        const Text('Printed at the top of every bill. A square PNG or JPG looks best.', style: TextStyle(fontSize: 12.5, color: Brand.muted)),
+                        const SizedBox(height: 6),
+                        Wrap(
+                          spacing: 8,
+                          children: [
+                            OutlinedButton(onPressed: _logoBusy ? null : () => _logo(app), child: Text(logo == null ? 'Upload logo' : 'Change')),
+                            if (logo != null)
+                              TextButton(
+                                style: TextButton.styleFrom(foregroundColor: Brand.red),
+                                onPressed: () => saveSetup(context, (app) => app.ask('/api/salon/logo?organizationId=${app.orgId}', {}, method: 'DELETE'), done: 'Logo removed.'),
+                                child: const Text('Remove'),
+                              ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SectionLabel('Kind of business'),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
               children: [
-                Container(
-                  width: 72,
-                  height: 72,
-                  decoration: BoxDecoration(
-                    color: Brand.page,
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: Brand.border),
+                for (final e in businessTypes.entries)
+                  ChoiceChip(
+                    label: Text(e.value.$1),
+                    selected: _type == e.key,
+                    onSelected: (_) {
+                      setState(() => _type = e.key);
+                      saveSetup(context, (app) => app.ask('/api/salon/settings', {'business_type': e.key}, method: 'PATCH'), done: 'Kind of business: ${e.value.$1}.');
+                    },
                   ),
-                  clipBehavior: Clip.antiAlias,
-                  child: _logoBusy
-                      ? const Center(child: CircularProgressIndicator(strokeWidth: 2))
-                      : logo != null
-                      ? Image.network(
-                          '$logo',
-                          fit: BoxFit.contain,
-                          errorBuilder: (_, _, _) => const Icon(Icons.image_outlined, color: Brand.faint),
-                        )
-                      : const Icon(Icons.add_photo_alternate_outlined, color: Brand.faint),
-                ),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text('Logo', style: TextStyle(fontWeight: FontWeight.w700)),
-                      const Text('Printed at the top of every bill. A square PNG or JPG looks best.', style: TextStyle(fontSize: 12.5, color: Brand.muted)),
-                      const SizedBox(height: 6),
-                      Wrap(
-                        spacing: 8,
-                        children: [
-                          OutlinedButton(onPressed: _logoBusy ? null : () => _logo(app), child: Text(logo == null ? 'Upload logo' : 'Change')),
-                          if (logo != null)
-                            TextButton(
-                              style: TextButton.styleFrom(foregroundColor: Brand.red),
-                              onPressed: () => saveSetup(context, (app) => app.ask('/api/salon/logo?organizationId=${app.orgId}', {}, method: 'DELETE'), done: 'Logo removed.'),
-                              child: const Text('Remove'),
-                            ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
               ],
             ),
-          ),
-          const SectionLabel('Kind of business'),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              for (final e in businessTypes.entries)
-                ChoiceChip(
-                  label: Text(e.value.$1),
-                  selected: _type == e.key,
-                  onSelected: (_) {
-                    setState(() => _type = e.key);
-                    saveSetup(context, (app) => app.ask('/api/salon/settings', {'business_type': e.key}, method: 'PATCH'), done: 'Kind of business: ${e.value.$1}.');
-                  },
-                ),
-            ],
-          ),
-          const SectionLabel('On every bill'),
-          TextField(
-            controller: _name,
-            decoration: InputDecoration(
-              labelText: 'Business name',
-              errorText: _tried ? textError(_name.text, what: 'the business name', max: 100) : null,
+            const SectionLabel('On every bill'),
+            TextField(
+              controller: _name,
+              onChanged: (_) => setState(() {}),
+              decoration: InputDecoration(
+                labelText: 'Business name',
+                errorText: _tried ? textError(_name.text, what: 'the business name', max: 100) : null,
+              ),
             ),
-          ),
-          const SizedBox(height: 12),
-          PhoneField(value: _phone, label: 'Phone', errorText: _tried ? phoneError(_phone) : null, onChanged: (v) => setState(() => _phone = v)),
-          const SizedBox(height: 12),
-          TextField(
-            controller: _address,
-            minLines: 2,
-            maxLines: 4,
-            decoration: const InputDecoration(labelText: 'Address', hintText: 'Shop 4, Road No. 12, Banjara Hills, Hyderabad 500034'),
-          ),
-          const SizedBox(height: 12),
-          TextField(
-            controller: _gst,
-            textCapitalization: TextCapitalization.characters,
-            decoration: InputDecoration(labelText: 'GSTIN (leave empty if not registered)', errorText: _gstErr),
-          ),
-          const SizedBox(height: 12),
-          TextField(
-            controller: _email,
-            keyboardType: TextInputType.emailAddress,
-            decoration: InputDecoration(labelText: 'Email', errorText: _tried ? emailError(_email.text) : null),
-          ),
-          const SizedBox(height: 12),
-          TextField(
-            controller: _prefix,
-            textCapitalization: TextCapitalization.characters,
-            onChanged: (_) => setState(() {}),
-            decoration: InputDecoration(
-              labelText: 'Bill number starts with',
-              helperText: 'Bills look like ${_prefix.text.trim().isEmpty ? 'INV' : _prefix.text.trim().toUpperCase()}-0001',
-              errorText: _prefixErr,
+            const SizedBox(height: 12),
+            // A landline is fine here (only customers' and the team's numbers must be mobiles)
+            PhoneField(value: _phone, label: 'Phone', errorText: _tried ? _businessPhoneError(_phone) : null, onChanged: (v) => setState(() => _phone = v)),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _address,
+              minLines: 2,
+              maxLines: 4,
+              onChanged: (_) => setState(() {}),
+              decoration: const InputDecoration(labelText: 'Address', hintText: 'Shop 4, Road No. 12, Banjara Hills, Hyderabad 500034'),
             ),
-          ),
-          const SizedBox(height: 12),
-          TextField(
-            controller: _note,
-            decoration: const InputDecoration(labelText: 'Note at the bottom of bills', hintText: 'Thank you! See you again soon.'),
-          ),
-          SwitchListTile(
-            contentPadding: EdgeInsets.zero,
-            value: _includeTax,
-            activeThumbColor: Colors.white,
-            activeTrackColor: Brand.blue,
-            onChanged: (v) => setState(() => _includeTax = v),
-            title: const Text('Prices include GST', style: TextStyle(fontWeight: FontWeight.w700)),
-            subtitle: const Text('On: ₹590 means ₹500 + ₹90 GST. Off: GST is added on top.'),
-          ),
-        ],
-      ),
-      bottomNavigationBar: SafeArea(
-        top: false,
-        child: Container(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-          decoration: const BoxDecoration(
-            color: Colors.white,
-            border: Border(top: BorderSide(color: Brand.line)),
-          ),
-          child: FilledButton(
-            onPressed: () async {
-              setState(() => _tried = true);
-              if (textError(_name.text, what: 'the business name', max: 100) != null || phoneError(_phone) != null || _gstErr != null || emailError(_email.text) != null || _prefixErr != null) return;
-              final ok = await saveSetup(
-                context,
-                (app) => app.ask('/api/salon/settings', {
-                  ...settingsOf(app),
-                  'business_name': _name.text.trim(),
-                  'phone': _phone,
-                  'address': _address.text.trim(),
-                  'gstin': _gst.text.trim().toUpperCase(),
-                  'email': _email.text.trim(),
-                  'invoice_prefix': _prefix.text.trim().toUpperCase(),
-                  'invoice_note': _note.text.trim(),
-                  'prices_include_tax': _includeTax,
-                }, method: 'PUT'),
-                done: 'Saved. New bills use these details.',
-              );
-              if (ok && context.mounted) Navigator.pop(context);
-            },
-            child: const Text('Save details'),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _gst,
+              textCapitalization: TextCapitalization.characters,
+              onChanged: (_) => setState(() {}),
+              decoration: InputDecoration(labelText: 'GSTIN (leave empty if not registered)', errorText: _gstErr),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _email,
+              keyboardType: TextInputType.emailAddress,
+              onChanged: (_) => setState(() {}),
+              decoration: InputDecoration(labelText: 'Email', errorText: _tried ? emailError(_email.text) : null),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _prefix,
+              textCapitalization: TextCapitalization.characters,
+              onChanged: (_) => setState(() {}),
+              decoration: InputDecoration(
+                labelText: 'Bill number starts with',
+                helperText: 'Bills look like ${_prefix.text.trim().isEmpty ? 'INV' : _prefix.text.trim().toUpperCase()}-0001',
+                errorText: _prefixErr,
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _note,
+              onChanged: (_) => setState(() {}),
+              decoration: const InputDecoration(labelText: 'Note at the bottom of bills', hintText: 'Thank you! See you again soon.'),
+            ),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              value: _includeTax,
+              activeThumbColor: Colors.white,
+              activeTrackColor: Brand.blue,
+              onChanged: (v) => setState(() => _includeTax = v),
+              title: const Text('Prices include GST', style: TextStyle(fontWeight: FontWeight.w700)),
+              subtitle: const Text('On: ₹590 means ₹500 + ₹90 GST. Off: GST is added on top.'),
+            ),
+          ],
+        ),
+        bottomNavigationBar: SafeArea(
+          top: false,
+          child: Container(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+            decoration: const BoxDecoration(
+              color: Colors.white,
+              border: Border(top: BorderSide(color: Brand.line)),
+            ),
+            child: FilledButton(
+              onPressed: _saving ? null : _save,
+              child: Text(_saving ? 'Saving…' : 'Save details'),
+            ),
           ),
         ),
       ),
@@ -1166,6 +1350,44 @@ class _WhatsAppSetupState extends State<WhatsAppSetup> {
   late int _delay = (s['feedback_delay_minutes'] as num?)?.toInt() ?? 120;
   late final _review = TextEditingController(text: s['review_link'] ?? '');
   bool _tried = false;
+  bool _saving = false;
+
+  /// The settings as they were when the page opened, to ask before leaving with changes not saved.
+  late final String _start = _snap;
+  String get _snap => [_assistant, _auto, _opens, _closes, (_closed.toList()..sort()).join(','), _reminders, _feedback, _delay, _review.text].join('|');
+
+  @override
+  void dispose() {
+    _review.dispose();
+    super.dispose();
+  }
+
+  Future<void> _save() async {
+    setState(() => _tried = true);
+    if (_saving || _hoursErr != null || _reviewErr != null) return;
+    setState(() => _saving = true);
+    final ok = await saveSetup(
+      context,
+      (app) => app.ask('/api/salon/settings', {
+        'chat_assistant': _assistant,
+        'auto_approve_bookings': _auto,
+        'opens_at': _opens,
+        'closes_at': _closes,
+        'closed_weekdays': _closed.toList()..sort(),
+        'reminders_enabled': _reminders,
+        'feedback_enabled': _feedback,
+        'feedback_delay_minutes': _delay,
+        'review_link': _review.text.trim(),
+      }, method: 'PATCH'),
+      done: 'WhatsApp settings saved.',
+    );
+    if (!mounted) return;
+    if (ok) {
+      Navigator.pop(context);
+    } else {
+      setState(() => _saving = false);
+    }
+  }
 
   String _label(String t) {
     final p = t.split(':').map(int.parse).toList();
@@ -1201,125 +1423,110 @@ class _WhatsAppSetupState extends State<WhatsAppSetup> {
       title: Text(title, style: const TextStyle(fontWeight: FontWeight.w700)),
       subtitle: Text(sub),
     );
-    return Scaffold(
-      appBar: AppBar(title: const Text('WhatsApp')),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          Card(
-            child: Column(
-              children: [
-                toggle('WhatsApp assistant', 'Answers questions about services, prices and timings, and books visits, from your menu.', _assistant, (v) => setState(() => _assistant = v)),
-                const Divider(),
-                toggle('Accept bookings on their own', 'On: a free time a customer picks is booked at once. Off: you accept each on the Front Desk.', _auto, (v) => setState(() => _auto = v)),
-              ],
-            ),
-          ),
-          const SectionLabel('Opening hours'),
-          Row(
-            children: [
-              Expanded(
-                child: OutlinedButton(
-                  onPressed: () => _pickTime(true),
-                  child: FittedBox(fit: BoxFit.scaleDown, child: Text('Opens ${_label(_opens)}')),
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: OutlinedButton(
-                  onPressed: () => _pickTime(false),
-                  child: FittedBox(fit: BoxFit.scaleDown, child: Text('Closes ${_label(_closes)}')),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 10),
-          const Text('Closed on', style: TextStyle(fontWeight: FontWeight.w700)),
-          const SizedBox(height: 6),
-          Wrap(
-            spacing: 6,
-            runSpacing: 6,
-            children: [for (var d = 0; d < 7; d++) ChoiceChip(label: Text(days[d]), selected: _closed.contains(d), onSelected: (on) => setState(() => on ? _closed.add(d) : _closed.remove(d)))],
-          ),
-          if (_hoursErr != null)
-            Padding(
-              padding: const EdgeInsets.only(top: 8),
-              child: Text(
-                _hoursErr!,
-                style: const TextStyle(color: Brand.red, fontWeight: FontWeight.w600),
+    return DiscardGuard(
+      changed: _snap != _start && !_saving,
+      child: Scaffold(
+        appBar: AppBar(title: const Text('WhatsApp')),
+        body: ListView(
+          padding: const EdgeInsets.all(16),
+          children: [
+            Card(
+              child: Column(
+                children: [
+                  toggle('WhatsApp assistant', 'Answers questions about services, prices and timings, and books visits, from your menu.', _assistant, (v) => setState(() => _assistant = v)),
+                  const Divider(),
+                  toggle('Accept bookings on their own', 'On: a free time a customer picks is booked at once. Off: you accept each on the Front Desk.', _auto, (v) => setState(() => _auto = v)),
+                ],
               ),
             ),
-          const SectionLabel('Messages'),
-          Card(
-            child: Column(
+            const SectionLabel('Opening hours'),
+            Row(
               children: [
-                toggle('Reminders', 'About 2 hours before each appointment.', _reminders, (v) => setState(() => _reminders = v)),
-                const Divider(),
-                toggle('Ask for feedback', 'After the bill, a link to rate the visit and the team.', _feedback, (v) => setState(() => _feedback = v)),
-                if (_feedback)
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-                    child: Wrap(
-                      spacing: 6,
-                      runSpacing: 6,
-                      crossAxisAlignment: WrapCrossAlignment.center,
-                      children: [
-                        const Text(
-                          'Send it',
-                          style: TextStyle(fontSize: 13, color: Brand.muted, fontWeight: FontWeight.w600),
-                        ),
-                        for (final (m, l) in [(30, '30 min'), (60, '1 hour'), (120, '2 hours'), (240, '4 hours'), (1440, 'Next day')])
-                          ChoiceChip(label: Text(m == 1440 ? 'Next day' : 'After $l'), selected: _delay == m, onSelected: (_) => setState(() => _delay = m)),
-                      ],
-                    ),
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: () => _pickTime(true),
+                    child: FittedBox(fit: BoxFit.scaleDown, child: Text('Opens ${_label(_opens)}')),
                   ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: () => _pickTime(false),
+                    child: FittedBox(fit: BoxFit.scaleDown, child: Text('Closes ${_label(_closes)}')),
+                  ),
+                ),
               ],
             ),
-          ),
-          const SizedBox(height: 12),
-          TextField(
-            controller: _review,
-            keyboardType: TextInputType.url,
-            decoration: InputDecoration(
-              labelText: 'Google review link (optional)',
-              hintText: 'https://g.page/r/…',
-              helperText: 'Happy customers (4–5 stars) are asked to review you here.',
-              errorText: _reviewErr,
+            const SizedBox(height: 10),
+            const Text('Closed on', style: TextStyle(fontWeight: FontWeight.w700)),
+            const SizedBox(height: 6),
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: [for (var d = 0; d < 7; d++) ChoiceChip(label: Text(days[d]), selected: _closed.contains(d), onSelected: (on) => setState(() => on ? _closed.add(d) : _closed.remove(d)))],
             ),
-          ),
-        ],
-      ),
-      bottomNavigationBar: SafeArea(
-        top: false,
-        child: Container(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-          decoration: const BoxDecoration(
-            color: Colors.white,
-            border: Border(top: BorderSide(color: Brand.line)),
-          ),
-          child: FilledButton(
-            onPressed: () async {
-              setState(() => _tried = true);
-              if (_hoursErr != null || _reviewErr != null) return;
-              final ok = await saveSetup(
-                context,
-                (app) => app.ask('/api/salon/settings', {
-                  'chat_assistant': _assistant,
-                  'auto_approve_bookings': _auto,
-                  'opens_at': _opens,
-                  'closes_at': _closes,
-                  'closed_weekdays': _closed.toList()..sort(),
-                  'reminders_enabled': _reminders,
-                  'feedback_enabled': _feedback,
-                  'feedback_delay_minutes': _delay,
-                  'review_link': _review.text.trim(),
-                }, method: 'PATCH'),
-                done: 'WhatsApp settings saved.',
-              );
-              if (ok && context.mounted) Navigator.pop(context);
-            },
-            child: const Text('Save'),
+            if (_hoursErr != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Text(
+                  _hoursErr!,
+                  style: const TextStyle(color: Brand.red, fontWeight: FontWeight.w600),
+                ),
+              ),
+            const SectionLabel('Messages'),
+            Card(
+              child: Column(
+                children: [
+                  toggle('Reminders', 'About 2 hours before each appointment.', _reminders, (v) => setState(() => _reminders = v)),
+                  const Divider(),
+                  toggle('Ask for feedback', 'After the bill, a link to rate the visit and the team.', _feedback, (v) => setState(() => _feedback = v)),
+                  if (_feedback)
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                      child: Wrap(
+                        spacing: 6,
+                        runSpacing: 6,
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        children: [
+                          const Text(
+                            'Send it',
+                            style: TextStyle(fontSize: 13, color: Brand.muted, fontWeight: FontWeight.w600),
+                          ),
+                          for (final (m, l) in [(30, '30 min'), (60, '1 hour'), (120, '2 hours'), (240, '4 hours'), (1440, 'Next day')])
+                            ChoiceChip(label: Text(m == 1440 ? 'Next day' : 'After $l'), selected: _delay == m, onSelected: (_) => setState(() => _delay = m)),
+                        ],
+                      ),
+                    ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _review,
+              keyboardType: TextInputType.url,
+              onChanged: (_) => setState(() {}),
+              decoration: InputDecoration(
+                labelText: 'Google review link (optional)',
+                hintText: 'https://g.page/r/…',
+                helperText: 'Happy customers (4–5 stars) are asked to review you here.',
+                errorText: _reviewErr,
+              ),
+            ),
+          ],
+        ),
+        bottomNavigationBar: SafeArea(
+          top: false,
+          child: Container(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+            decoration: const BoxDecoration(
+              color: Colors.white,
+              border: Border(top: BorderSide(color: Brand.line)),
+            ),
+            child: FilledButton(
+              onPressed: _saving ? null : _save,
+              child: Text(_saving ? 'Saving…' : 'Save'),
+            ),
           ),
         ),
       ),
