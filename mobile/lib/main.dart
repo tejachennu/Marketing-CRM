@@ -51,6 +51,7 @@ import 'ui/front_desk_icon.dart';
 import 'ui/notice_host.dart';
 import 'ui/splash.dart';
 import 'ui/theme.dart';
+import 'screens/onboarding/onboarding_screen.dart';
 import 'ui/plan_lock.dart';
 import 'ui/whatsapp_lock.dart';
 import 'screens/store/online_payments.dart';
@@ -196,6 +197,10 @@ class WamaApp extends StatelessWidget {
       'signup_code' => const SignupScreen(demoCodeStep: true),
       'connectors' => const ConnectorsScreen(),
       'whatsapp_locked' => const WhatsAppLockedScreen(feature: 'Chats'),
+      'onboarding' => const OnboardingScreen(),
+      'onboarding_store' => const OnboardingScreen(startPage: 1),
+      'onboarding_nowa' => const OnboardingScreen(startPage: 2),
+      'onboarding_pick' => const OnboardingScreen(startPage: 3),
       'more' => const HomeShell(tab: 4),
       'chat_ai' => ChatScreen(conversation: app.chatsOf('whatsapp').first, showSuggestions: true),
       'instagram' => const InstagramScreen(),
@@ -291,7 +296,11 @@ class _Root extends StatelessWidget {
   Widget build(BuildContext context) {
     final app = AppScope.of(context);
     // Free trial or plan ended: only "Choose a plan" until it is paid (the server refuses the rest anyway)
-    return !app.signedIn ? const LoginScreen() : app.paused ? const PlanEndedScreen() : const HomeShell();
+    if (!app.signedIn) return const LoginScreen();
+    if (app.paused) return const PlanEndedScreen();
+    // Just signed up: what the connectors give, then pick one (owners and admins; staff join a set-up workspace)
+    if (app.needsOnboarding && app.can('settings')) return const OnboardingScreen();
+    return const HomeShell();
   }
 }
 

@@ -24,6 +24,7 @@ import '../instagram/instagram_screen.dart';
 import '../store/store_screen.dart';
 import 'chat_tickets_screen.dart';
 import 'connectors_screen.dart';
+import 'signup_screen.dart';
 
 /// Account, workspace, templates and the sync status.
 class MoreScreen extends StatelessWidget {
@@ -487,6 +488,7 @@ class _LoginScreenState extends State<LoginScreen> {
   Map<String, dynamic>? _newAccount;
   final _business = TextEditingController();
   final _name = TextEditingController();
+  String _phone = '';
   String? get _emailErr => _tried ? emailError(_email.text, required: true) : null;
   String? get _passwordErr => _tried && _password.text.isEmpty ? 'Enter your password.' : null;
 
@@ -531,12 +533,17 @@ class _LoginScreenState extends State<LoginScreen> {
       setState(() => _error = 'Please type your business name.');
       return;
     }
+    final phoneProblem = phoneError(_phone, required: true);
+    if (phoneProblem != null) {
+      setState(() => _error = phoneProblem);
+      return;
+    }
     setState(() {
       _busy = true;
       _error = null;
     });
     try {
-      await AppScope.read(context).finishGoogleSignUp(_business.text.trim(), _name.text.trim());
+      await AppScope.read(context).finishGoogleSignUp(_business.text.trim(), _name.text.trim(), phone: _phone);
     } catch (e) {
       if (mounted) setState(() => _error = '$e'.replaceFirst('Exception: ', ''));
     } finally {
@@ -568,8 +575,10 @@ class _LoginScreenState extends State<LoginScreen> {
       controller: _business,
       autofocus: true,
       textCapitalization: TextCapitalization.words,
-      decoration: const InputDecoration(labelText: 'Business name', hintText: 'Glow Salon', prefixIcon: Icon(Icons.storefront_outlined)),
+      decoration: const InputDecoration(labelText: 'Business name', prefixIcon: Icon(Icons.storefront_outlined)),
     ),
+    const SizedBox(height: 12),
+    PhoneField(value: _phone, label: 'Mobile number', onChanged: (v) => setState(() => _phone = v)),
     const SizedBox(height: 12),
     TextField(
       controller: _name,
@@ -602,13 +611,21 @@ class _LoginScreenState extends State<LoginScreen> {
                     : [
                         Align(alignment: Alignment.centerLeft, child: Image.asset('assets/app_icon.png', width: 68, height: 68)),
                         const SizedBox(height: 22),
-                        const Text('Sign in to WAMA CRM', style: TextStyle(fontSize: 26, fontWeight: FontWeight.w700, letterSpacing: -0.5)),
+                        const Text('Welcome to WAMA CRM', style: TextStyle(fontSize: 26, fontWeight: FontWeight.w700, letterSpacing: -0.5)),
                         const SizedBox(height: 6),
                         const Text(
-                          'Your Front Desk, chats, contacts and campaigns. After you sign in once, the app keeps working without internet.',
+                          'Bookings, bills, your online store and WhatsApp, for any business. New here? Start with a free 14-day trial.',
                           style: TextStyle(color: Brand.textSoft, height: 1.4),
                         ),
                         const SizedBox(height: 26),
+                        // First-time users first (owner: "give access for the signup first")
+                        FilledButton.icon(
+                          onPressed: _busy ? null : () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SignupScreen())),
+                          style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(52)),
+                          icon: const Icon(Icons.person_add_alt_1_outlined),
+                          label: const Text('Create a free account'),
+                        ),
+                        const SizedBox(height: 10),
                         OutlinedButton.icon(
                           onPressed: _busy ? null : _google,
                           style: OutlinedButton.styleFrom(
@@ -623,7 +640,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           label: const Text('Continue with Google', style: TextStyle(fontWeight: FontWeight.w600)),
                         ),
                         const Padding(
-                          padding: EdgeInsets.symmetric(vertical: 14),
+                          padding: EdgeInsets.symmetric(vertical: 16),
                           child: Row(
                             children: [
                               Expanded(child: Divider()),
@@ -631,7 +648,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                 child: Padding(
                                   padding: EdgeInsets.symmetric(horizontal: 10),
                                   child: Text(
-                                    'or with your email',
+                                    'Already have an account? Sign in',
                                     textAlign: TextAlign.center,
                                     style: TextStyle(color: Brand.muted, fontSize: 12.5),
                                   ),
@@ -674,13 +691,14 @@ class _LoginScreenState extends State<LoginScreen> {
                           ),
                         ],
                         const SizedBox(height: 18),
-                        FilledButton(
+                        OutlinedButton(
                           onPressed: _busy ? null : _go,
-                          child: _busy ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Text('Sign in'),
+                          style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(50)),
+                          child: _busy ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)) : const Text('Sign in'),
                         ),
                         const SizedBox(height: 14),
                         const Text(
-                          'New here? Continue with Google to start a free trial. Forgot your password? Reset it on wamacrm.magnetora.in.',
+                          'Forgot your password? Reset it on wamacrm.magnetora.in.',
                           textAlign: TextAlign.center,
                           style: TextStyle(fontSize: 12.5, color: Brand.muted),
                         ),

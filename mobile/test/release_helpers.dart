@@ -17,7 +17,7 @@ class Release {
 }
 
 /// Makes the file's app once, before its tests: [billing] 'trial' (10 days left), 'trial2', 'ended', 'paid'.
-Release releaseApp({String billing = 'trial', bool staff = false, bool whatsapp = true, bool starter = false}) {
+Release releaseApp({String billing = 'trial', bool staff = false, bool whatsapp = true, bool starter = false, bool newSignup = false}) {
   final r = Release();
   setUpAll(() async {
     await loadFonts();
@@ -28,6 +28,7 @@ Release releaseApp({String billing = 'trial', bool staff = false, bool whatsapp 
     r.backend = DemoBackend(billing: billing, staff: staff, whatsapp: whatsapp, starter: starter);
     r.app = AppState(backend: r.backend, store: store);
     await r.app.refreshAll();
+    if (newSignup) await store.write('onboarding', {'pending': true});
   });
   return r;
 }

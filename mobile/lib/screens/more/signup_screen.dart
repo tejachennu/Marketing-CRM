@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../../data/app_state.dart';
 import '../../ui/theme.dart';
 import '../../ui/validate.dart';
+import '../../ui/widgets.dart';
 
 /// Sign up: name, business, email and password, then the 6-digit code we email. The account is
 /// made only once the code is right (it proves the email is theirs). Needs the internet.
@@ -23,6 +24,7 @@ class _SignupScreenState extends State<SignupScreen> {
   final _email = TextEditingController();
   final _password = TextEditingController();
   final _code = TextEditingController();
+  String _phone = '';
   bool _codeSent = false;
   bool _busy = false;
   bool _hide = true;
@@ -35,7 +37,8 @@ class _SignupScreenState extends State<SignupScreen> {
     super.initState();
     if (widget.demoCodeStep) {
       _name.text = 'Teja';
-      _business.text = 'Glow Salon';
+      _business.text = 'Sri Lakshmi Fashions';
+      _phone = '+919876543210';
       _email.text = 'owner@glowsalon.in';
       _password.text = 'secret12';
       _codeSent = true;
@@ -49,7 +52,7 @@ class _SignupScreenState extends State<SignupScreen> {
     super.dispose();
   }
 
-  Map<String, String> get _form => {'fullName': _name.text.trim(), 'companyName': _business.text.trim(), 'email': _email.text.trim().toLowerCase(), 'password': _password.text};
+  Map<String, String> get _form => {'fullName': _name.text.trim(), 'companyName': _business.text.trim(), 'phone': _phone, 'email': _email.text.trim().toLowerCase(), 'password': _password.text};
 
   void _startTimer(int seconds) {
     _timer?.cancel();
@@ -77,17 +80,25 @@ class _SignupScreenState extends State<SignupScreen> {
   bool _tried = false;
   String? get _nameErr => _tried ? textError(_name.text, what: 'your name', min: 2, max: 80) : null;
   String? get _businessErr => _tried ? textError(_business.text, what: 'your business name', min: 2, max: 80) : null;
+  String? get _phoneErr => _tried ? phoneError(_phone, required: true) : null;
   String? get _emailErr => _tried ? emailError(_email.text, required: true) : null;
   String? get _passwordErr => _tried ? passwordError(_password.text) : null;
 
   Future<void> _sendCode() async {
     setState(() => _tried = true);
-    if (!_codeSent && (_nameErr ?? _businessErr ?? _emailErr ?? _passwordErr) != null) return;
+    if (!_codeSent && (_nameErr ?? _businessErr ?? _phoneErr ?? _emailErr ?? _passwordErr) != null) return;
     return _sendCodeNow();
   }
 
   Future<void> _sendCodeNow() => _run(() async {
-    final wait = await AppScope.read(context).sendSignupCode(_form);
+    final app = AppScope.read(context);
+    final wait = await app.sendSignupCode(_form);
+    // The server needs no code: the account is made now
+    if (wait == null) {
+      await app.createAccount(_form, '');
+      if (mounted) Navigator.of(context).popUntil((route) => route.isFirst);
+      return;
+    }
     setState(() {
       _codeSent = true;
       _code.clear();
@@ -110,7 +121,7 @@ class _SignupScreenState extends State<SignupScreen> {
           padding: const EdgeInsets.all(24),
           children: [
             if (!_codeSent) ...[
-              const Text('Start your 14-day free trial. Every feature included, with ₹300 of free AI credit.', style: TextStyle(color: Brand.textSoft, height: 1.4)),
+              const Text('Start your 14-day free trial. No card needed. For any business: shops, salons, clinics, gyms, service centres and more.', style: TextStyle(color: Brand.textSoft, height: 1.4)),
               const SizedBox(height: 20),
               TextField(
                 controller: _name,
@@ -125,6 +136,8 @@ class _SignupScreenState extends State<SignupScreen> {
                 onChanged: (_) => _tried ? setState(() {}) : null,
                 decoration: InputDecoration(labelText: 'Business name', prefixIcon: const Icon(Icons.storefront_outlined), errorText: _businessErr),
               ),
+              const SizedBox(height: 12),
+              PhoneField(value: _phone, label: 'Mobile number', errorText: _phoneErr, onChanged: (v) => setState(() => _phone = v)),
               const SizedBox(height: 12),
               TextField(
                 controller: _email,
@@ -203,12 +216,12 @@ class _SignupScreenState extends State<SignupScreen> {
             const SizedBox(height: 20),
             FilledButton(
               onPressed: _busy || (_codeSent && _code.text.trim().length != 6) ? null : (_codeSent ? _create : _sendCode),
-              child: _busy ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : Text(_codeSent ? 'Create account' : 'Email me a code'),
+              child: _busy ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : Text(_codeSent ? 'Create account' : 'Create my free account'),
             ),
             const SizedBox(height: 14),
             if (!_codeSent)
               const Text(
-                'We send a code to your email to check it is yours. No code, no account.',
+                'If we email you a code, type it on the next step to finish.',
                 textAlign: TextAlign.center,
                 style: TextStyle(fontSize: 12.5, color: Brand.muted),
               ),

@@ -57,6 +57,10 @@ void main() {
       'shop_reports',
       'connectors',
       'whatsapp_locked',
+      'onboarding',
+      'onboarding_store',
+      'onboarding_nowa',
+      'onboarding_pick',
     ],
     flows: [
       ('members', ['Priya Sharma']),

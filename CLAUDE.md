@@ -118,6 +118,25 @@ Email: `HOSTINGER_SMTP_*`, `SENDGRID_*`. Other: `NEXT_PUBLIC_APP_URL`, `CRON_SEC
 
 ## What has been built (recent history, newest first)
 
+- **₹300 without WhatsApp; sign-up first; welcome pages in the app** (owner, 25 Nov 2026: "signup first ... take the
+  country and mobile number ... remove glow salon ... after signup show two connectors ... ads ... social media ...
+  without whatsapp ... confirmation message by wama crm ... invoices billing analysis ... monthly 300"). **Starter is now
+  ₹300** (`amountPaise 30_000`) and covers **Front Desk or E-commerce** (`connectorKeys ['salon','ecommerce']`, one at a
+  time; `connectorBlockReason` names the plan's connectors). Razorpay plans are matched by price, so a new ₹300 plan is
+  made by itself — **unless `RAZORPAY_PLAN_STARTER` is set in Vercel (it would still point at ₹999: remove or update
+  it)**. WAMA's number has a 5th fixed template `wama_order_confirmed` (`SharedPurpose = MessagePurpose | 'order'`), sent
+  from the store order route when `usesSharedNumber` (submit it in Super Admin → WAMA's WhatsApp number). Sign-up (email
+  and Google) takes `phone` (+country, `readPhone` in signup-otp.ts) → `organizations.contact_phone`; email sign-up no
+  longer adds made-up contacts, deals and chats. `changePlan` (trial switch) and `applySubscription` now set
+  `whatsapp_mode` from the plan (it stayed as it was before). App: start screen = Welcome, **Create a free account**
+  first, Continue with Google, then "Already have an account? Sign in"; sign-up and the Google business step have
+  `PhoneField` (country + mobile) and no "Glow Salon"; **the app's sign-up works when the server needs no email code**
+  (`sendSignupCode` returns null on `codeNeeded: false` → account made at once; before, the app waited for a code that
+  never came). After sign-up `store['onboarding'].pending` → `OnboardingScreen` (owners/admins): Front Desk and
+  E-commerce slides (with own WhatsApp, what they gain, "our team runs your ads and social media"), the ₹300
+  without-WhatsApp slide, then the pick (connector + with / without own WhatsApp) → `finishOnboarding`
+  (`/api/billing/change-plan` growth|starter, `/api/connectors`). Previews `onboarding`, `_store`, `_nowa`, `_pick`;
+  test `test/release_onboarding_test.dart`.
 - **₹999 Starter = no own WhatsApp; Meta only on Growth / Pro, enforced on the server** (owner, 24 Nov 2026: "without
   meta just for billing and invoice generate and analytics we can 999 ... if they connected meta our plans will come ...
   be secure"). Before this only ~16 routes checked the plan; ~40 own-WhatsApp routes (conversations, messages, tickets,

@@ -756,7 +756,7 @@ class DemoBackend implements Backend {
     await _wait();
     _refuseWhenPaused(method, path);
     // Paying in the demo opens the workspace again
-    if (path.startsWith('/api/billing/subscribe') || path.startsWith('/api/billing/change-plan')) billing = 'paid';
+    if (path.startsWith('/api/billing/subscribe')) billing = 'paid';
     if (path == '/api/connectors') {
       final key = '${body['key']}';
       final off = body['enabled'] == true && _connectorOn != null && _connectorOn != key ? [_connectorOn] : const [];

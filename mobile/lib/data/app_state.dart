@@ -129,9 +129,36 @@ class AppState extends ChangeNotifier {
   }
 
   /// The "Name your business" step after a first Google sign-in: makes the workspace, then opens the app.
-  Future<void> finishGoogleSignUp(String companyName, String fullName) async {
-    await backend.send('POST', '/api/auth/oauth-complete', {'companyName': companyName, 'fullName': fullName});
+  Future<void> finishGoogleSignUp(String companyName, String fullName, {String phone = ''}) async {
+    await backend.send('POST', '/api/auth/oauth-complete', {'companyName': companyName, 'fullName': fullName, if (phone.isNotEmpty) 'phone': phone});
+    await store.write('onboarding', {'pending': true});
     await _afterSignIn();
+  }
+
+  // ── First steps after sign-up: what the connectors give, then pick one (owner, 25 Nov 2026) ──
+
+  /// A workspace made on this phone that has not picked its connector and plan yet.
+  bool get needsOnboarding => store.read('onboarding')?['pending'] == true;
+
+  /// Picked on the last welcome page: the connector ('salon' or 'ecommerce') and with or without their own WhatsApp
+  /// (Growth, or Starter at ₹300 where WAMA CRM's number sends confirmations). The free trial carries on either way.
+  Future<void> finishOnboarding({required String connector, required bool ownWhatsApp}) async {
+    try {
+      await ask('/api/billing/change-plan', {'plan': ownWhatsApp ? 'growth' : 'starter'});
+    } on ApiException catch (_) {
+      // No billing on this server (or exempt): the plan stays as it is
+    }
+    await ask('/api/connectors', {'key': connector, 'enabled': true});
+    await store.write('onboarding', {'pending': false});
+    await load('me', '/api/mobile/me', force: true);
+    notifyListeners();
+    unawaited(refreshAll());
+  }
+
+  /// Seen the welcome pages without picking (they can pick later in More → Connectors).
+  Future<void> skipOnboarding() async {
+    await store.write('onboarding', {'pending': false});
+    notifyListeners();
   }
 
   Future<void> _afterSignIn() async {
@@ -146,14 +173,17 @@ class AppState extends ChangeNotifier {
   // ── Sign up (with the code emailed to them) ──
 
   /// Check the form and email a 6-digit code. Returns how long until another can be sent.
-  Future<int> sendSignupCode(Map<String, String> form) async {
+  /// Email the sign-up code. Null = the server needs no code (switched off): create the account straight away.
+  Future<int?> sendSignupCode(Map<String, String> form) async {
     final data = await backend.send('POST', '/api/auth/signup/send-code', form);
+    if (data['codeNeeded'] == false) return null;
     return (data['resendAfterSeconds'] as num?)?.toInt() ?? 60;
   }
 
   /// Make the account with the code, then sign in.
   Future<void> createAccount(Map<String, String> form, String code) async {
-    await backend.send('POST', '/api/auth/signup', {...form, 'code': code});
+    await backend.send('POST', '/api/auth/signup', {...form, if (code.isNotEmpty) 'code': code});
+    await store.write('onboarding', {'pending': true});
     await signIn(form['email']!, form['password']!);
   }
 
