@@ -9,11 +9,12 @@ void main() {
   testWidgets('new account: slides, then pick E-commerce without WhatsApp (small phone)', (tester) async {
     await useApp(tester, r.app, width: 320, height: 640, () async {
       expect(r.app.needsOnboarding, isTrue);
-      // First: short videos on how we help, in English, Telugu or Hindi
+      // First: short videos on how we help, English on screen, the voice in English, Telugu or Hindi
       expect(find.text('Welcome! Your free trial has started'), findsOneWidget);
       expect(find.text('How we grow your business'), findsOneWidget);
       await tapText(tester, 'తెలుగు');
-      expect(find.text('మీ బిజినెస్‌ని మేము ఎలా పెంచుతాం'), findsOneWidget, reason: 'the videos switch to Telugu');
+      expect(find.text('How we grow your business'), findsOneWidget, reason: 'Telugu changes only the voice, the words stay English');
+      expect(find.text('మీ బిజినెస్‌ని మేము ఎలా పెంచుతాం'), findsNothing);
       await tapText(tester, 'English');
       await tapText(tester, 'Next');
       expect(find.text('Front Desk'), findsWidgets);
