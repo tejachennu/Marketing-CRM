@@ -937,13 +937,6 @@ class _CategorySearchSheetState extends State<CategorySearchSheet> {
               child: ListView(
                 keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
                 children: [
-                  if (add != null)
-                    ListTile(
-                      leading: const Icon(Icons.add_circle_outline, color: Brand.blue),
-                      title: Text('Add “$add”', style: const TextStyle(color: Brand.blue, fontWeight: FontWeight.w700)),
-                      subtitle: const Text('A new kind, kept for next time'),
-                      onTap: () => Navigator.pop(context, add),
-                    ),
                   if (found.choices.isEmpty && add == null)
                     const Padding(padding: EdgeInsets.all(16), child: Text('Type at least 2 letters to add your own.', style: TextStyle(color: Brand.textSoft))),
                   for (final c in found.choices)
@@ -956,6 +949,14 @@ class _CategorySearchSheetState extends State<CategorySearchSheet> {
                           ? const SoftPillText('Yours')
                           : null,
                       onTap: () => Navigator.pop(context, c.key),
+                    ),
+                  // A name that is not in the list yet: after the ones that match, so a match is picked first
+                  if (add != null)
+                    ListTile(
+                      leading: const Icon(Icons.add_circle_outline, color: Brand.blue),
+                      title: Text('Add “$add”', style: const TextStyle(color: Brand.blue, fontWeight: FontWeight.w700)),
+                      subtitle: const Text('A new kind, kept for next time'),
+                      onTap: () => Navigator.pop(context, add),
                     ),
                 ],
               ),
