@@ -1125,10 +1125,14 @@ Email: `HOSTINGER_SMTP_*`, `SENDGRID_*`. Other: `NEXT_PUBLIC_APP_URL`, `CRON_SEC
   redesign, WhatsApp commerce (catalog sync, cart, payments, AI shopping assistant), templates manager,
   flow builder, campaigns, landing page.
 
-**Deployed**: production was updated on 14 Nov 2026 from branch `v4` (Vercel project `marketing-crm`,
-Git-connected to this repo; production deploys are made from `v4`), with everything above: plans and
-billing, WAMA's number for Starter, the booking page, "Connect your WhatsApp first", and the server side
-of pop-up notifications. Previous production commit: `cf4c324` (10 Nov 2026).
+**Deployed**: production was updated on 25 Nov 2026 (owner: "deploy it to production") by moving `v4` from `40e522f`
+to the handoff branch `ccr-7a545d5a-4kbhlw` (fast-forward, 49 commits: ₹300 Starter and plan checks on the server, trial
+lock, account deletion, the security lock-down screen, sign-up with mobile number, Expenses and the monthly AI review,
+and everything else above since 20 Nov). Vercel project `marketing-crm` is Git-connected to this repo; production
+deploys are made from `v4`. Still for the owner after this deploy: in Vercel remove or update `RAZORPAY_PLAN_STARTER`
+(it may still point at the old ₹999 plan), run Super Admin → Setup → Database security once, submit
+`wama_order_confirmed` in Super Admin → WAMA's WhatsApp number, set `FIREBASE_SERVICE_ACCOUNT` for pop-ups.
+Before that: 14 Nov 2026 (plans and billing, WAMA's number for Starter, the booking page), and `cf4c324` (10 Nov 2026).
 
 ## Open items and ideas
 
