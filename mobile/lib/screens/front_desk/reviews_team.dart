@@ -2,10 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../data/app_state.dart';
+import '../../data/attendance_logic.dart';
 import '../../data/format.dart';
 import '../../ui/skeleton.dart';
 import '../../ui/theme.dart';
 import '../../ui/widgets.dart';
+import 'attendance_screen.dart';
 import 'range_bar.dart';
 
 String _key(String what, DateRangeChoice r) => '$what:${r.preset}${r.preset == 'custom' ? ':${r.from}:${r.to}' : ''}';
@@ -319,7 +321,7 @@ class _TeamTabState extends State<TeamTab> {
                           children: [
                             Text('${m['name']}', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15.5)),
                             Text(
-                              '${m['services']} services · ${m['visits']} visits${m['averageRating'] != null ? ' · ${m['averageRating']}★ (${m['ratings']})' : ''}',
+                              '${m['services']} services · ${m['visits']} visits${m['daysPresent'] != null ? ' · ${daysText(m['daysPresent'] as num)} in' : ''}${m['averageRating'] != null ? ' · ${m['averageRating']}★ (${m['ratings']})' : ''}',
                               style: const TextStyle(fontSize: 12.5, color: Brand.muted),
                             ),
                           ],
@@ -377,12 +379,21 @@ class ReviewsScreen extends StatelessWidget {
   );
 }
 
-/// Team performance as its own page (opened from More).
+/// Team performance as its own page (opened from More), with Attendance one tap away.
 class TeamScreen extends StatelessWidget {
   const TeamScreen({super.key});
   @override
   Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: const Text('Team')),
+    appBar: AppBar(
+      title: const Text('Team'),
+      actions: [
+        TextButton.icon(
+          onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AttendanceScreen())),
+          icon: const Icon(Icons.event_available_outlined, size: 20),
+          label: const Text('Attendance'),
+        ),
+      ],
+    ),
     body: const TeamTab(),
   );
 }

@@ -1,13 +1,14 @@
 'use client'
 
-/** Team: how each person is doing — services, value, commission, ratings — and unhappy customers to call. */
+/** Team: how each person is doing — services, value, commission, ratings — unhappy customers to call, and attendance. */
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { BadgePercent, Check, ChevronRight, IndianRupee, Loader2, Phone, Scissors, Star, Users } from 'lucide-react'
+import { BadgePercent, CalendarCheck, Check, ChevronRight, IndianRupee, Loader2, Phone, Scissors, Star, TrendingUp, Users } from 'lucide-react'
 import { formatRupees } from '@/lib/salon/invoice'
 import { rangeQuery, type DateRange } from '@/lib/salon/ranges'
 import { formatIstDay, istDate } from '@/lib/salon/spoken'
 import { DateRangeFilter } from './date-range'
+import { SalonAttendance } from './salon-attendance'
 import { api, Avatar, card, StatTile } from './ui'
 
 type Flash = (tone: 'success' | 'error', text: string) => void
@@ -20,7 +21,35 @@ function Stars({ rating, size = 14 }: { rating: number; size?: number }) {
   )
 }
 
-export function SalonTeam({ orgId, flash, range, onRangeChange, onOpenReviews }: { orgId: string; flash: Flash; range: DateRange; onRangeChange: (range: DateRange) => void; onOpenReviews?: () => void }) {
+type TeamView = 'performance' | 'attendance'
+
+/** Team: Performance (numbers) or Attendance (who is in, leave). ?view=attendance opens Attendance. */
+export function SalonTeam(props: { orgId: string; flash: Flash; range: DateRange; onRangeChange: (range: DateRange) => void; onOpenReviews?: () => void }) {
+  const [view, setView] = useState<TeamView>('performance')
+  useEffect(() => { if (new URLSearchParams(window.location.search).get('view') === 'attendance') setView('attendance') }, [])
+  function show(next: TeamView) {
+    setView(next)
+    const url = new URL(window.location.href)
+    if (next === 'attendance') url.searchParams.set('view', next)
+    else url.searchParams.delete('view')
+    window.history.replaceState(window.history.state, '', url)
+  }
+  return (
+    <div className="space-y-4 @xl:space-y-5">
+      <div role="tablist" aria-label="Team" className="grid grid-cols-2 @xl:inline-grid @xl:w-[360px] rounded-2xl bg-white dark:bg-[#111b21] border border-[#e3e8f2] dark:border-slate-800 p-1">
+        {([['performance', 'Performance', TrendingUp], ['attendance', 'Attendance', CalendarCheck]] as const).map(([id, label, Icon]) => (
+          <button key={id} type="button" role="tab" aria-selected={view === id} onClick={() => show(id)}
+            className={`h-10 rounded-xl text-[14.5px] font-semibold inline-flex items-center justify-center gap-2 cursor-pointer transition-colors ${view === id ? 'bg-[#0E1B3D] text-white dark:bg-white dark:text-[#0E1B3D]' : 'text-[#4a5672] dark:text-slate-300 hover:bg-[#f4f6fa] dark:hover:bg-slate-800'}`}>
+            <Icon size={17} /> {label}
+          </button>
+        ))}
+      </div>
+      {view === 'attendance' ? <SalonAttendance orgId={props.orgId} flash={props.flash} /> : <TeamPerformance {...props} />}
+    </div>
+  )
+}
+
+function TeamPerformance({ orgId, flash, range, onRangeChange, onOpenReviews }: { orgId: string; flash: Flash; range: DateRange; onRangeChange: (range: DateRange) => void; onOpenReviews?: () => void }) {
   const [data, setData] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const [busyId, setBusyId] = useState<string | null>(null)
@@ -104,7 +133,7 @@ export function SalonTeam({ orgId, flash, range, onRangeChange, onOpenReviews }:
                     <div className="min-w-0 flex-1">
                       <p className="text-[16.5px] font-bold text-[#0E1B3D] dark:text-white flex flex-wrap items-center gap-x-2 gap-y-0.5"><span className="truncate">{row.name}</span>{row.commissionPercent > 0 && <span className="inline-flex items-center h-6 px-2 rounded-md bg-[#f4f6fa] dark:bg-slate-800 text-[#4a5672] dark:text-slate-300 text-[12px] font-bold">{row.commissionPercent}%</span>}</p>
                       <p className="text-[13.5px] text-[#6B7894] flex flex-wrap items-center gap-x-2">
-                        <span>{row.services} service{row.services === 1 ? '' : 's'} · {row.visits} visit{row.visits === 1 ? '' : 's'}</span>
+                        <span>{row.services} service{row.services === 1 ? '' : 's'} · {row.visits} visit{row.visits === 1 ? '' : 's'}{row.daysPresent != null && ` · ${row.daysPresent} day${row.daysPresent === 1 ? '' : 's'} in`}</span>
                         {row.averageRating ? <span className="inline-flex items-center gap-1"><Stars rating={row.averageRating} size={13} /> {row.averageRating} ({row.ratings})</span> : <span className="text-[#a3adc2]">No ratings yet</span>}
                       </p>
                     </div>

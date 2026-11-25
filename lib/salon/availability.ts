@@ -3,10 +3,13 @@
  * already busy. Pure, so the chat assistant, the counter and the tests agree.
  */
 
-import { addDays, fromIst, istDate, istTime } from './spoken'
+import { addDays, fromIst, istDate, istDayRange, istTime } from './spoken'
 
-/** An appointment that takes up time: who is on it (empty when nobody in particular yet). */
-export interface Busy { starts_at: string; ends_at: string; staff_ids: string[] }
+/**
+ * An appointment that takes up time: who is on it (empty when nobody in particular yet). `away` marks a whole day
+ * someone is not in (attendance: absent, on leave, week off), so they are not offered that day.
+ */
+export interface Busy { starts_at: string; ends_at: string; staff_ids: string[]; away?: boolean }
 
 export interface OpeningHours { opens_at?: string | null; closes_at?: string | null; closed_weekdays?: number[] | null }
 
@@ -41,6 +44,12 @@ export function busyFrom(appointments: { starts_at: string; ends_at: string; sta
   return appointments
     .filter((a) => holdsTime(a, now))
     .map((a) => ({ starts_at: a.starts_at, ends_at: a.ends_at, staff_ids: [...new Set([a.staff_id, ...(a.services || []).map((s) => s.staff_id)].filter(Boolean))] as string[] }))
+}
+
+/** The whole day (India) as busy time for each person not in that day (attendance-store.ts awayStaffOn). */
+export function awayBusy(date: string, staffIds: string[]): Busy[] {
+  const { start, end } = istDayRange(date)
+  return [...new Set(staffIds.filter(Boolean))].map((id) => ({ starts_at: start, ends_at: end, staff_ids: [id], away: true }))
 }
 
 export interface FreeTimesInput {
@@ -82,7 +91,8 @@ export function freeTimes(input: FreeTimesInput): string[] {
       continue
     }
     if (!input.eligibleStaff.length) {
-      if (!overlapping.length) free.push(time)
+      // One chair (no one in particular does it): someone's day off does not close it
+      if (!overlapping.some((b) => !b.away)) free.push(time)
       continue
     }
     // Free people who can do it, less the bookings nobody is assigned to yet
@@ -119,7 +129,7 @@ export function counterSlots(input: { date: string; now?: number; hours: Opening
     const overlapping = input.busy.filter((b) => Date.parse(b.starts_at) < ends && Date.parse(b.ends_at) > begins.getTime())
     let free: boolean
     if (chosen.length) free = !overlapping.some((b) => b.staff_ids.some((id) => chosen.includes(id)))
-    else if (!input.eligibleStaff.length) free = !overlapping.length
+    else if (!input.eligibleStaff.length) free = !overlapping.some((b) => !b.away)
     else {
       const taken = new Set(overlapping.flatMap((b) => b.staff_ids))
       free = input.eligibleStaff.filter((id) => !taken.has(id)).length - overlapping.filter((b) => !b.staff_ids.length).length > 0

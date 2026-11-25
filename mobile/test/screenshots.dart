@@ -24,6 +24,8 @@ import 'package:wama_mobile/screens/more/expenses_screen.dart';
 import 'package:wama_mobile/data/demo_auto_messages.dart' as demo;
 import 'package:wama_mobile/screens/front_desk/setup_templates.dart';
 import 'package:wama_mobile/screens/more/billing_screen.dart';
+import 'package:wama_mobile/main.dart' show HomeShell;
+import 'package:wama_mobile/screens/front_desk/attendance_screen.dart';
 import 'package:wama_mobile/screens/store/new_order_screen.dart';
 import 'package:wama_mobile/screens/store/online_payments.dart';
 import 'package:wama_mobile/screens/store/shop_more.dart' show ShopReportsScreen, shopMessagesScreen;
@@ -145,6 +147,13 @@ void main() {
     'shop_invoices': (() => const StoreScreen(initialTab: 3), const ['GST invoices']),
     'shop_delivery': (() => const StoreScreen(initialTab: 3), const ['Delivery partners']),
     'billing': (() => const BillingScreen(), const []),
+    // Staff attendance: the day, marking someone on leave, Add leave, the month for everyone and for one person
+    'attendance': (() => const AttendanceScreen(), const []),
+    'attendance_marked': (() => const AttendanceScreen(), const ['Week off']),
+    'attendance_leave': (() => const AttendanceScreen(), const ['Add leave', 'Anitha', 'Sick']),
+    'attendance_month': (() => const AttendanceScreen(startOnMonth: true), const []),
+    'attendance_person': (() => const AttendanceScreen(startOnMonth: true, person: 'st-ravi'), const []),
+    'attendance_desk': (() => const HomeShell(), const []),
   };
   for (final e in flows.entries) {
     screens[e.key] = e.value.$1;

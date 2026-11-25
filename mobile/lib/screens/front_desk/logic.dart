@@ -107,6 +107,31 @@ class FrontDesk {
 
   Map<String, dynamic> get _day => app.cached(AppState.dayKey(date)) ?? const {};
 
+  /// Who is not simply present on the day shown (attendance: on leave, absent, week off, half day), by staff id.
+  Map<String, String> get attendance => {
+    for (final m in (_day['attendance'] as List? ?? const []))
+      if (m is Map && m['status'] != null && m['status'] != 'present') '${m['staff_id']}': '${m['status']}',
+  };
+
+  /// "Ravi on leave", "Lakshmi half day": for the people on a visit, when the day's attendance says so.
+  List<({String text, bool away})> attendanceNotes(Map<String, dynamic> appointment) {
+    final marks = attendance;
+    final ids = {appointment['staff_id'], for (final s in (appointment['services'] as List? ?? const [])) if (s is Map) s['staff_id']}.whereType<String>();
+    return [
+      for (final id in ids)
+        if (marks[id] != null && staffName(id).isNotEmpty)
+          (
+            text: '${staffName(id)} ${switch (marks[id]) {
+              'leave' => 'on leave',
+              'week_off' => 'on week off',
+              'half_day' => 'half day',
+              _ => 'absent',
+            }}',
+            away: marks[id] != 'half_day',
+          ),
+    ];
+  }
+
   /// Made on this phone, sent, and already in the server's list: shown once, as the server's.
   bool _inList(String? localId, Set<String> serverIds) {
     final id = localId == null ? null : app.store.serverId(localId);

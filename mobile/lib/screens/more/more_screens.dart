@@ -20,6 +20,7 @@ import '../front_desk/logic.dart';
 import '../campaigns/campaigns_screen.dart';
 import '../contacts/contacts_screen.dart';
 import '../explainers/explainer_player.dart';
+import '../front_desk/attendance_screen.dart';
 import '../front_desk/reviews_team.dart';
 import '../front_desk/setup_screen.dart';
 import '../instagram/instagram_screen.dart';
@@ -168,6 +169,7 @@ class MoreScreen extends StatelessWidget {
                   const _Title('Front Desk'),
                   _Row(icon: Icons.star_outline_rounded, title: 'Reviews', subtitle: 'What customers said after their visit', onTap: () => open(const ReviewsScreen())),
                   _Row(icon: Icons.groups_outlined, title: 'Team', subtitle: 'Sales, services and commission for each person', onTap: () => open(const TeamScreen())),
+                  _Row(icon: Icons.event_available_outlined, title: 'Attendance', subtitle: 'Who is in today, leave and week offs', onTap: () => open(const AttendanceScreen())),
                   _Row(
                     leading: const FrontDeskIcon(size: 24, color: Brand.textSoft),
                     title: 'Front Desk setup',

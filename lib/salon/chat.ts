@@ -22,6 +22,7 @@ import { isConsularHelpdesk } from '../workspace-modules'
 import { busyFrom, describeHours, freeTimes, isTimeFree, nextOpenDay, type Busy } from './availability'
 import { formatRupees } from './invoice'
 import { withSalonSchema } from './schema'
+import { awayBusyOn } from './attendance-store'
 import { addDays, formatIstDay, formatIstTime, fromIst, istDate, istDayRange, istTime, matchByName, phoneKey } from './spoken'
 
 export const MODEL = 'gpt-4o-mini'
@@ -237,11 +238,17 @@ export async function sendText(input: SalonChatInput, text: string) {
 
 const LIST_LIMIT = 10
 
-/** Busy time on a day: every appointment that holds a chair. */
+/**
+ * Busy time on a day: every appointment that holds a chair, and the whole day for anyone not in (attendance: absent,
+ * on leave, week off), so the WhatsApp assistant, the booking flow and the booking page never offer them that day.
+ */
 export async function busyOn(db: any, organizationId: string, date: string): Promise<Busy[]> {
   const { start, end } = istDayRange(date)
-  const { data } = await db.from('salon_appointments').select('*').eq('organization_id', organizationId).gte('starts_at', start).lt('starts_at', end)
-  return busyFrom(data || [])
+  const [{ data }, away] = await Promise.all([
+    db.from('salon_appointments').select('*').eq('organization_id', organizationId).gte('starts_at', start).lt('starts_at', end),
+    awayBusyOn(db, organizationId, date),
+  ])
+  return [...busyFrom(data || []), ...away]
 }
 
 /** Who can do every one of these services. */
@@ -288,12 +295,15 @@ export async function sendFreeTimes(input: SalonChatInput, setup: ChatSetup, arg
   const minutes = chosen.reduce((sum, s) => sum + (Number(s.duration_minutes) || 30), 0)
   const eligible = staffFor(setup.staff, chosen.map((s) => s.id))
   const base = { now, hours: setup.settings, minutes, eligibleStaff: eligible, staffId }
-  const times = freeTimes({ ...base, date: args.date, busy: await busyOn(input.supabase, input.organization.id, args.date), around: args.around || null, limit: LIST_LIMIT })
+  const busy = await busyOn(input.supabase, input.organization.id, args.date)
+  const times = freeTimes({ ...base, date: args.date, busy, around: args.around || null, limit: LIST_LIMIT })
   if (!times.length) {
     const cache = new Map<string, Busy[]>()
     for (let i = 1; i < 14; i++) { const d = addDays(args.date, i); cache.set(d, await busyOn(input.supabase, input.organization.id, d)) }
     const next = nextOpenDay({ ...base, from: addDays(args.date, 1), busyFor: (d) => cache.get(d) || [] })
-    return { note: `No free time on ${args.date}${next ? `. The next day with free times is ${next} (${formatIstDay(next, today)})` : ''}. Tell the customer and offer that day.`, nextDay: next }
+    // The person asked for is not in that day (attendance): say so, without saying why
+    const away = staffId && busy.some((b) => b.away && b.staff_ids.includes(staffId)) ? setup.staff.find((m) => m.id === staffId)?.name : null
+    return { note: `${away ? `${away} is not in on ${args.date}. Offer another day, or anyone else free that day. ` : ''}No free time on ${args.date}${away ? ` with ${away}` : ''}${next ? `. The next day with free times is ${next} (${formatIstDay(next, today)})` : ''}. Tell the customer and offer that day.`, nextDay: next }
   }
 
   const { data: offer, error } = await withSalonSchema(() => input.supabase.from('salon_chat_offers').insert({

@@ -1,6 +1,7 @@
 /** Front Desk through the public API: how services, staff, appointments and invoices look, and free times. */
 
 import { busyFrom, freeTimes, isTimeFree } from '../salon/availability'
+import { awayBusyOn } from '../salon/attendance-store'
 import { fromIst, istDate, istDayRange } from '../salon/spoken'
 
 export const toApiService = (row: any) => ({
@@ -76,7 +77,8 @@ export async function availableTimes(db: any, organizationId: string, input: { d
   if (input.staffId && !team.some((m: any) => m.id === input.staffId)) return { error: 'That staff member is not on the list. GET /api/v1/staff shows them.' }
   const eligibleStaff = team.filter((m: any) => input.serviceIds.every((id) => !(m.service_ids || []).length || m.service_ids.includes(id))).map((m: any) => m.id)
   const hours = { opens_at: settings?.opens_at, closes_at: settings?.closes_at, closed_weekdays: settings?.closed_weekdays }
-  const busy = busyFrom(booked || [])
+  // Anyone marked absent, on leave or week off that day is not offered (attendance)
+  const busy = [...busyFrom(booked || []), ...(await awayBusyOn(db, organizationId, input.date))]
   const times = freeTimes({ date: input.date, now: input.now, hours, minutes, eligibleStaff, staffId: input.staffId || null, busy, limit: 200 })
   return { minutes, times, check: (time: string) => isTimeFree({ date: input.date, now: input.now, hours, minutes, eligibleStaff, staffId: input.staffId || null, busy, time }) }
 }

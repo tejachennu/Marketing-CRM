@@ -18,6 +18,7 @@ import 'screens/chats/chats_screen.dart';
 import 'screens/chats/tickets_screen.dart';
 import 'screens/contacts/contacts_screen.dart';
 import 'screens/front_desk/appointment_screen.dart';
+import 'screens/front_desk/attendance_screen.dart';
 import 'screens/front_desk/bill_screen.dart';
 import 'screens/front_desk/catalog_history.dart';
 import 'screens/front_desk/checkout_screen.dart';
@@ -261,6 +262,9 @@ class WamaApp extends StatelessWidget {
       'bills' => const HomeShell(tab: 1),
       'reviews' => const ReviewsScreen(),
       'team' => const TeamScreen(),
+      'attendance' => const AttendanceScreen(),
+      'attendance_month' => const AttendanceScreen(startOnMonth: true),
+      'attendance_person' => const AttendanceScreen(startOnMonth: true, person: 'st-ravi'),
       'setup' => const SetupScreen(),
       'setup_services' => const ServicesSetup(),
       'setup_catalog' => const CatalogScreen(),

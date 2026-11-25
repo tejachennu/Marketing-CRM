@@ -544,6 +544,9 @@ class _AppointmentRow extends StatelessWidget {
                           children: [
                             Pill(statusLabels[status] ?? status, tone: tone),
                             if (a['source'] == 'chat') const Pill('WhatsApp', icon: Icons.chat_bubble_outline),
+                            // The person on this visit is not in that day (attendance): the booking stays, the counter sees it
+                            if (status == 'booked' || status == 'arrived')
+                              for (final note in desk.attendanceNotes(a)) Pill(note.text, icon: Icons.event_busy_outlined, tone: note.away ? PillTone.red : PillTone.grey),
                             if (a['_outbox'] != null || a['_changing'] == true) WaitingPill(failed: a['_failed'] == true),
                           ],
                         ),

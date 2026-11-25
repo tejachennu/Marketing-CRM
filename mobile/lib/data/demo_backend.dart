@@ -1,3 +1,4 @@
+import 'demo_attendance.dart';
 import 'demo_billing.dart';
 import 'demo_commerce.dart';
 import 'demo_expenses.dart';
@@ -648,15 +649,19 @@ class DemoBackend implements Backend {
   final DemoLaunch _launch = DemoLaunch();
   final DemoExpenses _money = DemoExpenses();
   late final DemoFrontDesk _desk = DemoFrontDesk(setup: _setup, invoices: _invoices, contacts: _contacts, templates: _templates, id: _id);
+  late final DemoAttendance _attendance = DemoAttendance(
+    staff: () => [for (final s in (_setup['staff'] as List? ?? const [])) Map<String, dynamic>.from(s as Map)],
+    closed: () => [for (final d in ((_setup['settings'] as Map?)?['closed_weekdays'] as List? ?? const [])) (d as num).toInt()],
+  );
 
   @override
   Future<Map<String, dynamic>> get(String path, [Map<String, String>? query]) async {
     await _wait();
     _refuseWhenPaused('GET', path);
-    final desk = _money.get(path, query) ?? _launch.get(path, query) ?? _store.get(path, query) ?? _shopMore.get(path, query) ?? _billing.get(path, query) ?? _tpl.get(path, query) ?? _desk.get(path, query) ?? _camp.get(path, query);
+    final desk = _attendance.get(path, query) ?? _money.get(path, query) ?? _launch.get(path, query) ?? _store.get(path, query) ?? _shopMore.get(path, query) ?? _billing.get(path, query) ?? _tpl.get(path, query) ?? _desk.get(path, query) ?? _camp.get(path, query);
     if (desk != null) return desk;
     if (path == '/api/salon/appointments' && query?['date'] != null && query!['date'] != istToday()) {
-      return {'success': true, 'appointments': [], 'requests': _requests, 'invoices': []};
+      return {'success': true, 'appointments': [], 'requests': _requests, 'invoices': [], 'attendance': _attendance.notices(query['date']!)};
     }
     switch (path) {
       case '/api/auth/delete-account':
@@ -676,7 +681,13 @@ class DemoBackend implements Backend {
       case '/api/salon/setup':
         return {'success': true, ..._setup};
       case '/api/salon/appointments':
-        return {'success': true, 'appointments': _appointments, 'requests': _requests, 'invoices': _invoices.where((i) => _appointments.any((a) => a['invoice_id'] == i['id'])).toList()};
+        return {
+          'success': true,
+          'appointments': _appointments,
+          'requests': _requests,
+          'invoices': _invoices.where((i) => _appointments.any((a) => a['invoice_id'] == i['id'])).toList(),
+          'attendance': _attendance.notices(istToday()),
+        };
       case '/api/salon/invoices':
         final paid = _invoices.where((i) => i['status'] == 'paid');
         return {
@@ -767,7 +778,7 @@ class DemoBackend implements Backend {
       _connectorOn = body['enabled'] == true ? key : (_connectorOn == key ? null : _connectorOn);
       return {'success': true, 'switchedOff': off, ..._connectorsAnswer()};
     }
-    final desk = _money.send(method, path, body) ?? _launch.send(method, path, body) ?? _store.send(method, path, body) ?? _shopMore.send(method, path, body) ?? _billing.send(method, path, body) ?? _tpl.send(method, path, body) ?? _desk.send(method, path, body) ?? _camp.send(method, path, body);
+    final desk = _attendance.send(method, path, body) ?? _money.send(method, path, body) ?? _launch.send(method, path, body) ?? _store.send(method, path, body) ?? _shopMore.send(method, path, body) ?? _billing.send(method, path, body) ?? _tpl.send(method, path, body) ?? _desk.send(method, path, body) ?? _camp.send(method, path, body);
     if (desk != null) return desk;
     if (path.startsWith('/api/knowledge?id=')) {
       _articles.removeWhere((a) => a['id'] == Uri.parse(path).queryParameters['id']);

@@ -4,6 +4,8 @@ import { rangeBounds, resolveRange } from '@/lib/salon/ranges'
 import { allRows } from '@/lib/salon/rows'
 import { withSalonSchema } from '@/lib/salon/schema'
 import { salonAccess, serverError } from '@/lib/salon/server'
+import { marksBetween } from '@/lib/salon/attendance-store'
+import { daysWorked } from '@/lib/salon/attendance'
 
 export const runtime = 'nodejs'
 
@@ -28,7 +30,11 @@ export async function GET(request: NextRequest) {
     ])
     if (staff.error) throw new Error(staff.error.message)
     const report = computePerformance(invoices.rows, feedback.rows, staff.data || [])
-    return NextResponse.json({ success: true, range, period: range.preset, from: range.from, to: range.to, ...report, toCall: toCall.data || [], recentFeedback: recent.data || [] })
+    // Days each person was in (attendance; a half day counts 0.5), shown only once the business marks attendance
+    const marks = await marksBetween(db, organizationId, range.from, range.to).catch(() => [])
+    const worked = daysWorked(marks)
+    const people = report.staff.map((row: any) => ({ ...row, daysPresent: marks.length > 0 && row.id ? worked[row.id] || 0 : null }))
+    return NextResponse.json({ success: true, range, period: range.preset, from: range.from, to: range.to, ...report, staff: people, toCall: toCall.data || [], recentFeedback: recent.data || [] })
   } catch (error) {
     return serverError('performance', error)
   }

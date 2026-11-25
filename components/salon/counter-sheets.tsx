@@ -8,7 +8,8 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Banknote, CalendarPlus, Check, Clock, Copy, CreditCard, ExternalLink, Loader2, MessageCircle, Plus, Receipt, RotateCcw, Search, Smartphone, UserRound, X } from 'lucide-react'
-import { busyFrom, counterSlots, describeHours, isClosedOn, type Busy } from '@/lib/salon/availability'
+import { awayBusy, busyFrom, counterSlots, describeHours, isClosedOn, type Busy } from '@/lib/salon/availability'
+import { isAwayStatus } from '@/lib/salon/attendance'
 import { groupByCategory } from '@/lib/salon/categories'
 import { customerSearch, type CustomerMatch } from '@/lib/salon/customers'
 import { computeInvoice, formatRupees, type Discount } from '@/lib/salon/invoice'
@@ -278,14 +279,20 @@ export function DayAndTime({ orgId, setup, date, time, minutes, serviceIds, staf
 }) {
   const today = istDate()
   const [busy, setBusy] = useState<Busy[]>([])
+  const [away, setAway] = useState<{ staff_id: string; status: string }[]>([])
   const [other, setOther] = useState(false)
 
-  // Who is already booked that day, to show which times are taken
+  // Who is already booked that day, to show which times are taken; and who is not in (attendance)
   useEffect(() => {
     let live = true
     api(`/api/salon/appointments?organizationId=${orgId}&date=${date}`)
-      .then((data) => { if (live) setBusy(busyFrom([...(data.appointments || []), ...(data.requests || []).filter((r: Appointment) => istDate(r.starts_at) === date)])) })
-      .catch(() => { if (live) setBusy([]) })
+      .then((data) => {
+        if (!live) return
+        const notIn = (Array.isArray(data.attendance) ? data.attendance : []).filter((m: { status: string }) => isAwayStatus(m.status))
+        setAway(notIn)
+        setBusy([...busyFrom([...(data.appointments || []), ...(data.requests || []).filter((r: Appointment) => istDate(r.starts_at) === date)]), ...awayBusy(date, notIn.map((m: { staff_id: string }) => m.staff_id))])
+      })
+      .catch(() => { if (live) { setBusy([]); setAway([]) } })
     return () => { live = false }
   }, [orgId, date])
 
@@ -331,6 +338,9 @@ export function DayAndTime({ orgId, setup, date, time, minutes, serviceIds, staf
           <span className="text-[12.5px] text-[#8a94a8] text-right">{chosenStaff.length ? 'Free for who you picked' : 'Free for anyone who does it'}</span>
         </div>
         {closed && <p className="rounded-xl bg-[#f4f6fa] dark:bg-slate-800/60 text-[#4a5672] dark:text-slate-300 px-3.5 py-2.5 text-[13.5px]">You are closed this day ({describeHours(hours).replace(/^Open /, 'open ')}). You can still pick a time.</p>}
+        {away.filter((m) => chosenStaff.includes(m.staff_id)).map((m) => (
+          <p key={m.staff_id} className="rounded-xl bg-[#fdf0f0] dark:bg-red-950/30 text-[#b91c1c] dark:text-red-300 px-3.5 py-2.5 text-[13.5px] font-medium">{setup.staff.find((s) => s.id === m.staff_id)?.name || 'They'} {m.status === 'leave' ? 'is on leave' : m.status === 'week_off' ? 'has a week off' : 'is marked absent'} this day. You can still book, or pick someone else.</p>
+        ))}
         {groups.length ? groups.map((group) => (
           <div key={group.label}>
             <p className="text-[12.5px] font-semibold text-[#8a94a8] mb-1.5">{group.label}</p>

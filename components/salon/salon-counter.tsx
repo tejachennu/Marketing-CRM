@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Armchair, ArrowUpRight, CalendarClock, CalendarDays, CalendarPlus, ChevronLeft, ChevronRight, CircleCheck, Clock, Hourglass, Loader2, MoreHorizontal, Play, Receipt, ReceiptText, UserCheck, UserX, Wallet, XCircle, Zap } from 'lucide-react'
 import { formatRupees } from '@/lib/salon/invoice'
 import { paymentNote } from '@/lib/salon/booking-pay'
+import { STATUS_INFO, type AttendanceStatus } from '@/lib/salon/attendance'
 import { addDays, formatIstDay, formatIstTime, fromIst, istDate } from '@/lib/salon/spoken'
 import { useConfirm } from '@/lib/dialog-context'
 import { announceFrontDeskBadges } from '@/lib/front-desk-nav'
@@ -57,6 +58,8 @@ export function SalonCounter({ orgId, setup, canWrite, flash }: {
   const [appointments, setAppointments] = useState<Appointment[]>([])
   const [requests, setRequests] = useState<Appointment[]>([])
   const [invoices, setInvoices] = useState<Record<string, any>>({})
+  // Who is not simply present that day (attendance): on leave, absent, week off, half day
+  const [attendance, setAttendance] = useState<{ staff_id: string; status: AttendanceStatus }[]>([])
   const [loading, setLoading] = useState(true)
   const [sheet, setSheet] = useState<Sheet>(null)
   const [busyId, setBusyId] = useState<string | null>(null)
@@ -74,6 +77,7 @@ export function SalonCounter({ orgId, setup, canWrite, flash }: {
     const data = await api(`/api/salon/appointments?organizationId=${orgId}&date=${date}`)
     setAppointments(data.appointments || [])
     setRequests(data.requests || [])
+    setAttendance(Array.isArray(data.attendance) ? data.attendance : [])
     // The bottom bar shows how many WhatsApp booking requests are waiting
     announceFrontDeskBadges({ counter: (data.requests || []).length })
     setInvoices(Object.fromEntries((data.invoices || []).map((invoice: any) => [invoice.id, invoice])))
@@ -107,6 +111,15 @@ export function SalonCounter({ orgId, setup, canWrite, flash }: {
   }, [menuFor])
 
   const staffName = useMemo(() => Object.fromEntries(setup.staff.map((member) => [member.id, member.name])), [setup.staff])
+  const notice = useMemo(() => new Map(attendance.filter((m) => staffName[m.staff_id]).map((m) => [m.staff_id, m.status])), [attendance, staffName])
+  /** "Anu on leave", "Ravi half day": for the people on a visit, when the day's attendance says so */
+  const attendanceNotes = (appointment: Appointment) => {
+    const ids = [...new Set([appointment.staff_id, ...appointment.services.map((s) => s.staff_id)].filter(Boolean))] as string[]
+    return ids.filter((id) => notice.has(id)).map((id) => {
+      const status = notice.get(id)!
+      return { id, away: STATUS_INFO[status].away, text: `${staffName[id]} ${status === 'leave' ? 'on leave' : status === 'week_off' ? 'on week off' : status === 'half_day' ? 'half day' : 'absent'}` }
+    })
+  }
 
   async function setStatus(appointment: Appointment, status: 'arrived' | 'in_service' | 'cancelled' | 'no_show' | 'booked') {
     if (status === 'cancelled' && !(await confirm({ title: `Cancel ${appointment.customer_name}'s appointment?`, message: `${formatIstTime(appointment.starts_at)} · ${appointment.services.map((s) => s.name).join(', ')}`, confirmLabel: 'Cancel appointment', destructive: true }))) return
@@ -173,6 +186,16 @@ export function SalonCounter({ orgId, setup, canWrite, flash }: {
       </div>
 
       <BookingRequests orgId={orgId} requests={requests} canWrite={canWrite} flash={flash} onDone={() => load().catch(() => {})} />
+
+      {notice.size > 0 && (
+        <p className="flex items-start gap-2 rounded-2xl bg-white dark:bg-[#111b21] border border-[#e3e8f2] dark:border-slate-800 px-3.5 py-2.5 text-[13.5px] text-[#4a5672] dark:text-slate-300">
+          <UserX size={16} className="shrink-0 mt-0.5 text-[#6B7894]" />
+          <span>
+            {[...notice.values()].some((status) => STATUS_INFO[status].away) && <><span className="font-bold text-[#0E1B3D] dark:text-white">{isToday ? 'Not in today' : 'Not in that day'}:</span> {[...notice.entries()].filter(([, status]) => STATUS_INFO[status].away).map(([id, status]) => `${staffName[id]} (${STATUS_INFO[status].label.toLowerCase()})`).join(', ')}. </>}
+            {[...notice.values()].includes('half_day') && <><span className="font-bold text-[#0E1B3D] dark:text-white">Half day:</span> {[...notice.entries()].filter(([, status]) => status === 'half_day').map(([id]) => staffName[id]).join(', ')}.</>}
+          </span>
+        </p>
+      )}
 
       <div className="grid grid-cols-2 @4xl:grid-cols-4 gap-2.5 @xl:gap-3">
         <StatTile label={isToday ? 'Appointments today' : 'Appointments'} value={live.length} icon={<CalendarDays size={20} />} tone="blue" hint={`${live.filter((a) => a.status === 'completed').length} done`} />
@@ -242,6 +265,10 @@ export function SalonCounter({ orgId, setup, canWrite, flash }: {
                         <div className="mt-2 flex flex-wrap gap-1.5">
                           {appointment.services.map((service, index) => <span key={index} className="inline-flex items-center h-7 px-2.5 rounded-lg bg-[#f4f6fa] dark:bg-slate-800 text-[13px] font-semibold text-[#4a5672] dark:text-slate-300">{service.name}{mixed && serviceStaff[index] && <span className="font-normal text-[#8a94a8]">&nbsp;· {serviceStaff[index]}</span>}</span>)}
                           {paymentNote(appointment) && <span className="inline-flex items-center h-7 px-2.5 rounded-lg bg-[#eef3fe] dark:bg-slate-800 text-[12.5px] font-bold text-[#1D5BEA] dark:text-blue-300">{paymentNote(appointment)}</span>}
+                          {/* The person on this visit is away that day (attendance): the booking stays, the counter sees it */}
+                          {['booked', 'arrived'].includes(appointment.status) && attendanceNotes(appointment).map((note) => (
+                            <span key={note.id} className={`inline-flex items-center gap-1 h-7 px-2.5 rounded-lg text-[12.5px] font-bold ${note.away ? 'bg-[#fdf0f0] text-[#b91c1c] dark:bg-red-950/30 dark:text-red-300' : 'bg-[#f4f6fa] text-[#4a5672] dark:bg-slate-800 dark:text-slate-300'}`}><UserX size={13} /> {note.text}</span>
+                          ))}
                         </div>
                         <div className="mt-3 flex items-center justify-between gap-2">
                           <span className="flex items-center gap-2 min-w-0 text-[13.5px] font-semibold text-[#4a5672] dark:text-slate-300">
