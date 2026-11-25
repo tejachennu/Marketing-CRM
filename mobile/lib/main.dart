@@ -217,6 +217,8 @@ class WamaApp extends StatelessWidget {
       'video_website' => const ExplainerScreen(startId: 'website', autoplay: false),
       'video_sources' => const ExplainerScreen(startId: 'website', autoplay: false, startScene: 2, holdAt: 0.8),
       'video_end' => const ExplainerScreen(startId: 'grow', autoplay: false, showEnd: true),
+      'video_instagram' => const ExplainerScreen(startId: 'instagram', autoplay: false, holdAt: 0.9),
+      'video_ig_chat' => const ExplainerScreen(startId: 'instagram', autoplay: false, startScene: 1, holdAt: 0.9),
       'videos' => const ExplainerLibraryScreen(),
       'more' => const HomeShell(tab: 4),
       'chat_ai' => ChatScreen(conversation: app.chatsOf('whatsapp').first, showSuggestions: true),

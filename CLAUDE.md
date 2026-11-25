@@ -140,7 +140,16 @@ Email: `HOSTINGER_SMTP_*`, `SENDGRID_*`. Other: `NEXT_PUBLIC_APP_URL`, `CRON_SEC
     and Next video, Watch again | Done, the **Customers from every side** card (we also give you your own website:
     store or booking site; Google / Instagram / WhatsApp / Ads → Your website → More sales; Watch: Your own website),
     and All videos with ticks for watched ones. Previews `video_website`, `video_sources`, `video_end`.
-  - New Telugu / Hindi words (website video, sound, end screen) were written here, not yet checked by a native speaker.
+  - New video **Instagram, just like WhatsApp** (`id: 'instagram'`, 3rd; owner: "we support Instagram too ... automatic
+    comment reply and chat, automatic orders, booking"): scene kinds `igComments` (a post; each question gets the AI's
+    reply under it, "DM sent") and `igChat` (an Instagram DM: the AI answers with an Order now / Book a time button, then
+    the confirmation card); flat Instagram blue / pink, no gradients. Welcome slides: an Instagram line on Front Desk
+    and E-commerce. Words: the AI sends the order / booking link in the chat (it does not place orders itself).
+  - `mobile/test/record_videos.dart` (not in the test run) records the videos as frames from the player itself
+    (`VIDEOS=grow:en,website:te FPS=12`), then `ffmpeg -framerate 12 -i <dir>/%05d.png -c:v libx264 -pix_fmt yuv420p`.
+    Silent (the voice is the phone's).
+  - New Telugu / Hindi words (website and Instagram videos, sound, end screen) were written here, not yet checked by a
+    native speaker.
 
 - **Expenses and profit, with a monthly AI review of sales** (owner, 25 Nov 2026: "expenditure ... salaries, expenditure and all
   types ... expenditure sale graphs ... monthly one time AI insight about the sales ... improvements and sales strategies").

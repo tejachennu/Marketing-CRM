@@ -46,6 +46,8 @@ class SceneView extends StatelessWidget {
       SceneKind.growth => _GrowthScene(scene: scene, t: t, lang: lang),
       SceneKind.website => _WebsiteScene(scene: scene, t: t, lang: lang),
       SceneKind.sources => _SourcesScene(scene: scene, t: t, lang: lang),
+      SceneKind.igComments => _IgCommentsScene(scene: scene, t: t, lang: lang),
+      SceneKind.igChat => _IgChatScene(scene: scene, t: t, lang: lang),
       SceneKind.end => _EndScene(t: t),
     };
     // A scene is a picture scaled to the screen as a whole: the phone's text size must not grow the words inside it
@@ -1567,6 +1569,396 @@ class _RoadsPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_RoadsPainter old) => old.grow != grow || old.travel != travel;
+}
+
+// ── Instagram: flat Instagram colours (blue for the shop's messages, pink for likes), no gradients ──
+
+const _igBlue = Color(0xFF3797F0);
+const _igPink = Color(0xFFE1306C);
+const _igGrey = Color(0xFFEFEFEF);
+const _igLine = Color(0xFFDBDBDB);
+const _igInk = Color(0xFF262626);
+
+/// The shop's round picture with Instagram's ring.
+Widget _igAvatar(double size) => Container(
+  width: size,
+  height: size,
+  padding: const EdgeInsets.all(2),
+  decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: _igPink, width: 1.6)),
+  child: ClipOval(
+    child: ColoredBox(
+      color: Brand.blue,
+      child: Image.asset('assets/app_icon.png', fit: BoxFit.cover, errorBuilder: (_, _, _) => const Icon(Icons.storefront, color: Colors.white, size: 12)),
+    ),
+  ),
+);
+
+Widget _igSoftBox() => Positioned.fill(
+  child: Container(
+    decoration: BoxDecoration(color: _soft, borderRadius: BorderRadius.circular(28)),
+  ),
+);
+
+/// A post with comments: each question gets the AI's reply under it, then "DM sent".
+class _IgCommentsScene extends StatelessWidget {
+  const _IgCommentsScene({required this.scene, required this.t, required this.lang});
+  final Scene scene;
+  final double t;
+  final String lang;
+
+  static const _people = ['priya.s', 'ravi_k', 'anu.m'];
+
+  @override
+  Widget build(BuildContext context) {
+    final n = scene.chat.length;
+    final step = 0.7 / math.max(n, 1);
+    final like = phase(t, 0.08, 0.16);
+    var person = 0;
+    final rows = <Widget>[];
+    for (var i = 0; i < n; i++) {
+      final b = scene.chat[i];
+      final at = 0.14 + i * step;
+      final p = phase(t, at, at + 0.1);
+      if (p <= 0) continue;
+      final name = b.me ? 'yourshop' : _people[person++ % _people.length];
+      rows.add(
+        rise(
+          p,
+          Padding(
+            padding: EdgeInsets.only(left: b.me ? 26 : 0, top: 6),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                b.me
+                    ? _igAvatar(20)
+                    : CircleAvatar(
+                        radius: 10,
+                        backgroundColor: const Color(0xFFE6E6E6),
+                        child: Text(name[0].toUpperCase(), style: const TextStyle(fontSize: 9, fontWeight: FontWeight.w700, color: _igInk)),
+                      ),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text.rich(
+                        TextSpan(
+                          children: [
+                            TextSpan(text: '$name ', style: const TextStyle(fontWeight: FontWeight.w700)),
+                            TextSpan(text: b.text.of(lang)),
+                          ],
+                        ),
+                        style: const TextStyle(fontSize: 11, color: _igInk, height: 1.3),
+                      ),
+                      if (b.ai)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 2),
+                          child: Row(
+                            children: [
+                              const Icon(Icons.auto_awesome, size: 9, color: _igBlue),
+                              const SizedBox(width: 3),
+                              Text(VideoWords.aiReply.of(lang), style: const TextStyle(fontSize: 9, fontWeight: FontWeight.w700, color: _igBlue)),
+                            ],
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          dy: 10,
+        ),
+      );
+    }
+    return Stack(
+      children: [
+        _igSoftBox(),
+        Center(
+          child: _Phone(
+            screen: Colors.white,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                // The post's top: the shop
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(10, 12, 10, 8),
+                  child: Row(
+                    children: [
+                      _igAvatar(26),
+                      const SizedBox(width: 7),
+                      const Expanded(child: Text('yourshop', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: _igInk))),
+                      const Icon(Icons.more_horiz, size: 16, color: _igInk),
+                    ],
+                  ),
+                ),
+                // The picture
+                Container(
+                  height: 112,
+                  color: const Color(0xFFFCE4EC),
+                  child: Stack(
+                    children: [
+                      const Center(child: Icon(Icons.checkroom, size: 58, color: _igPink)),
+                      Positioned(
+                        left: 10,
+                        bottom: 8,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(99)),
+                          child: Text(VideoWords.newArrivals.of(lang), style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: _igInk)),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                // Like, comment, share
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(10, 7, 10, 2),
+                  child: Row(
+                    children: [
+                      Transform.scale(
+                        scale: 1 + 0.25 * math.sin(like * math.pi),
+                        child: Icon(like > 0.5 ? Icons.favorite : Icons.favorite_border, size: 19, color: like > 0.5 ? _igPink : _igInk),
+                      ),
+                      const SizedBox(width: 12),
+                      const Icon(Icons.mode_comment_outlined, size: 18, color: _igInk),
+                      const SizedBox(width: 12),
+                      const Icon(Icons.send_outlined, size: 18, color: _igInk),
+                      const Spacer(),
+                      const Icon(Icons.bookmark_border, size: 19, color: _igInk),
+                    ],
+                  ),
+                ),
+                // The comments, newest at the bottom
+                Expanded(
+                  child: ClipRect(
+                    child: SingleChildScrollView(
+                      reverse: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      padding: const EdgeInsets.fromLTRB(10, 0, 10, 6),
+                      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: rows),
+                    ),
+                  ),
+                ),
+                Container(
+                  margin: const EdgeInsets.fromLTRB(8, 0, 8, 8),
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+                  decoration: BoxDecoration(borderRadius: BorderRadius.circular(99), border: Border.all(color: _igLine)),
+                  child: Row(
+                    children: [
+                      _igAvatar(16),
+                      const SizedBox(width: 6),
+                      Text(VideoWords.message.of(lang), style: const TextStyle(fontSize: 10.5, color: Color(0xFF8E8E8E))),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        // "DM sent", beside the phone
+        Positioned(
+          right: 8,
+          top: 150,
+          child: pop(
+            phase(t, 0.34, 0.46),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+              decoration: BoxDecoration(color: _igBlue, borderRadius: BorderRadius.circular(99), boxShadow: const [BoxShadow(color: Color(0x260B141A), blurRadius: 8, offset: Offset(0, 3))]),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.send, color: Colors.white, size: 13),
+                  const SizedBox(width: 4),
+                  Text(VideoWords.dmSent.of(lang), style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w700)),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// An Instagram DM: the customer asks, the AI answers (typing first) with a button to order or book, then the
+/// confirmation card.
+class _IgChatScene extends StatelessWidget {
+  const _IgChatScene({required this.scene, required this.t, required this.lang});
+  final Scene scene;
+  final double t;
+  final String lang;
+
+  @override
+  Widget build(BuildContext context) {
+    final n = scene.chat.length;
+    final step = 0.74 / math.max(n, 1);
+    final rows = <Widget>[];
+    for (var i = 0; i < n; i++) {
+      final b = scene.chat[i];
+      final at = 0.08 + i * step;
+      final p = phase(t, at, at + 0.1);
+      final typing = b.me && !b.card && t > at - step * 0.55 && t < at;
+      if (typing) {
+        rows.add(Align(alignment: Alignment.centerRight, child: _igTyping()));
+      } else if (p > 0) {
+        rows.add(
+          Align(
+            alignment: b.card ? Alignment.center : (b.me ? Alignment.centerRight : Alignment.centerLeft),
+            child: rise(p, b.card ? _BubbleView(bubble: b, lang: lang) : _igBubble(b), dy: 14),
+          ),
+        );
+      }
+      rows.add(const SizedBox(height: 7));
+    }
+    return Stack(
+      children: [
+        _igSoftBox(),
+        Center(
+          child: _Phone(
+            screen: Colors.white,
+            child: Column(
+              children: [
+                // The DM's header
+                Container(
+                  padding: const EdgeInsets.fromLTRB(10, 12, 10, 9),
+                  decoration: const BoxDecoration(border: Border(bottom: BorderSide(color: _igLine, width: 0.8))),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.arrow_back_ios_new, size: 13, color: _igInk),
+                      const SizedBox(width: 6),
+                      _igAvatar(28),
+                      const SizedBox(width: 7),
+                      const Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text('yourshop', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: _igInk)),
+                            Text('Instagram', style: TextStyle(fontSize: 10, color: Color(0xFF8E8E8E))),
+                          ],
+                        ),
+                      ),
+                      const Icon(Icons.call_outlined, size: 17, color: _igInk),
+                      const SizedBox(width: 10),
+                      const Icon(Icons.videocam_outlined, size: 19, color: _igInk),
+                    ],
+                  ),
+                ),
+                Expanded(
+                  child: ClipRect(
+                    child: LayoutBuilder(
+                      builder: (context, box) => SingleChildScrollView(
+                        reverse: true,
+                        physics: const NeverScrollableScrollPhysics(),
+                        padding: const EdgeInsets.fromLTRB(9, 10, 9, 8),
+                        child: ConstrainedBox(
+                          constraints: BoxConstraints(minHeight: math.max(0, box.maxHeight - 18)),
+                          child: Column(mainAxisAlignment: MainAxisAlignment.end, children: rows),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                Container(
+                  margin: const EdgeInsets.fromLTRB(8, 0, 8, 8),
+                  padding: const EdgeInsets.fromLTRB(5, 5, 10, 5),
+                  decoration: BoxDecoration(color: _igGrey, borderRadius: BorderRadius.circular(99)),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 22,
+                        height: 22,
+                        decoration: const BoxDecoration(color: _igBlue, shape: BoxShape.circle),
+                        child: const Icon(Icons.camera_alt, size: 12, color: Colors.white),
+                      ),
+                      const SizedBox(width: 7),
+                      Expanded(child: Text(VideoWords.message.of(lang), style: const TextStyle(fontSize: 10.5, color: Color(0xFF8E8E8E)))),
+                      const Icon(Icons.mic_none, size: 15, color: _igInk),
+                      const SizedBox(width: 6),
+                      const Icon(Icons.image_outlined, size: 15, color: _igInk),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _igTyping() => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+    decoration: BoxDecoration(color: _igGrey, borderRadius: BorderRadius.circular(18)),
+    child: Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        for (var i = 0; i < 3; i++)
+          Container(
+            width: 6,
+            height: 6,
+            margin: const EdgeInsets.symmetric(horizontal: 2),
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: const Color(0xFF8E8E8E).withValues(alpha: 0.35 + 0.65 * (0.5 + 0.5 * math.sin(t * 40 - i * 1.2)).clamp(0.0, 1.0)),
+            ),
+          ),
+      ],
+    ),
+  );
+
+  Widget _igBubble(Bubble b) => Column(
+    crossAxisAlignment: b.me ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+    mainAxisSize: MainAxisSize.min,
+    children: [
+      Container(
+        constraints: const BoxConstraints(maxWidth: 178),
+        padding: const EdgeInsets.fromLTRB(11, 8, 11, 8),
+        decoration: BoxDecoration(color: b.me ? _igBlue : _igGrey, borderRadius: BorderRadius.circular(18)),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (b.ai)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 3),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.auto_awesome, size: 10, color: Color(0xE6FFFFFF)),
+                    const SizedBox(width: 3),
+                    Text(VideoWords.aiReply.of(lang), style: const TextStyle(fontSize: 9, fontWeight: FontWeight.w700, color: Color(0xE6FFFFFF))),
+                  ],
+                ),
+              ),
+            Text(b.text.of(lang), style: TextStyle(fontSize: 12, color: b.me ? Colors.white : _igInk, height: 1.3)),
+          ],
+        ),
+      ),
+      if (b.button != null)
+        Container(
+          margin: const EdgeInsets.only(top: 4),
+          width: 178,
+          padding: const EdgeInsets.symmetric(vertical: 7),
+          decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12), border: Border.all(color: _igLine)),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(Icons.open_in_new, size: 13, color: _igBlue),
+              const SizedBox(width: 4),
+              Flexible(
+                child: Text(
+                  b.button!.of(lang),
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: _igBlue),
+                ),
+              ),
+            ],
+          ),
+        ),
+    ],
+  );
 }
 
 /// The last scene: the app's mark, with a tick.

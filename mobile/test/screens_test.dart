@@ -72,6 +72,8 @@ void main() {
       'video_website',
       'video_sources',
       'video_end',
+      'video_instagram',
+      'video_ig_chat',
       'videos',
     ],
     flows: [

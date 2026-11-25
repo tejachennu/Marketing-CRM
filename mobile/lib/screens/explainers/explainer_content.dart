@@ -22,7 +22,7 @@ class Tx {
 }
 
 /// How a scene moves (see explainer_scenes.dart).
-enum SceneKind { picture, flow, chat, languages, inbox, alerts, ad, growth, website, sources, end }
+enum SceneKind { picture, flow, chat, languages, inbox, alerts, ad, growth, website, sources, igComments, igChat, end }
 
 /// A chat bubble in a chat scene: from the customer, from the business (or its AI), or a card (booking, order).
 class Bubble {
@@ -224,6 +224,100 @@ const explainers = <Explainer>[
         ],
       ),
       Scene(SceneKind.end, ms: 4200, title: Tx('Get found, get orders', 'కస్టమర్లు మిమ్మల్ని కనుగొంటారు, ఆర్డర్లు వస్తాయి', 'ग्राहक आपको ढूँढेंगे, ऑर्डर आएँगे'), line: _endLine),
+    ],
+  ),
+  // ── Instagram, like WhatsApp (owner, 25 Nov 2026: "we support Instagram too, like WhatsApp: automatic comment reply
+  // and chat, automatic orders, booking") ──
+  Explainer(
+    id: 'instagram',
+    icon: Icons.camera_alt_outlined,
+    title: Tx('Instagram, just like WhatsApp', 'WhatsApp లాగే Instagram కూడా', 'WhatsApp की तरह Instagram भी'),
+    summary: Tx(
+      'Comments and DMs answered by AI, and orders and bookings from them.',
+      'కామెంట్లకు, DMలకు AI జవాబిస్తుంది. వాటి నుంచే ఆర్డర్లు, బుకింగ్‌లు.',
+      'कमेंट और DM का जवाब AI देता है, और उन्हीं से ऑर्डर और बुकिंग।',
+    ),
+    scenes: [
+      Scene(
+        SceneKind.igComments,
+        ms: 6600,
+        title: Tx('Every comment gets a reply', 'ప్రతి కామెంట్‌కి జవాబు', 'हर कमेंट का जवाब'),
+        line: Tx(
+          'Someone asks the price under your post. The AI replies at once and sends the details in a DM.',
+          'మీ పోస్ట్ కింద ఎవరైనా ధర అడిగితే, AI వెంటనే జవాబిచ్చి, వివరాలు DM లో పంపుతుంది.',
+          'आपकी पोस्ट के नीचे कोई दाम पूछे, तो AI तुरंत जवाब देता है और डिटेल DM में भेजता है।',
+        ),
+        chat: [
+          Bubble(Tx('Price please?', 'Price ఎంత?', 'Price कितना है?')),
+          Bubble(Tx('Sent you the details in a DM 👍', 'వివరాలు DM లో పంపాం 👍', 'डिटेल DM में भेज दी 👍'), me: true, ai: true),
+          Bubble(Tx('Delivery to Hyderabad?', 'Hyderabad కి డెలివరీ ఉందా?', 'Hyderabad में डिलीवरी है?')),
+          Bubble(Tx('Yes! Check your DM for the link.', 'ఉంది! లింక్ DM లో చూడండి.', 'हाँ! लिंक DM में देखें।'), me: true, ai: true),
+        ],
+      ),
+      Scene(
+        SceneKind.igChat,
+        ms: 7000,
+        title: Tx('DMs answered day and night', 'DMలకు రాత్రీ పగలూ జవాబు', 'DM का जवाब दिन-रात'),
+        line: Tx(
+          'The AI answers in your customer\'s language and helps them order.',
+          'కస్టమర్ భాషలోనే AI జవాబిచ్చి, ఆర్డర్ చేయడంలో సాయం చేస్తుంది.',
+          'AI ग्राहक की भाषा में जवाब देता है और ऑर्डर करने में मदद करता है।',
+        ),
+        chat: [
+          Bubble(Tx('Hi, is the blue kurta there in M size?', 'Hi, blue kurta M size ఉందా?', 'Hi, blue kurta M size में है?')),
+          Bubble(
+            Tx('Yes, it is in stock! Tap below to order.', 'ఉంది, స్టాక్‌లో ఉంది! కింద నొక్కి ఆర్డర్ చేయండి.', 'हाँ, स्टॉक में है! नीचे दबाकर ऑर्डर करें।'),
+            me: true,
+            ai: true,
+            button: Tx('Order now', 'ఆర్డర్ చేయండి', 'ऑर्डर करें'),
+          ),
+          Bubble(Tx('Done, ordered 😊', 'చేశాను, ఆర్డర్ అయింది 😊', 'कर दिया, ऑर्डर हो गया 😊')),
+          Bubble(Tx('Order placed · Blue kurta (M)', 'ఆర్డర్ వచ్చింది · Blue kurta (M)', 'ऑर्डर आया · Blue kurta (M)'), me: true, card: true),
+        ],
+      ),
+      Scene(
+        SceneKind.igChat,
+        ms: 6600,
+        title: Tx('Bookings from Instagram too', 'Instagram నుంచి బుకింగ్‌లు కూడా', 'Instagram से बुकिंग भी'),
+        line: Tx(
+          'Customers pick a time from the chat, and it shows on your Front Desk.',
+          'కస్టమర్లు చాట్ నుంచే టైమ్ ఎంచుకుంటారు, అది మీ Front Desk లో కనిపిస్తుంది.',
+          'ग्राहक चैट से ही समय चुनते हैं, और वह आपके Front Desk में दिखता है।',
+        ),
+        chat: [
+          Bubble(Tx('Can I book a facial tomorrow?', 'రేపు facial బుక్ చేయొచ్చా?', 'कल facial बुक कर सकते हैं?')),
+          Bubble(
+            Tx('Yes! Pick a time that suits you.', 'అలాగే! మీకు నచ్చిన టైమ్ ఎంచుకోండి.', 'हाँ! अपनी पसंद का समय चुनें।'),
+            me: true,
+            ai: true,
+            button: Tx('Book a time', 'టైమ్ బుక్ చేయండి', 'समय बुक करें'),
+          ),
+          Bubble(Tx('Booked · Tomorrow, 11:30 am', 'బుక్ అయింది · రేపు, ఉదయం 11:30', 'बुक हो गया · कल, सुबह 11:30'), me: true, card: true),
+        ],
+      ),
+      Scene(
+        SceneKind.flow,
+        ms: 5800,
+        title: Tx('From a comment to a sale', 'కామెంట్ నుంచి సేల్ వరకు', 'कमेंट से बिक्री तक'),
+        line: Tx(
+          'Instagram and WhatsApp chats in one app, with the same AI.',
+          'Instagram, WhatsApp చాట్‌లు ఒకే యాప్‌లో, అదే AI తో.',
+          'Instagram और WhatsApp की चैट एक ही ऐप में, उसी AI के साथ।',
+        ),
+        items: [
+          Item(Icons.photo_outlined, Tx('Your post', 'మీ పోస్ట్', 'आपकी पोस्ट')),
+          Item(Icons.mode_comment_outlined, Tx('Comment', 'కామెంట్', 'कमेंट')),
+          Item(Icons.smart_toy_outlined, Tx('AI reply', 'AI జవాబు', 'AI जवाब')),
+          Item(Icons.send_outlined, Tx('DM', 'DM', 'DM')),
+          Item(Icons.shopping_bag_outlined, Tx('Order or booking', 'ఆర్డర్ లేదా బుకింగ్', 'ऑर्डर या बुकिंग')),
+        ],
+      ),
+      Scene(
+        SceneKind.end,
+        ms: 4200,
+        title: Tx('Sell on Instagram while you sleep', 'మీరు నిద్రపోతున్నా Instagram లో అమ్మకాలు', 'आप सोएँ तब भी Instagram पर बिक्री'),
+        line: Tx('Connect Instagram, then switch on auto replies.', 'Instagram కనెక్ట్ చేసి, ఆటో రిప్లైలు ఆన్ చేయండి.', 'Instagram जोड़ें, फिर ऑटो रिप्लाई चालू करें।'),
+      ),
     ],
   ),
   // ── 2. Auto replies ──
@@ -473,6 +567,10 @@ class VideoWords {
   static const bookingDone = Tx('Booking confirmed', 'బుకింగ్ కన్ఫర్మ్ అయింది', 'बुकिंग पक्की हुई');
   static const ownDomain = Tx('On your own domain', 'మీ సొంత డొమైన్‌లో', 'आपके अपने डोमेन पर');
   static const yourWebsite = Tx('Your website', 'మీ వెబ్‌సైట్', 'आपकी वेबसाइट');
+  // The Instagram scenes
+  static const newArrivals = Tx('New arrivals', 'కొత్త కలెక్షన్', 'नया कलेक्शन');
+  static const dmSent = Tx('DM sent', 'DM పంపాం', 'DM भेजा');
+  static const message = Tx('Message…', 'మెసేజ్…', 'मैसेज…');
   // The screen after a video
   static const videoDone = Tx('Video done', 'వీడియో పూర్తయింది', 'वीडियो पूरा हुआ');
   static const upNext = Tx('Up next', 'తర్వాత', 'अगला');
