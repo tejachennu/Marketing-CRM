@@ -9,7 +9,7 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { CalendarCheck, Check, Clock, CreditCard, Loader2, MapPin, MessageCircle, Phone, Store, User } from 'lucide-react'
+import { CalendarCheck, Check, Clock, CreditCard, Loader2, MapPin, MessageCircle, Phone, Search, Store, User } from 'lucide-react'
 import { PhoneField } from '@/components/phone-field'
 import type { BookingPageView } from '@/lib/salon/booking-page'
 import { bookingPayOptions } from '@/lib/salon/booking-pay'
@@ -116,11 +116,20 @@ function Wizard({ page, days, startService, startPerson, embedded = false, colou
   const today = istDate()
   const unpaidKey = `booking-unpaid:${page.slug}`
 
+  // Many services: a search box and type chips, so the list stays short (picked ones always stay in view)
+  const [find, setFind] = useState('')
+  const [kind, setKind] = useState<string | null>(null)
+  const manyServices = page.services.length > 8
+  const kinds = useMemo(() => [...new Set(page.services.map((s) => s.category))], [page.services])
   const categories = useMemo(() => {
+    const words = find.trim().toLowerCase()
     const map = new Map<string, BookingPageView['services']>()
-    for (const service of page.services) map.set(service.category, [...(map.get(service.category) || []), service])
+    for (const service of page.services) {
+      const fits = (!kind || service.category === kind) && (!words || `${service.name} ${service.category}`.toLowerCase().includes(words))
+      if (fits || picked.includes(service.id)) map.set(service.category, [...(map.get(service.category) || []), service])
+    }
     return [...map.entries()]
-  }, [page.services])
+  }, [page.services, find, kind, picked])
 
   // People who can do every picked service
   const people = useMemo(() => page.staff.filter((m) => !m.service_ids.length || picked.every((id) => m.service_ids.includes(id))), [page.staff, picked])
@@ -372,6 +381,26 @@ function Wizard({ page, days, startService, startPerson, embedded = false, colou
   return shell(
     <>
       <Step number={1} title="Choose services" done={picked.length > 0}>
+        {manyServices && (
+          <div className="mb-3 space-y-2">
+            <div className="relative">
+              <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#8a94a8] pointer-events-none" aria-hidden />
+              <input value={find} onChange={(e) => setFind(e.target.value)} placeholder="Search services" aria-label="Search services"
+                className="w-full h-11 pl-9 pr-3 rounded-xl border border-[#d5ddeb] bg-white text-base sm:text-[14.5px] focus:outline-none focus:border-[var(--bk)]" />
+            </div>
+            {kinds.length > 1 && (
+              <div className="flex gap-1.5 overflow-x-auto no-scrollbar -mx-1 px-1 pb-0.5" role="group" aria-label="Service types">
+                {[null, ...kinds].map((k) => (
+                  <button key={k || 'all'} type="button" aria-pressed={kind === k} onClick={() => setKind(k)}
+                    className={`shrink-0 h-8 px-3 rounded-full border text-[13px] font-semibold cursor-pointer ${kind === k ? 'border-[var(--bk)] bg-[var(--bk)] text-white' : 'border-[#d5ddeb] bg-white text-[#4a5672]'}`}>
+                    {k || 'All'}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+        {categories.length === 0 && <p className="text-[14px] text-[#6B7894]">No service matches. Try another word.</p>}
         <div className="space-y-4">
           {categories.map(([category, services]) => (
             <div key={category}>

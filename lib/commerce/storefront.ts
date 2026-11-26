@@ -274,6 +274,13 @@ export function productExtras(p: any): Pick<StoreProduct, 'mrp' | 'brand' | 'add
   }
 }
 
+/** Takes the brand off products whose brand is just the business's (or the store's) own name. */
+export function dropOwnBrand<T extends { brand?: string }>(products: T[], names: (string | null | undefined)[]): T[] {
+  const own = new Set(names.map((n) => String(n || '').trim().toLowerCase()).filter(Boolean))
+  for (const p of products) if (p.brand && own.has(p.brand.trim().toLowerCase())) delete p.brand
+  return products
+}
+
 /**
  * Why the store's AI chat cannot answer right now, in plain words for the owner; null when it can. The chat button is
  * shown only when this is null, so shoppers never meet a chat that only says sorry.
@@ -370,6 +377,9 @@ export async function loadStore(db: any, slug: string): Promise<StorePage | null
       video: readVideo(p.video_url),
       ...productExtras(p),
     }))
+  // Meta's catalog needs a brand, so synced products often carry the business's own name as their brand: that is
+  // not a brand worth showing on every card (or as a filter)
+  dropOwnBrand(products, [org.name, settings.title])
   // Stars on every card: the average of each product's published reviews (none yet = no stars)
   const ratings = await ratingsFor(db, org.id)
   for (const p of products) {

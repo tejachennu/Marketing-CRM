@@ -1,7 +1,6 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { ArrowLeft, ArrowRight, BadgeCheck, Bot, Eye, EyeOff, Loader2, Megaphone, MessageCircle, Moon, RefreshCw, ShieldCheck, ShoppingBag, Sun } from 'lucide-react'
 import { WamaLogo } from '@/components/brand/wama-logo'
@@ -25,8 +24,15 @@ function storeSession(data: any) {
   document.cookie = `user-logged-in=true; path=/; max-age=${60 * 60 * 24 * 7}; samesite=lax`
 }
 
+/**
+ * Into the dashboard with a full page load, not an in-page move: a sign-in right after a new version went live (or
+ * with an old page still open) then never shows "Something went wrong" before the dashboard.
+ */
+function openDashboard() {
+  window.location.replace('/dashboard')
+}
+
 export default function LoginPage() {
-  const router = useRouter()
 
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -78,7 +84,7 @@ export default function LoginPage() {
 
       if (data.session) {
         storeSession(data)
-        router.replace('/dashboard')
+        openDashboard()
       } else if (data.otpRequired) {
         setOtpSentEmail(data.email || email)
         setOtpRequired(true)
@@ -106,8 +112,7 @@ export default function LoginPage() {
       const data = await response.json()
       if (!response.ok) throw new Error(data.error || 'That code did not work. Please try again.')
       storeSession(data)
-      document.cookie = `user-logged-in=true; path=/; max-age=${60 * 60 * 24 * 7}; samesite=lax`
-      router.replace('/dashboard')
+      openDashboard()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'That code did not work. Please try again.')
     } finally {

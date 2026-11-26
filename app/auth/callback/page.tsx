@@ -32,11 +32,16 @@ export default function OAuthCallback() {
         if (problem) throw new Error(problem.replace(/\+/g, ' '))
         const client = getSupabase()
         const code = url.searchParams.get('code')
-        const result = code
+        let result: { data: { session: any }; error: any } = code
           ? await client.auth.exchangeCodeForSession(code)
           : hash.get('access_token') && hash.get('refresh_token')
             ? await client.auth.setSession({ access_token: hash.get('access_token')!, refresh_token: hash.get('refresh_token')! })
             : await client.auth.getSession()
+        // The code was already used (this page opened twice, or Back was pressed) but the sign-in went through: carry on
+        if (result.error || !result.data.session) {
+          const saved = await client.auth.getSession()
+          if (saved.data.session) result = saved
+        }
         if (result.error) throw result.error
         const session = result.data.session
         if (!session) throw new Error('The sign-in did not finish. Please try again.')
@@ -50,7 +55,7 @@ export default function OAuthCallback() {
         if (!res.ok) throw new Error(data.error || 'The sign-in did not finish. Please try again.')
         if (data.ready) {
           sessionStorage.removeItem('signup_plan')
-          router.replace('/dashboard')
+          window.location.replace('/dashboard')
           return
         }
         setToken(session.access_token)

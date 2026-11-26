@@ -11,6 +11,8 @@ import { announceFrontDeskBadges } from '@/lib/front-desk-nav'
 import { api, Avatar, card, primaryButton, StatTile } from './ui'
 import { BillSheet, BookingSheet, ResultSheet, type BillTarget, type BookingDraft } from './counter-sheets'
 import { BookingRequests } from './booking-requests'
+import { NewBookings } from './new-bookings'
+import type { FreshBooking } from '@/lib/salon/new-bookings'
 import type { Appointment, SalonSetup } from './types'
 
 type Flash = (tone: 'success' | 'error', text: string) => void
@@ -57,6 +59,8 @@ export function SalonCounter({ orgId, setup, canWrite, flash }: {
   const [date, setDate] = useState(today)
   const [appointments, setAppointments] = useState<Appointment[]>([])
   const [requests, setRequests] = useState<Appointment[]>([])
+  // Bookings customers made themselves lately, for any day (website, WhatsApp, API)
+  const [fresh, setFresh] = useState<FreshBooking[]>([])
   const [invoices, setInvoices] = useState<Record<string, any>>({})
   // Who is not simply present that day (attendance): on leave, absent, week off, half day
   const [attendance, setAttendance] = useState<{ staff_id: string; status: AttendanceStatus }[]>([])
@@ -77,6 +81,7 @@ export function SalonCounter({ orgId, setup, canWrite, flash }: {
     const data = await api(`/api/salon/appointments?organizationId=${orgId}&date=${date}`)
     setAppointments(data.appointments || [])
     setRequests(data.requests || [])
+    setFresh(Array.isArray(data.fresh) ? data.fresh : [])
     setAttendance(Array.isArray(data.attendance) ? data.attendance : [])
     // The bottom bar shows how many WhatsApp booking requests are waiting
     announceFrontDeskBadges({ counter: (data.requests || []).length })
@@ -185,6 +190,7 @@ export function SalonCounter({ orgId, setup, canWrite, flash }: {
         )}
       </div>
 
+      <NewBookings orgId={orgId} bookings={fresh} onOpenDay={(day) => { setDate(day); window.scrollTo({ top: 0, behavior: 'smooth' }) }} />
       <BookingRequests orgId={orgId} requests={requests} canWrite={canWrite} flash={flash} onDone={() => load().catch(() => {})} />
 
       {notice.size > 0 && (

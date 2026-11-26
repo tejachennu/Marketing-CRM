@@ -19,9 +19,9 @@ export function ServicesMenu({ services, showPrices, money, bookable = true }: {
   void money
   return (
     <div>
-      <div className="flex flex-col sm:flex-row gap-3 sm:items-center">
+      <div className="flex flex-col sm:flex-row gap-3 sm:items-start">
         {categories.length > 1 && (
-          <div role="tablist" aria-label="Service types" className="flex gap-2 overflow-x-auto no-scrollbar -mx-4 px-4 sm:mx-0 sm:px-0 flex-1">
+          <div role="tablist" aria-label="Service types" className="flex gap-2 overflow-x-auto no-scrollbar -mx-4 px-4 sm:mx-0 sm:px-0 sm:flex-wrap sm:overflow-visible flex-1">
             <button type="button" role="tab" aria-selected={!tab} onClick={() => setTab(null)} className={`shrink-0 h-9 px-4 rounded-full text-[13.5px] font-bold border cursor-pointer ${!tab ? 'bg-[var(--c)] border-[var(--c)] text-white' : 'bg-white border-[#d5ddeb] text-[#4a5672]'}`}>All</button>
             {categories.map((c) => (
               <button key={c} type="button" role="tab" aria-selected={tab === c} onClick={() => setTab(c)} className={`shrink-0 h-9 px-4 rounded-full text-[13.5px] font-bold border cursor-pointer ${tab === c ? 'bg-[var(--c)] border-[var(--c)] text-white' : 'bg-white border-[#d5ddeb] text-[#4a5672]'}`}>{c}</button>

@@ -3,6 +3,7 @@ import { salonAccess, serverError } from '@/lib/salon/server'
 import { istDate, istDayRange } from '@/lib/salon/spoken'
 import { withSalonSchema } from '@/lib/salon/schema'
 import { dayNotices } from '@/lib/salon/attendance-store'
+import { FRESH_HOURS, SELF_BOOKED_SOURCES, freshBookings } from '@/lib/salon/new-bookings'
 
 export const runtime = 'nodejs'
 
@@ -60,13 +61,19 @@ export async function GET(request: NextRequest) {
       ? await db.from('salon_invoices').select('id, number, total, status, payment_method, public_token').eq('organization_id', organizationId).in('id', invoiceIds)
       : { data: [] as any[] }
     // Booking requests from WhatsApp waiting for the counter, from today on (whichever day is shown)
-    const [{ data: requests }, attendance] = await Promise.all([
+    const [{ data: requests }, attendance, { data: recent }] = await Promise.all([
       withSalonSchema(() => db.from('salon_appointments').select('*').eq('organization_id', organizationId).eq('status', 'requested')
         .gte('starts_at', istDayRange(istDate()).start).order('starts_at').limit(50)),
       // Who is not simply present that day (on leave, absent, week off, half day): the counter warns on their bookings
       dayNotices(db, organizationId, date),
+      // Bookings customers made themselves lately (website, WhatsApp, API), whatever day they are for: easy to miss
+      // when the counter shows one day at a time
+      db.from('salon_appointments').select('id, customer_name, customer_phone, starts_at, created_at, source, status, services, staff_id')
+        .eq('organization_id', organizationId).in('source', [...SELF_BOOKED_SOURCES]).eq('status', 'booked')
+        .gte('created_at', new Date(Date.now() - FRESH_HOURS * 3_600_000).toISOString()).gte('starts_at', istDayRange(istDate()).start)
+        .order('created_at', { ascending: false }).limit(20),
     ])
-    return NextResponse.json({ success: true, date, appointments: (appointments || []).filter((a: any) => a.status !== 'requested' && a.status !== 'awaiting_payment'), invoices: invoices || [], requests: requests || [], attendance })
+    return NextResponse.json({ success: true, date, appointments: (appointments || []).filter((a: any) => a.status !== 'requested' && a.status !== 'awaiting_payment'), invoices: invoices || [], requests: requests || [], attendance, fresh: freshBookings(recent || []) })
   } catch (error) {
     return serverError('appointments', error)
   }

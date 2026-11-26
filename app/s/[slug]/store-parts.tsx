@@ -16,6 +16,12 @@ export type Product = StoreView['products'][number]
 
 export function Picture({ src, alt, className, contain = false }: { src: string; alt: string; className: string; contain?: boolean }) {
   const [failed, setFailed] = useState(false)
+  const ref = useRef<HTMLImageElement>(null)
+  // A photo that failed before the page came alive never fires onError: check once it has
+  useEffect(() => {
+    const img = ref.current
+    if (img && img.complete && img.naturalWidth === 0) setFailed(true)
+  }, [src])
   if (!src || failed) {
     return (
       <div className={`${className} bg-[#f4f6fa] flex items-center justify-center text-[#8a94a8]`}>
@@ -25,7 +31,7 @@ export function Picture({ src, alt, className, contain = false }: { src: string;
   }
   // Product photos come from any address the business uses (Meta's catalog, its own site), so a plain img
   // eslint-disable-next-line @next/next/no-img-element
-  return <img src={src} alt={alt} loading="lazy" onError={() => setFailed(true)} className={`${className} ${contain ? 'object-contain' : 'object-cover'}`} />
+  return <img ref={ref} src={src} alt={alt} loading="lazy" onError={() => setFailed(true)} className={`${className} ${contain ? 'object-contain' : 'object-cover'}`} />
 }
 
 export function Stepper({ value, onChange, small }: { value: number; onChange: (n: number) => void; small?: boolean }) {
@@ -139,9 +145,10 @@ export function TrustStrip({ store, money }: { store: StoreView; money: (n: numb
     { icon: ShieldCheck, title: store.payOnline ? 'Secure payments' : 'Trusted local shop', note: store.payOnline ? 'UPI, cards, net banking' : 'Order on WhatsApp too' },
   ].filter(Boolean) as { icon: typeof Truck; title: string; note: string }[]
   return (
-    <section aria-label="Why shop here" className="bg-white sm:rounded-lg border-y sm:border border-[#e3e8f2] grid grid-cols-2 lg:grid-cols-4">
+    <section aria-label="Why shop here" className={`bg-white sm:rounded-lg border-y sm:border border-[#e3e8f2] grid grid-cols-2 ${['lg:grid-cols-1', 'lg:grid-cols-2', 'lg:grid-cols-3', 'lg:grid-cols-4'][items.length - 1]}`}>
       {items.map(({ icon: Icon, title, note }, i) => (
-        <div key={title} className={`flex items-center gap-3 p-3 sm:p-4 min-w-0 ${i % 2 ? 'border-l' : ''} ${i >= 2 ? 'border-t lg:border-t-0' : ''} lg:border-l lg:first:border-l-0 border-[#eef1f6]`}>
+        // An odd last one takes the whole row on phones (no half-empty row)
+        <div key={title} className={`flex items-center gap-3 p-3 sm:p-4 min-w-0 ${i % 2 ? 'border-l' : ''} ${i >= 2 ? 'border-t lg:border-t-0' : ''} ${items.length % 2 && i === items.length - 1 ? 'col-span-2 lg:col-span-1' : ''} lg:border-l lg:first:border-l-0 border-[#eef1f6]`}>
           <span className="h-10 w-10 shrink-0 rounded-full bg-[var(--c)]/10 text-[var(--c)] flex items-center justify-center"><Icon size={19} /></span>
           <span className="min-w-0">
             <span className="block text-[13px] sm:text-[14px] font-bold text-[#0E1B3D] leading-tight">{title}</span>

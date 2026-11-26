@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Loader2 } from 'lucide-react'
 import { packSession, safeReturn, shopperAuth } from '@/lib/commerce/shopper-client'
 
@@ -11,8 +11,12 @@ import { packSession, safeReturn, shopperAuth } from '@/lib/commerce/shopper-cli
  */
 export function ShopperSignIn({ slug, name, colour, domain }: { slug: string; name: string; colour: string; domain: string | null }) {
   const [error, setError] = useState('')
+  const started = useRef(false)
 
   useEffect(() => {
+    // Once only: a second try with the same code always fails, which used to show an error after a good sign-in
+    if (started.current) return
+    started.current = true
     const auth = shopperAuth()
     const params = new URLSearchParams(window.location.search)
     const back = safeReturn(params.get('return'), window.location.origin, domain)
@@ -29,11 +33,15 @@ export function ShopperSignIn({ slug, name, colour, domain }: { slug: string; na
     const code = params.get('code')
     ;(async () => {
       if (code) {
-        const { data, error } = await auth.auth.exchangeCodeForSession(code)
-        if (error || !data.session) {
+        const exchanged = await auth.auth.exchangeCodeForSession(code)
+        let session = exchanged.data?.session || null
+        // The code was already used (Back pressed, or the page opened twice) but the shopper is signed in: carry on
+        if (!session) session = (await auth.auth.getSession()).data.session
+        if (!session) {
           setError('Sign-in did not finish. Please try again.')
           return
         }
+        const data = { session }
         if (back === window.location.origin) window.location.replace(`${storeHome}?account=1`)
         else window.location.replace(`${storeHome}/?account=1#shopper=${packSession(data.session.access_token, data.session.refresh_token)}`)
         return

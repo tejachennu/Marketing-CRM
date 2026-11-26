@@ -83,8 +83,9 @@ function Banners({ store, onCategory }: { store: StoreView; onCategory: (name: s
                 <img src={banner.image} alt={banner.title || store.name} className="absolute inset-0 h-full w-full object-cover" loading={i === 0 ? 'eager' : 'lazy'} />
                 {(banner.title || banner.text || banner.button) && (
                   <span className="absolute inset-0 bg-black/35 flex flex-col justify-end p-5 sm:p-10 text-white">
-                    {banner.title && <span className="block text-[22px] sm:text-[38px] font-extrabold leading-tight max-w-xl">{banner.title}</span>}
-                    {banner.text && <span className="block mt-1 text-[14px] sm:text-[17px] text-white/90 max-w-xl">{banner.text}</span>}
+                    {/* Narrower on phones: the made pictures draw their shape on the right */}
+                    {banner.title && <span className="block text-[22px] sm:text-[38px] font-extrabold leading-tight max-w-[80%] sm:max-w-xl line-clamp-2">{banner.title}</span>}
+                    {banner.text && <span className="block mt-1 text-[14px] sm:text-[17px] text-white/90 max-w-[72%] sm:max-w-xl line-clamp-2">{banner.text}</span>}
                     {banner.button && <span className="mt-3 inline-flex w-fit items-center h-10 px-5 rounded-full bg-white text-[var(--c)] text-[14px] font-bold">{banner.button}</span>}
                   </span>
                 )}
@@ -506,10 +507,10 @@ export function Storefront({ store, startCategory, appUrl = '', basePath = '', p
       </div>
     </article>
   )
-  const gridClass = layout === 'list' ? 'grid grid-cols-1 xl:grid-cols-2 gap-px bg-[#eef1f6]'
-    : layout === 'big' ? 'grid grid-cols-1 min-[480px]:grid-cols-2 xl:grid-cols-3 gap-px bg-[#eef1f6]'
-    : layout === 'compact' ? 'grid grid-cols-3 md:grid-cols-4 xl:grid-cols-5 gap-px bg-[#eef1f6]'
-    : 'grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-px bg-[#eef1f6]'
+  const gridClass = layout === 'list' ? 'grid grid-cols-1 xl:grid-cols-2 gap-px bg-white [&>*]:outline [&>*]:outline-1 [&>*]:outline-[#eef1f6]'
+    : layout === 'big' ? 'grid grid-cols-1 min-[480px]:grid-cols-2 xl:grid-cols-3 gap-px bg-white [&>*]:outline [&>*]:outline-1 [&>*]:outline-[#eef1f6]'
+    : layout === 'compact' ? 'grid grid-cols-3 md:grid-cols-4 xl:grid-cols-5 gap-px bg-white [&>*]:outline [&>*]:outline-1 [&>*]:outline-[#eef1f6]'
+    : 'grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-px bg-white [&>*]:outline [&>*]:outline-1 [&>*]:outline-[#eef1f6]'
   const listTitle = q ? `Results for “${q}”` : category || (sort === 'discount' ? 'Best deals' : sort === 'newest' ? 'New arrivals' : 'All products')
   const nFilters = filterCount(filters)
   const filterPanel = <FilterPanel products={store.products} categories={store.categories.map((c) => c.name)} category={category} onCategory={(c) => { setCategory(c); setSheet(null) }} filters={filters} onFilters={setFilters} money={money} />
@@ -800,14 +801,15 @@ export function Storefront({ store, startCategory, appUrl = '', basePath = '', p
               {store.pages.map((key) => <li key={key}><a href={`${basePath}/info/${key}`} className="hover:underline">{STORE_PAGE_TITLES[key]}</a></li>)}
             </ul>
           </div>
-          <div>
+          {/* Only when there is a way to reach the shop (no empty heading) */}
+          {(store.address || store.phone || store.whatsapp) && <div>
             <p className="text-[12px] font-bold uppercase tracking-wide text-white/60">Contact us</p>
             <div className="mt-3 space-y-2.5 text-white/80">
               {store.address && <p className="flex gap-2"><MapPin size={17} className="shrink-0 mt-0.5" /> <span className="whitespace-pre-line">{store.address}</span></p>}
               {store.phone && <a href={`tel:${store.phone}`} className="flex gap-2 font-semibold text-white"><Phone size={17} /> {showPhone(store.phone)}</a>}
               {store.whatsapp && <a href={waLink(`Hi ${store.name}`)} target="_blank" rel="noreferrer" className="inline-flex h-10 px-4 rounded-md bg-[#25D366] text-white font-bold items-center gap-2"><MessageCircle size={17} /> Chat on WhatsApp</a>}
             </div>
-          </div>
+          </div>}
           <div>
             <p className="text-[12px] font-bold uppercase tracking-wide text-white/60">Ways to pay</p>
             <ul className="mt-3 space-y-2 text-white/80">

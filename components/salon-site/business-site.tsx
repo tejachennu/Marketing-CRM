@@ -98,6 +98,14 @@ export function BusinessSite({ view, hours, site, average, count, reviews, plans
   const solid = 'inline-flex items-center justify-center gap-2 h-12 px-6 rounded-full text-[15px] font-bold'
   const barCols = ['', 'grid-cols-1', 'grid-cols-2', 'grid-cols-3', 'grid-cols-4'][bar.small.length + (bar.main ? 2 : 0)]
 
+  // The map only with an address to show (an empty grey box looked broken)
+  const showMap = site.buttons.directions && Boolean(view.address)
+  const facts: { label: string; value: string; icon: React.ReactNode; href?: string; external?: boolean }[] = [
+    { label: 'Today', value: week.find((d) => d.today)?.time || '—', icon: <Clock size={19} /> },
+    ...(view.address ? [{ label: 'Find us', value: view.address.split('\n')[0], icon: directions ? <Navigation size={19} /> : <MapPin size={19} />, href: directions || undefined, external: true }] : []),
+    ...(callHref ? [{ label: 'Call us', value: `+${phoneDigits.replace(/^(\d{2})(\d{5})(\d+)$/, '$1 $2 $3')}`, icon: <Phone size={19} />, href: callHref }] : []),
+  ]
+
   return (
     <div style={{ ['--c' as any]: site.colour }} className={`min-h-screen bg-[#f7f8fb] text-[#0E1B3D] ${showBar ? 'pb-16 md:pb-0' : ''}`}>
       {/* Header */}
@@ -131,8 +139,7 @@ export function BusinessSite({ view, hours, site, average, count, reviews, plans
           <img src={site.cover} alt="" className="absolute inset-0 h-full w-full object-cover" />
         )}
         <div className={`absolute inset-0 ${site.cover ? 'bg-black/55' : ''}`} aria-hidden />
-        <div className={`relative max-w-6xl mx-auto px-4 ${site.cover ? 'py-20 sm:py-28' : 'py-14 sm:py-20'} ${site.cover ? '' : 'border-l-0'}`}>
-          {!site.cover && <span aria-hidden className="absolute left-0 top-0 bottom-0 w-2 bg-[var(--c)]" />}
+        <div className={`relative max-w-6xl mx-auto px-4 ${site.cover ? 'py-20 sm:py-28' : 'py-14 sm:py-20'}`}>
           <div className="max-w-2xl">
             <p className={`inline-flex items-center gap-2 h-8 px-3 rounded-full text-[13px] font-bold ${status.open ? 'bg-white text-[#0E1B3D]' : 'bg-white/15 text-white'}`}>
               <span className={`h-2 w-2 rounded-full ${status.open ? 'bg-[var(--c)]' : 'bg-white/70'}`} aria-hidden /> {status.text}
@@ -156,18 +163,15 @@ export function BusinessSite({ view, hours, site, average, count, reviews, plans
         </div>
       </section>
 
-      {/* Quick facts */}
+      {/* Quick facts: only the ones this business has (no empty boxes) */}
       <div className="max-w-6xl mx-auto px-4 -mt-6 sm:-mt-8 relative z-10">
-        <div className="bg-white rounded-2xl border border-[#e3e8f2] shadow-[0_8px_30px_rgba(14,27,61,0.08)] grid grid-cols-1 sm:grid-cols-3 divide-y sm:divide-y-0 sm:divide-x divide-[#eef1f6]">
-          <div className="p-4 flex gap-3 items-center min-w-0"><span className="h-10 w-10 shrink-0 rounded-full bg-[var(--c)]/10 text-[var(--c)] flex items-center justify-center"><Clock size={19} /></span><span className="min-w-0"><span className="block text-[12px] font-bold uppercase tracking-wide text-[#8a94a8]">Today</span><span className="block text-[14.5px] font-bold truncate">{week.find((d) => d.today)?.time || '—'}</span></span></div>
-          {view.address && directions ? (
-            <a href={directions} target="_blank" rel="noreferrer" className="p-4 flex gap-3 items-center min-w-0 hover:bg-[#f7f8fb]"><span className="h-10 w-10 shrink-0 rounded-full bg-[var(--c)]/10 text-[var(--c)] flex items-center justify-center"><Navigation size={19} /></span><span className="min-w-0"><span className="block text-[12px] font-bold uppercase tracking-wide text-[#8a94a8]">Find us</span><span className="block text-[14.5px] font-bold truncate">{view.address.split('\n')[0]}</span></span></a>
-          ) : view.address ? (
-            <div className="p-4 flex gap-3 items-center min-w-0"><span className="h-10 w-10 shrink-0 rounded-full bg-[var(--c)]/10 text-[var(--c)] flex items-center justify-center"><MapPin size={19} /></span><span className="min-w-0"><span className="block text-[12px] font-bold uppercase tracking-wide text-[#8a94a8]">Find us</span><span className="block text-[14.5px] font-bold truncate">{view.address.split('\n')[0]}</span></span></div>
-          ) : <div className="hidden sm:block" />}
-          {callHref ? (
-            <a href={callHref} className="p-4 flex gap-3 items-center min-w-0 hover:bg-[#f7f8fb]"><span className="h-10 w-10 shrink-0 rounded-full bg-[var(--c)]/10 text-[var(--c)] flex items-center justify-center"><Phone size={19} /></span><span className="min-w-0"><span className="block text-[12px] font-bold uppercase tracking-wide text-[#8a94a8]">Call us</span><span className="block text-[14.5px] font-bold truncate">+{phoneDigits.replace(/^(\d{2})(\d{5})(\d+)$/, '$1 $2 $3')}</span></span></a>
-          ) : <div className="hidden sm:block" />}
+        <div className={`bg-white rounded-2xl border border-[#e3e8f2] shadow-[0_8px_30px_rgba(14,27,61,0.08)] grid grid-cols-1 ${facts.length === 3 ? 'sm:grid-cols-3' : facts.length === 2 ? 'sm:grid-cols-2' : ''} divide-y sm:divide-y-0 sm:divide-x divide-[#eef1f6] ${facts.length === 1 ? 'sm:max-w-sm' : ''}`}>
+          {facts.map((fact) => {
+            const inner = <><span className="h-10 w-10 shrink-0 rounded-full bg-[var(--c)]/10 text-[var(--c)] flex items-center justify-center">{fact.icon}</span><span className="min-w-0"><span className="block text-[12px] font-bold uppercase tracking-wide text-[#8a94a8]">{fact.label}</span><span className="block text-[14.5px] font-bold truncate">{fact.value}</span></span></>
+            return fact.href
+              ? <a key={fact.label} href={fact.href} {...(fact.external ? { target: '_blank', rel: 'noreferrer' } : {})} className="p-4 flex gap-3 items-center min-w-0 hover:bg-[#f7f8fb] first:rounded-t-2xl last:rounded-b-2xl sm:first:rounded-l-2xl sm:first:rounded-tr-none sm:last:rounded-r-2xl sm:last:rounded-bl-none">{inner}</a>
+              : <div key={fact.label} className="p-4 flex gap-3 items-center min-w-0">{inner}</div>
+          })}
         </div>
       </div>
 
@@ -235,7 +239,7 @@ export function BusinessSite({ view, hours, site, average, count, reviews, plans
                 <div key={m.id} className="bg-white rounded-2xl border border-[#e3e8f2] p-5 text-center">
                   <span className="mx-auto h-20 w-20 rounded-full bg-[var(--c)]/10 text-[var(--c)] flex items-center justify-center text-[24px] font-extrabold">{initials(m.name)}</span>
                   <p className="mt-3 text-[16px] font-bold break-words">{m.name}</p>
-                  {cta.book && <BookButton person={m.id} className="mt-3 inline-flex h-9 px-4 rounded-full border border-[#d5ddeb] text-[13px] font-bold items-center hover:border-[var(--c)] hover:text-[var(--c)]">Book with {m.name.split(' ')[0]}</BookButton>}
+                  {cta.book && <BookButton person={m.id} className="mt-3 flex w-full h-10 px-3 rounded-full border border-[#d5ddeb] text-[13.5px] font-bold items-center justify-center gap-1.5 hover:border-[var(--c)] hover:text-[var(--c)] min-w-0"><CalendarCheck size={15} className="shrink-0" /><span className="truncate" aria-label={`Book with ${m.name}`}>Book</span></BookButton>}
                 </div>
               ))}
             </div>
@@ -315,8 +319,8 @@ export function BusinessSite({ view, hours, site, average, count, reviews, plans
         <section>
           <SectionHead id="visit" kicker="Find us" title="Visit us" />
           {/* The map goes with "Directions and map": switched off, the hours and contact card stands alone */}
-          <div className={`grid gap-4 ${site.buttons.directions ? 'lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]' : 'max-w-2xl'}`}>
-            {site.buttons.directions && (
+          <div className={`grid gap-4 ${showMap ? 'lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]' : 'max-w-2xl'}`}>
+            {showMap && (
               <div className="rounded-2xl overflow-hidden border border-[#e3e8f2] bg-[#eef1f6] min-h-[280px]">
                 {view.address ? (
                   <iframe title={`Map to ${view.business}`} src={`https://maps.google.com/maps?q=${mapQuery}&output=embed`} loading="lazy" className="w-full h-full min-h-[280px] lg:min-h-[380px] border-0" referrerPolicy="no-referrer-when-downgrade" />

@@ -21,6 +21,27 @@ function Stars({ value, onChange, size, label }: { value: number; onChange: (n: 
 
 const initials = (name: string) => name.trim().split(/\s+/).map((w) => w[0]).slice(0, 2).join('').toUpperCase()
 
+/** Copy words to the phone's clipboard (falls back to the old way on browsers without the clipboard API). */
+function copyText(text: string): boolean {
+  try {
+    if (navigator.clipboard?.writeText) { navigator.clipboard.writeText(text).catch(() => {}); return true }
+  } catch {}
+  try {
+    const box = document.createElement('textarea')
+    box.value = text
+    box.setAttribute('readonly', '')
+    box.style.position = 'fixed'
+    box.style.opacity = '0'
+    document.body.appendChild(box)
+    box.select()
+    const ok = document.execCommand('copy')
+    box.remove()
+    return ok
+  } catch {
+    return false
+  }
+}
+
 export function FeedbackForm({ token, business, logo, customerName, services, billLabel, people, closed, existing }: {
   token: string
   business: string
@@ -39,7 +60,8 @@ export function FeedbackForm({ token, business, logo, customerName, services, bi
   const [comment, setComment] = useState(existing?.comment || '')
   const [sending, setSending] = useState(false)
   const [error, setError] = useState('')
-  const [done, setDone] = useState<{ rating: number; reviewLink: string | null } | null>(null)
+  const [done, setDone] = useState<{ rating: number; reviewLink: string | null; comment: string } | null>(null)
+  const [copied, setCopied] = useState(false)
 
   const good = rating >= 4
   const tagChoices = rating ? (good ? LIKED_TAGS : ISSUE_TAGS) : []
@@ -59,7 +81,7 @@ export function FeedbackForm({ token, business, logo, customerName, services, bi
       const res = await fetch('/api/salon/feedback/submit', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token, rating, staff_ratings: staffRatings, tags, comment }) })
       const data = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(data.error || 'Your feedback could not be sent. Please try again.')
-      setDone({ rating: data.rating, reviewLink: data.reviewLink || null })
+      setDone({ rating: data.rating, reviewLink: data.reviewLink || null, comment: comment.trim() })
     } catch (err: any) {
       setError(err.message)
     } finally {
@@ -90,10 +112,23 @@ export function FeedbackForm({ token, business, logo, customerName, services, bi
         <p className="mt-2 text-[15.5px] text-[#4a5672]">
           {done.rating >= 4 ? `We are so glad you enjoyed your visit to ${business}.` : done.rating === 3 ? 'Thank you for telling us. We will keep getting better.' : `We are sorry your visit was not good. The ${business} team will call you to make it right.`}
         </p>
-        {done.reviewLink && (
-          <a href={done.reviewLink} target="_blank" rel="noopener noreferrer" className="mt-6 inline-flex items-center justify-center gap-2 h-12 px-6 rounded-xl bg-[#1D5BEA] hover:bg-[#174bc4] text-white text-[16px] font-bold">
-            <Star size={18} className="fill-white" /> Leave a Google review
-          </a>
+        {done.reviewLink && done.rating >= 4 && (
+          <>
+            {/* Google lets only the customer post a review, from their own Google account: we copy their words and
+                open the business's review box, so it is paste and Post */}
+            <a href={done.reviewLink} target="_blank" rel="noopener noreferrer" onClick={() => { if (done.comment) setCopied(copyText(done.comment)) }}
+              className="mt-6 inline-flex items-center justify-center gap-2 h-12 px-6 rounded-xl bg-[#1D5BEA] hover:bg-[#174bc4] text-white text-[16px] font-bold">
+              <Star size={18} className="fill-white" /> {done.comment ? 'Post it on Google too' : 'Leave a Google review'}
+            </a>
+            {done.comment && (
+              <p className="mt-3 text-[13.5px] text-[#4a5672]">
+                {copied ? 'Your words are copied. On Google, tap the box, paste them and tap Post.' : 'It takes a few seconds: we copy your words, you paste them on Google and tap Post.'}
+              </p>
+            )}
+          </>
+        )}
+        {done.reviewLink && done.rating < 4 && (
+          <p className="mt-6 text-[13.5px] text-[#6B7894]">You can also <a href={done.reviewLink} target="_blank" rel="noopener noreferrer" className="font-semibold text-[#1D5BEA] underline">review us on Google</a>.</p>
         )}
         <p className="mt-6 text-[13px] text-[#8a94a8]">You can close this page.</p>
       </div>

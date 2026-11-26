@@ -121,10 +121,14 @@ export function parseFeedbackButton(id: unknown): { invoiceId: string; rating: n
   return match ? { invoiceId: match[1].toLowerCase(), rating: Number(match[2]) } : null
 }
 
+/**
+ * The thank-you after a rating on WhatsApp. The Google review link goes with every rating (asked warmly after a good
+ * visit, offered quietly otherwise): Google does not allow asking only happy customers for reviews.
+ */
 export function thanksText(rating: number, reviewLink?: string | null): string {
   if (rating >= 4) return `Thank you so much! 😊 We are glad you enjoyed it.${reviewLink ? `\nIf you have a minute, a Google review helps us a lot: ${reviewLink}` : ''}`
-  if (rating === 3) return 'Thank you for the feedback! We will keep getting better. 🙏'
-  return 'We are sorry your visit was not good. Our manager will call you to make it right. 🙏'
+  if (rating === 3) return `Thank you for the feedback! We will keep getting better. 🙏${reviewLink ? `\nYou can also review us on Google: ${reviewLink}` : ''}`
+  return `We are sorry your visit was not good. Our manager will call you to make it right. 🙏${reviewLink ? `\nYou can also review us on Google: ${reviewLink}` : ''}`
 }
 
 /** Record a rating and thank the customer. Not handled when the button is not a salon rating. */

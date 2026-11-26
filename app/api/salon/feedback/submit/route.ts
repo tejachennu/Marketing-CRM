@@ -26,7 +26,9 @@ export async function POST(request: NextRequest) {
   try {
     await saveFeedback(db, invoice, parsed.value, 'form')
     const { data: settings } = await withSalonSchema(() => db.from('salon_settings').select('*').eq('organization_id', invoice.organization_id).maybeSingle())
-    const reviewLink = parsed.value.rating >= 4 && isSafeLogoUrl(settings?.review_link) ? settings.review_link : null
+    // Offered after every rating, not only good ones: Google does not allow asking only happy customers for reviews
+    // ("review gating"); the form makes it the main button for 4-5 stars and a quiet link otherwise
+    const reviewLink = isSafeLogoUrl(settings?.review_link) ? settings.review_link : null
     return NextResponse.json({ success: true, rating: parsed.value.rating, reviewLink })
   } catch (error: any) {
     console.error('[Salon feedback form]', error?.message || error)
