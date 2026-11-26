@@ -15,7 +15,7 @@
 import { isConnectorOn } from '../connectors'
 import { NOT_TAKING_BOOKINGS, takesAppointments } from './appointments-switch'
 import { resolveCustomer } from './actions'
-import { type Busy, describeHours, freeTimes, holdsTime, isTimeFree, istWeekday, type OpeningHours } from './availability'
+import { type Busy, describeHours, freeTimes, holdsTime, isClosedOn, isTimeFree, type OpeningHours } from './availability'
 import { AWAITING_PAYMENT, HOLD_MINUTES, readBookingPay, type BookingPay } from './booking-pay'
 import { gatewayMethods, onlineGateway, type Gateway } from '../payments/gateway'
 import { busyOn as busyFor, loadChatSetup, staffFor, type ChatSetup } from './chat'
@@ -85,13 +85,13 @@ export function publicView(page: BookingPage) {
 
 export type BookingPageView = ReturnType<typeof publicView>
 
-/** The next days a customer may pick, from today, skipping closed days. */
+/** The next days a customer may pick, from today, skipping closed days and the shop's holidays. */
 export function bookableDays(hours: OpeningHours, now = Date.now(), days = BOOKING_DAYS_AHEAD): string[] {
   const today = istDate(now)
   const list: string[] = []
   for (let i = 0; i < days; i++) {
     const date = istDate(Date.parse(`${today}T12:00:00+05:30`) + i * 86_400_000)
-    if (!(hours.closed_weekdays || []).includes(istWeekday(date))) list.push(date)
+    if (!isClosedOn(date, hours)) list.push(date)
   }
   return list
 }

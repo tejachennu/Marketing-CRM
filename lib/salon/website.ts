@@ -5,6 +5,8 @@
  */
 
 import { DEFAULT_BOOKING_PAY, readBookingPay, type BookingPay } from './booking-pay'
+import { holidayOn, holidaySpans, shortDay, spanLabel } from './holidays'
+import { addDays, istDate } from './spoken'
 
 export const SITE_COLOURS = ['#1D5BEA', '#0E1B3D', '#7A2E4D', '#0F6E6E', '#8A4B2A', '#111827'] as const
 export const MAX_GALLERY = 12
@@ -124,7 +126,8 @@ export function domainOpens(input: { website: boolean; store: boolean; choice: '
 
 // ── Hours ───────────────────────────────────────────────────────────────────
 
-export interface Hours { opens_at?: string | null; closes_at?: string | null; closed_weekdays?: number[] | null }
+/** `holidays`: the shop's holidays (holidays.ts), closed like a weekly closed day. */
+export interface Hours { opens_at?: string | null; closes_at?: string | null; closed_weekdays?: number[] | null; holidays?: unknown }
 
 const clock = (value: string | null | undefined, fallback: string) => (/^\d{1,2}:\d{2}$/.test(String(value || '')) ? String(value).padStart(5, '0') : fallback)
 const minutesOf = (t: string) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5))
@@ -142,20 +145,38 @@ function istNow(now: number): { day: number; minutes: number } {
   return { day: ist.getUTCDay(), minutes: ist.getUTCHours() * 60 + ist.getUTCMinutes() }
 }
 
-/** "Open now · closes 9 pm", "Opens at 10 am", "Closed today · opens Monday 10 am". */
+/**
+ * "Open now · closes 9 pm", "Opens today at 10 am", "Closed today · opens Monday 10 am", "Closed today · Diwali ·
+ * opens tomorrow 10 am". Weekly closed days and the shop's holidays are skipped when finding the next open day.
+ */
 export function openStatus(hours: Hours, now = Date.now()): { open: boolean; text: string } {
   const opens = clock(hours.opens_at, '10:00')
   const closes = clock(hours.closes_at, '21:00')
   const closed = new Set((hours.closed_weekdays || []).filter((d) => d >= 0 && d <= 6))
   const { day, minutes } = istNow(now)
   if (closed.size === 7) return { open: false, text: 'Closed' }
-  if (!closed.has(day) && minutes >= minutesOf(opens) && minutes < minutesOf(closes)) return { open: true, text: `Open now · closes ${niceTime(closes)}` }
-  if (!closed.has(day) && minutes < minutesOf(opens)) return { open: false, text: `Opens today at ${niceTime(opens)}` }
-  for (let i = 1; i <= 7; i++) {
+  const today = istDate(now)
+  const holiday = hours.holidays ? holidayOn(today, hours.holidays) : null
+  const openToday = !closed.has(day) && !holiday
+  if (openToday && minutes >= minutesOf(opens) && minutes < minutesOf(closes)) return { open: true, text: `Open now · closes ${niceTime(closes)}` }
+  if (openToday && minutes < minutesOf(opens)) return { open: false, text: `Opens today at ${niceTime(opens)}` }
+  const why = holiday ? `Closed today · ${holiday.name}` : closed.has(day) ? 'Closed today' : 'Closed now'
+  for (let i = 1; i <= 60; i++) {
     const next = (day + i) % 7
-    if (!closed.has(next)) return { open: false, text: `${closed.has(day) ? 'Closed today' : 'Closed now'} · opens ${i === 1 ? 'tomorrow' : DAY_NAMES[next]} ${niceTime(opens)}` }
+    const date = addDays(today, i)
+    if (closed.has(next) || (hours.holidays && holidayOn(date, hours.holidays))) continue
+    const when = i === 1 ? 'tomorrow' : i < 7 ? DAY_NAMES[next] : `on ${shortDay(date)},`
+    return { open: false, text: `${why} · opens ${when} ${niceTime(opens)}` }
   }
-  return { open: false, text: 'Closed' }
+  return { open: false, text: holiday ? `Closed · ${holiday.name}` : 'Closed' }
+}
+
+/** The shop's next holidays (within `withinDays`, at most `max`), for the website: [{ name, when: "8 to 10 Nov" }]. */
+export function comingHolidays(hours: Hours, now = Date.now(), withinDays = 45, max = 4): { name: string; when: string; today: boolean }[] {
+  if (!hours.holidays) return []
+  const today = istDate(now)
+  return holidaySpans(hours.holidays, today, addDays(today, withinDays)).slice(0, max)
+    .map((span) => ({ name: span.name, when: spanLabel(span), today: span.start <= today && span.end >= today }))
 }
 
 /** The week, Monday first: "Monday · 10 am – 9 pm" or "Closed"; today is marked. */

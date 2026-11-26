@@ -167,6 +167,8 @@ export interface DeskFactsInput {
   bookings?: boolean
   /** The website shows its Book buttons and booking form (false: bookings by WhatsApp or phone only) */
   bookOnSite?: boolean
+  /** The shop's coming holidays (closed): "Diwali 8 to 10 Nov" */
+  holidays?: { name: string; when: string }[]
 }
 
 function planLine(p: NonNullable<DeskFactsInput['plans']>[number]): string {
@@ -190,6 +192,7 @@ export function deskFacts(d: DeskFactsInput): string {
     `- Opening hours: ${d.hours}.`,
     d.week?.length ? `- Each day: ${d.week.map((w) => `${w.day} ${w.time}`).join('; ')}.` : '',
     d.openNow ? `- Right now: ${d.openNow}.` : '',
+    d.holidays?.length ? `- Closed for holidays (no bookings, the shop is shut): ${d.holidays.map((h) => `${h.name} (${h.when})`).join('; ')}.` : '',
     d.address ? `- Address: ${oneLine(d.address, 200)}` : '',
     d.phone ? `- Phone: ${d.phone}` : '',
     `- Services${showPrices ? ' and prices' : ''} (the full list; nothing else is offered):\n${menu.join('\n')}`,

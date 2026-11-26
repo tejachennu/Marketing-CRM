@@ -14,6 +14,8 @@ export interface SalonSettings {
   opens_at?: string
   closes_at?: string
   closed_weekdays?: number[]
+  /** Shop holidays (lib/salon/holidays.ts) */
+  holidays?: unknown
   chat_assistant?: boolean
   auto_approve_bookings?: boolean
   reminders_enabled?: boolean

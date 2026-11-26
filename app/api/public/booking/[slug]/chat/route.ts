@@ -9,7 +9,7 @@ import { checkRateLimit } from '@/lib/rate-limiter'
 import { holdsTime } from '@/lib/salon/availability'
 import { paymentNote } from '@/lib/salon/booking-pay'
 import { formatIstDay, formatIstTime, istDate } from '@/lib/salon/spoken'
-import { openStatus, weekRows } from '@/lib/salon/website'
+import { comingHolidays, openStatus, weekRows } from '@/lib/salon/website'
 import { loadSite, type SiteData } from '@/lib/salon/website-store'
 
 export const runtime = 'nodejs'
@@ -25,6 +25,7 @@ function factsFor(data: SiteData): string {
   return deskFacts({
     business: data.view.business, address: data.view.address, phone: data.view.phone, hours: data.view.hours,
     openNow: openStatus(hours).text, week: weekRows(hours).map((w) => ({ day: w.day, time: w.time })),
+    holidays: comingHolidays(hours, Date.now(), 60, 8),
     services: data.view.services, staff: data.view.staff, approval: data.view.approval, pay: data.view.pay,
     plans: data.site.show.memberships ? data.plans.map((p: any) => ({ name: p.name, price: Number(p.price) || 0, validity_days: Number(p.validity_days) || 0, discount_percent: Number(p.discount_percent) || 0, credit: Number(p.credit) || 0, sessions: Array.isArray(p.sessions) ? p.sessions : [] })) : [],
     about: data.site.about, rating: data.count ? { average: data.average, count: data.count } : undefined, showPrices: data.site.show.prices,

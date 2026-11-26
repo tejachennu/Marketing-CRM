@@ -3,10 +3,11 @@ import { can } from '@/lib/rbac'
 import { badRequest, loadSalonSettings, salonAccess, serverError } from '@/lib/salon/server'
 import { clearMarks, loadTeam, marksInMonth, marksOn, saveMarks, type AttendanceRow } from '@/lib/salon/attendance-store'
 import {
-  cleanMarks, dayCounts, dayList, dayProblem, isDay, leaveRange, leaveSpans, markAll, monthSummary, readMonth,
+  cleanMarks, dayCounts, dayList, dayProblem, isDay, leaveRange, leaveSpans, markAll, monthBounds, monthSummary, readMonth,
   type AttendanceMark,
 } from '@/lib/salon/attendance'
 import { istDate } from '@/lib/salon/spoken'
+import { holidayDays, holidayOn, readHolidays, spanLabel } from '@/lib/salon/holidays'
 
 export const runtime = 'nodejs'
 
@@ -25,23 +26,33 @@ export async function GET(request: NextRequest) {
   try {
     const [team, settings] = await Promise.all([loadTeam(db, organizationId), loadSalonSettings(db, organizationId)])
     const closed: number[] = Array.isArray(settings.closed_weekdays) ? settings.closed_weekdays : []
+    // Shop holidays (holidays.ts) are closed days too: not working days, never "not marked"
+    const holidays = readHolidays((settings as any).holidays)
     const staffId = params.get('staffId') || null
     if (params.get('month') || staffId) {
       const month = readMonth(params.get('month'))
       const marks = await marksInMonth(db, organizationId, month, staffId)
       const people = team.filter((m) => (staffId ? m.id === staffId : m.active || marks.some((x) => x.staff_id === m.id)))
+      const { first, last } = monthBounds(month)
       return NextResponse.json({
         success: true, month, today: istDate(), closedWeekdays: closed, canMark: manager,
+        // { "2026-11-08": "Diwali" }: the month's holiday days
+        holidays: holidayDays(holidays, first, last), holidayRules: holidays,
         staff: people, marks: forViewer(marks, manager),
-        summary: monthSummary(people, marks, month, Date.now(), closed),
-        leave: leaveSpans(marks, staffId, closed).map((span) => (manager ? span : { ...span, note: null })),
+        summary: monthSummary(people, marks, month, Date.now(), closed, holidays),
+        leave: leaveSpans(marks, staffId, closed, holidays).map((span) => (manager ? span : { ...span, note: null })),
       })
     }
     const day = isDay(params.get('day')) ? params.get('day')! : istDate()
     const marks = await marksOn(db, organizationId, day)
     const rows = dayList(team, marks, day)
+    const holiday = holidayOn(day, holidays)
     return NextResponse.json({
       success: true, day, today: istDate(), closedWeekdays: closed, canMark: manager,
+      // The shop's holiday that day ({ name, label: "8 to 10 Nov" }), or null
+      holiday: holiday ? { name: holiday.name, start: holiday.start, end: holiday.end, label: spanLabel(holiday) } : null,
+      // The rules too, so "Add leave" can leave holidays out before saving
+      holidayRules: holidays,
       staff: team.filter((m) => m.active), marks: forViewer(marks, manager),
       rows: rows.map((row) => ({ ...row, mark: row.mark && !manager ? { ...row.mark, note: null } : row.mark })),
       counts: dayCounts(rows),
@@ -66,7 +77,7 @@ export async function POST(request: NextRequest) {
     let what: string
     if (body?.leave && typeof body.leave === 'object') {
       const settings = await loadSalonSettings(db, organizationId)
-      const range = leaveRange(body.leave, Date.now(), Array.isArray(settings.closed_weekdays) ? settings.closed_weekdays : [])
+      const range = leaveRange(body.leave, Date.now(), Array.isArray(settings.closed_weekdays) ? settings.closed_weekdays : [], (settings as any).holidays)
       if ('error' in range) return NextResponse.json({ error: range.error, field: range.field }, { status: 400 })
       marks = range.value
       what = 'leave'

@@ -4,6 +4,7 @@
  */
 
 import { addDays, fromIst, istDate, istDayRange, istTime } from './spoken'
+import { holidayOn } from './holidays'
 
 /**
  * An appointment that takes up time: who is on it (empty when nobody in particular yet). `away` marks a whole day
@@ -11,7 +12,8 @@ import { addDays, fromIst, istDate, istDayRange, istTime } from './spoken'
  */
 export interface Busy { starts_at: string; ends_at: string; staff_ids: string[]; away?: boolean }
 
-export interface OpeningHours { opens_at?: string | null; closes_at?: string | null; closed_weekdays?: number[] | null }
+/** `holidays`: the shop's holidays (holidays.ts), closed like a weekly closed day. */
+export interface OpeningHours { opens_at?: string | null; closes_at?: string | null; closed_weekdays?: number[] | null; holidays?: unknown }
 
 /** Statuses that hold a chair. A request from the chat holds it too, so it is not offered twice. */
 export const HOLDING_STATUSES = ['requested', 'booked', 'arrived', 'in_service']
@@ -26,8 +28,9 @@ export function istWeekday(date: string): number {
   return noon ? noon.getUTCDay() : -1
 }
 
+/** Closed that day: a weekly closed day, or one of the shop's holidays. */
 export function isClosedOn(date: string, hours: OpeningHours): boolean {
-  return (hours.closed_weekdays || []).includes(istWeekday(date))
+  return (hours.closed_weekdays || []).includes(istWeekday(date)) || Boolean(hours.holidays && holidayOn(date, hours.holidays))
 }
 
 /**

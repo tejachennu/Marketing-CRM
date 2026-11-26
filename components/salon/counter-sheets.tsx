@@ -9,6 +9,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Banknote, CalendarPlus, Check, Clock, Copy, CreditCard, ExternalLink, Loader2, MessageCircle, Plus, Receipt, RotateCcw, Search, Smartphone, UserRound, X } from 'lucide-react'
 import { awayBusy, busyFrom, counterSlots, describeHours, isClosedOn, type Busy } from '@/lib/salon/availability'
+import { holidayOn } from '@/lib/salon/holidays'
 import { isAwayStatus } from '@/lib/salon/attendance'
 import { groupByCategory } from '@/lib/salon/categories'
 import { customerSearch, type CustomerMatch } from '@/lib/salon/customers'
@@ -296,7 +297,8 @@ export function DayAndTime({ orgId, setup, date, time, minutes, serviceIds, staf
     return () => { live = false }
   }, [orgId, date])
 
-  const hours = { opens_at: setup.settings.opens_at, closes_at: setup.settings.closes_at, closed_weekdays: setup.settings.closed_weekdays }
+  const hours = { opens_at: setup.settings.opens_at, closes_at: setup.settings.closes_at, closed_weekdays: setup.settings.closed_weekdays, holidays: setup.settings.holidays }
+  const holiday = holidayOn(date, setup.settings.holidays)
   const eligible = setup.staff.filter((m) => m.active && serviceIds.every((id) => !m.service_ids.length || m.service_ids.includes(id))).map((m) => m.id)
   const chosenStaff = staffIds.filter(Boolean) as string[]
   const slots = counterSlots({ date, hours, minutes: minutes || 30, eligibleStaff: eligible, staffIds: chosenStaff, busy })
@@ -337,7 +339,7 @@ export function DayAndTime({ orgId, setup, date, time, minutes, serviceIds, staf
           <p className={sectionTitle}>Time</p>
           <span className="text-[12.5px] text-[#8a94a8] text-right">{chosenStaff.length ? 'Free for who you picked' : 'Free for anyone who does it'}</span>
         </div>
-        {closed && <p className="rounded-xl bg-[#f4f6fa] dark:bg-slate-800/60 text-[#4a5672] dark:text-slate-300 px-3.5 py-2.5 text-[13.5px]">You are closed this day ({describeHours(hours).replace(/^Open /, 'open ')}). You can still pick a time.</p>}
+        {closed && <p className="rounded-xl bg-[#f4f6fa] dark:bg-slate-800/60 text-[#4a5672] dark:text-slate-300 px-3.5 py-2.5 text-[13.5px]">{holiday ? `This day is a shop holiday (${holiday.name}).` : `You are closed this day (${describeHours(hours).replace(/^Open /, 'open ')}).`} You can still pick a time.</p>}
         {away.filter((m) => chosenStaff.includes(m.staff_id)).map((m) => (
           <p key={m.staff_id} className="rounded-xl bg-[#fdf0f0] dark:bg-red-950/30 text-[#b91c1c] dark:text-red-300 px-3.5 py-2.5 text-[13.5px] font-medium">{setup.staff.find((s) => s.id === m.staff_id)?.name || 'They'} {m.status === 'leave' ? 'is on leave' : m.status === 'week_off' ? 'has a week off' : 'is marked absent'} this day. You can still book, or pick someone else.</p>
         ))}

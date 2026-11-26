@@ -65,7 +65,8 @@ export function dateWindow(params: URLSearchParams): { start: string; end: strin
 /** Free start times on a day for some services (and a person, if asked), using the opening hours and bookings. */
 export async function availableTimes(db: any, organizationId: string, input: { date: string; serviceIds: string[]; staffId?: string | null; now?: number }) {
   const [{ data: settings }, { data: services }, { data: staff }, { data: booked }] = await Promise.all([
-    db.from('salon_settings').select('opens_at, closes_at, closed_weekdays').eq('organization_id', organizationId).maybeSingle(),
+    // select('*'): the holidays column may not exist yet
+    db.from('salon_settings').select('*').eq('organization_id', organizationId).maybeSingle(),
     db.from('salon_services').select('id, duration_minutes, active').eq('organization_id', organizationId).in('id', input.serviceIds),
     db.from('salon_staff').select('id, service_ids, active').eq('organization_id', organizationId),
     db.from('salon_appointments').select('*').eq('organization_id', organizationId).gte('starts_at', istDayRange(input.date).start).lt('starts_at', istDayRange(input.date).end),
@@ -76,7 +77,8 @@ export async function availableTimes(db: any, organizationId: string, input: { d
   const team = (staff || []).filter((m: any) => m.active !== false)
   if (input.staffId && !team.some((m: any) => m.id === input.staffId)) return { error: 'That staff member is not on the list. GET /api/v1/staff shows them.' }
   const eligibleStaff = team.filter((m: any) => input.serviceIds.every((id) => !(m.service_ids || []).length || m.service_ids.includes(id))).map((m: any) => m.id)
-  const hours = { opens_at: settings?.opens_at, closes_at: settings?.closes_at, closed_weekdays: settings?.closed_weekdays }
+  // Shop holidays are closed days: no times then
+  const hours = { opens_at: settings?.opens_at, closes_at: settings?.closes_at, closed_weekdays: settings?.closed_weekdays, holidays: settings?.holidays }
   // Anyone marked absent, on leave or week off that day is not offered (attendance)
   const busy = [...busyFrom(booked || []), ...(await awayBusyOn(db, organizationId, input.date))]
   const times = freeTimes({ date: input.date, now: input.now, hours, minutes, eligibleStaff, staffId: input.staffId || null, busy, limit: 200 })

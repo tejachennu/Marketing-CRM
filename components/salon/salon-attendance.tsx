@@ -3,11 +3,12 @@
 /**
  * Staff attendance (Front Desk → Team → Attendance): today's team with one-tap Present / Absent / Leave / Half day /
  * Week off, "Mark all present", notes, leave from one day to another, and a month calendar per person with totals.
- * People marked absent, on leave or week off are not offered for bookings that day.
+ * People marked absent, on leave or week off are not offered for bookings that day. Holidays: the shop's closed days
+ * (salon-holidays.tsx), left out of leave and never "not marked".
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { CalendarDays, CalendarOff, CalendarRange, Check, ChevronLeft, ChevronRight, Loader2, NotebookPen, Plus, UserCheck, X } from 'lucide-react'
+import { CalendarDays, CalendarHeart, CalendarOff, CalendarRange, Check, ChevronLeft, ChevronRight, Loader2, NotebookPen, Plus, UserCheck, X } from 'lucide-react'
 import {
   ATTENDANCE_STATUSES, LEAVE_KINDS, LEAVE_KIND_LABELS, STATUS_INFO, addMonths, leaveRange, markLabel, monthBounds, monthDays, monthLabel, readMonth,
   type AttendanceMark, type AttendanceStatus, type LeaveKind, type LeaveSpan, type PersonMonth,
@@ -15,11 +16,14 @@ import {
 import { istWeekday } from '@/lib/salon/availability'
 import { addDays, formatIstDay, fromIst, istDate } from '@/lib/salon/spoken'
 import { api, Avatar, card, Field, input, Modal, primaryButton, secondaryButton } from './ui'
+import { SalonHolidays } from './salon-holidays'
+import type { Holiday } from '@/lib/salon/holidays'
 
 type Flash = (tone: 'success' | 'error', text: string) => void
 interface Person { id: string; name: string; active?: boolean }
-interface DayData { day: string; today: string; canMark: boolean; closedWeekdays: number[]; staff: Person[]; rows: { staff_id: string; name: string; mark: AttendanceMark | null }[]; counts: Record<string, number> }
-interface MonthData { month: string; today: string; canMark: boolean; closedWeekdays: number[]; staff: Person[]; marks: AttendanceMark[]; summary: PersonMonth[]; leave: LeaveSpan[] }
+interface DayData { day: string; today: string; canMark: boolean; closedWeekdays: number[]; holiday?: { name: string; start: string; end: string; label: string } | null; holidayRules?: Holiday[]; staff: Person[]; rows: { staff_id: string; name: string; mark: AttendanceMark | null }[]; counts: Record<string, number> }
+interface MonthData { month: string; today: string; canMark: boolean; closedWeekdays: number[]; holidays?: Record<string, string>; holidayRules?: Holiday[]; staff: Person[]; marks: AttendanceMark[]; summary: PersonMonth[]; leave: LeaveSpan[] }
+type View = 'day' | 'month' | 'holidays'
 
 /** One look per status: blue for in, navy for leave, greys for half day and week off, red only for absent. */
 const TONE: Record<AttendanceStatus, { on: string; soft: string; dot: string }> = {
@@ -41,13 +45,24 @@ const dayTitle = (day: string, today: string) => {
 const shortDate = (day: string) => fromIst(day, '12:00')?.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', timeZone: 'Asia/Kolkata' }) || day
 const plural = (n: number, word: string) => `${n % 1 ? n.toFixed(1) : n} ${word}${n === 1 ? '' : 's'}`
 
+/** "Diwali 8 to 10 Nov, Stock day 1 Nov" from the month's holiday days. */
+function holidayLine(days: Record<string, string>): string {
+  const groups: { name: string; from: string; to: string }[] = []
+  for (const day of Object.keys(days).sort()) {
+    const last = groups[groups.length - 1]
+    if (last && last.name === days[day] && addDays(last.to, 1) === day) last.to = day
+    else groups.push({ name: days[day], from: day, to: day })
+  }
+  return groups.map((g) => `${g.name} ${g.from === g.to ? shortDate(g.from) : `${Number(g.from.slice(8))} to ${shortDate(g.to)}`}`).join(', ')
+}
+
 function StatusDot({ status, className = '' }: { status: AttendanceStatus; className?: string }) {
   return <span aria-hidden className={`inline-block h-2.5 w-2.5 shrink-0 rounded-full ${TONE[status].dot} ${className}`} />
 }
 
 export function SalonAttendance({ orgId, flash, initialDay }: { orgId: string; flash: Flash; initialDay?: string }) {
   const today = istDate()
-  const [view, setView] = useState<'day' | 'month'>('day')
+  const [view, setView] = useState<View>('day')
   const [day, setDay] = useState(initialDay || today)
   const [month, setMonth] = useState(today.slice(0, 7))
   const [person, setPerson] = useState('')
@@ -91,7 +106,7 @@ export function SalonAttendance({ orgId, flash, initialDay }: { orgId: string; f
   useEffect(() => { if (view === 'day') loadDay(day) }, [view, day, loadDay])
   useEffect(() => { if (view === 'month') loadMonth(month, person) }, [view, month, person, loadMonth])
 
-  const canMark = (view === 'day' ? dayData?.canMark : monthData?.canMark) ?? false
+  const canMark = (view === 'day' ? dayData?.canMark : view === 'month' ? monthData?.canMark : false) ?? false
   const team: Person[] = useMemo(() => dayData?.staff || monthData?.staff || [], [dayData, monthData])
 
   /** Put a mark on the screen at once, then the server's copy. */
@@ -180,16 +195,16 @@ export function SalonAttendance({ orgId, flash, initialDay }: { orgId: string; f
     <div className="space-y-4">
       {/* Day or month, the date, and the main buttons */}
       <div className="flex flex-col @2xl:flex-row @2xl:items-center gap-2.5">
-        <div role="tablist" aria-label="Attendance view" className="grid grid-cols-2 rounded-xl bg-[#eef1f6] dark:bg-slate-900 p-1 @2xl:w-[220px] shrink-0">
-          {(['day', 'month'] as const).map((v) => (
+        <div role="tablist" aria-label="Attendance view" className="grid grid-cols-3 rounded-xl bg-[#eef1f6] dark:bg-slate-900 p-1 @2xl:w-[340px] shrink-0">
+          {(['day', 'month', 'holidays'] as const).map((v) => (
             <button key={v} type="button" role="tab" aria-selected={view === v} onClick={() => setView(v)}
-              className={`h-9 rounded-lg text-[14px] font-semibold cursor-pointer inline-flex items-center justify-center gap-1.5 ${view === v ? 'bg-white dark:bg-[#111b21] text-[#0E1B3D] dark:text-white shadow-sm' : 'text-[#4a5672] dark:text-slate-400'}`}>
-              {v === 'day' ? <><UserCheck size={15} /> Day</> : <><CalendarDays size={15} /> Month</>}
+              className={`h-9 min-w-0 px-1 rounded-lg text-[14px] font-semibold cursor-pointer inline-flex items-center justify-center gap-1.5 ${view === v ? 'bg-white dark:bg-[#111b21] text-[#0E1B3D] dark:text-white shadow-sm' : 'text-[#4a5672] dark:text-slate-400'}`}>
+              {v === 'day' ? <><UserCheck size={15} className="shrink-0" /> Day</> : v === 'month' ? <><CalendarDays size={15} className="shrink-0" /> Month</> : <><CalendarHeart size={15} className="shrink-0" /> Holidays</>}
             </button>
           ))}
         </div>
 
-        <div className="flex items-center rounded-2xl bg-white dark:bg-[#111b21] border border-[#e3e8f2] dark:border-slate-800 p-1 w-full @2xl:w-auto min-w-0">
+        {view !== 'holidays' && <div className="flex items-center rounded-2xl bg-white dark:bg-[#111b21] border border-[#e3e8f2] dark:border-slate-800 p-1 w-full @2xl:w-auto min-w-0">
           <button type="button" onClick={() => (view === 'day' ? setDay(addDays(day, -1)) : setMonth(addMonths(month, -1)))} aria-label={view === 'day' ? 'Previous day' : 'Previous month'} className="h-10 w-10 shrink-0 rounded-xl flex items-center justify-center text-[#4a5672] dark:text-slate-300 hover:bg-[#f4f6fa] dark:hover:bg-slate-800 cursor-pointer"><ChevronLeft size={19} /></button>
           {view === 'day' ? (
             <label className="relative h-10 px-2 flex-1 @2xl:flex-none @2xl:min-w-[170px] rounded-xl text-center hover:bg-[#f4f6fa] dark:hover:bg-slate-800 cursor-pointer min-w-0 flex flex-col justify-center">
@@ -201,14 +216,14 @@ export function SalonAttendance({ orgId, flash, initialDay }: { orgId: string; f
             <span className="h-10 px-2 flex-1 @2xl:flex-none @2xl:min-w-[170px] rounded-xl flex items-center justify-center text-[15px] font-extrabold text-[#0E1B3D] dark:text-white truncate">{monthLabel(month)}</span>
           )}
           <button type="button" disabled={view === 'month' && readMonth(addMonths(month, 1)) !== addMonths(month, 1)} onClick={() => (view === 'day' ? setDay(addDays(day, 1)) : setMonth(addMonths(month, 1)))} aria-label={view === 'day' ? 'Next day' : 'Next month'} className="h-10 w-10 shrink-0 rounded-xl flex items-center justify-center text-[#4a5672] dark:text-slate-300 hover:bg-[#f4f6fa] dark:hover:bg-slate-800 cursor-pointer disabled:opacity-30 disabled:cursor-default"><ChevronRight size={19} /></button>
-        </div>
+        </div>}
         {((view === 'day' && day !== today) || (view === 'month' && month !== today.slice(0, 7))) && (
           <button type="button" onClick={() => (view === 'day' ? setDay(today) : setMonth(today.slice(0, 7)))} className="self-start @2xl:self-auto h-10 px-3 rounded-xl text-[14px] font-semibold text-[#1D5BEA] hover:bg-[#eef3fe] dark:hover:bg-blue-950/40 cursor-pointer">{view === 'day' ? 'Today' : 'This month'}</button>
         )}
 
         {canMark && (
           <div className="grid grid-cols-2 gap-2 @2xl:flex @2xl:ml-auto">
-            {view === 'day' && <button type="button" disabled={saving === 'all' || !counts?.not_marked} onClick={markAllPresent} className={`${primaryButton} px-3 whitespace-nowrap`}>{saving === 'all' ? <Loader2 size={17} className="animate-spin" /> : <Check size={17} />} Mark all present</button>}
+            {view === 'day' && <button type="button" disabled={saving === 'all' || !counts?.not_marked || Boolean(dayData?.holiday)} onClick={markAllPresent} className={`${primaryButton} px-3 whitespace-nowrap`}>{saving === 'all' ? <Loader2 size={17} className="animate-spin" /> : <Check size={17} />} Mark all present</button>}
             <button type="button" onClick={() => setLeaveFor({ staffId: person || '' })} className={`${secondaryButton} px-3 whitespace-nowrap ${view === 'month' ? 'col-span-2' : ''}`}><CalendarOff size={17} /> Add leave</button>
           </div>
         )}
@@ -216,6 +231,16 @@ export function SalonAttendance({ orgId, flash, initialDay }: { orgId: string; f
 
       {view === 'day' && (
         <>
+          {dayData?.holiday && dayData.day === day && (
+            <div className="flex items-start gap-3 rounded-2xl border border-[#d5ddeb] dark:border-slate-700 bg-[#f4f6fa] dark:bg-slate-900 px-4 py-3">
+              <CalendarHeart size={20} className="text-[#1D5BEA] shrink-0 mt-0.5" />
+              <div className="min-w-0 text-[14px] text-[#4a5672] dark:text-slate-300">
+                <p className="font-bold text-[#0E1B3D] dark:text-white">Shop holiday: {dayData.holiday.name} ({dayData.holiday.label})</p>
+                <p>The shop is closed: no bookings are taken and nobody needs marking. Mark anyone who came in anyway.</p>
+              </div>
+              <button type="button" onClick={() => setView('holidays')} className="ml-auto shrink-0 h-9 px-2.5 rounded-lg text-[13.5px] font-semibold text-[#1D5BEA] hover:bg-[#eef3fe] dark:hover:bg-blue-950/40 cursor-pointer">Holidays</button>
+            </div>
+          )}
           {counts && (
             <div className="flex flex-wrap gap-1.5" aria-label="Today's numbers">
               {ATTENDANCE_STATUSES.map((status) => (
@@ -312,14 +337,19 @@ export function SalonAttendance({ orgId, flash, initialDay }: { orgId: string; f
                 {person
                   ? <PersonMonthView data={monthData} staffId={person} today={today} canMark={canMark} saving={saving} onOpenDay={(d) => { setDay(d); setView('day') }} onCancelLeave={cancelLeave} onAddLeave={() => setLeaveFor({ staffId: person })} />
                   : <EveryoneMonth data={monthData} today={today} onPick={setPerson} />}
+                {Object.keys(monthData.holidays || {}).length > 0 && (
+                  <p className="px-1 text-[13px] text-[#4a5672] dark:text-slate-300 flex items-start gap-1.5"><CalendarHeart size={15} className="text-[#1D5BEA] shrink-0 mt-px" /><span><span className="font-semibold">Holidays this month:</span> {holidayLine(monthData.holidays || {})}</span></p>
+                )}
                 <Legend />
               </div>
             )}
         </>
       )}
 
+      {view === 'holidays' && <SalonHolidays orgId={orgId} flash={flash} onChanged={() => { setDayData(null); setMonthData(null) }} />}
+
       {leaveFor && (
-        <LeaveSheet orgId={orgId} team={team.filter((m) => m.active !== false)} staffId={leaveFor.staffId} closedWeekdays={(view === 'day' ? dayData?.closedWeekdays : monthData?.closedWeekdays) || []} startDay={view === 'day' && day >= today ? day : today}
+        <LeaveSheet orgId={orgId} team={team.filter((m) => m.active !== false)} staffId={leaveFor.staffId} closedWeekdays={(view === 'day' ? dayData?.closedWeekdays : monthData?.closedWeekdays) || []} holidays={(view === 'day' ? dayData?.holidayRules : monthData?.holidayRules) || []} startDay={view === 'day' && day >= today ? day : today}
           onClose={() => setLeaveFor(null)}
           onSaved={(message) => { setLeaveFor(null); flash('success', message); if (view === 'day') loadDay(day); else loadMonth(month, person) }} />
       )}
@@ -358,8 +388,9 @@ function EveryoneMonth({ data, today, onPick }: { data: MonthData; today: string
               <div className="mt-2.5 flex flex-wrap gap-[3px]" aria-hidden>
                 {days.map((d) => {
                   const status = own.get(d) as AttendanceStatus | undefined
-                  const isClosed = closed.has(istWeekday(d))
-                  return <span key={d} title={d} className={`h-3 w-3 rounded-[3px] ${status ? TONE[status].dot : isClosed ? 'bg-[#f4f6fa] dark:bg-slate-800' : d <= today ? 'bg-white border border-dashed border-[#c0c8d8] dark:bg-transparent dark:border-slate-600' : 'bg-[#f4f6fa] dark:bg-slate-900'}`} />
+                  const holiday = data.holidays?.[d]
+                  const isClosed = closed.has(istWeekday(d)) || Boolean(holiday)
+                  return <span key={d} title={holiday ? `${d}: ${holiday}` : d} className={`h-3 w-3 rounded-[3px] ${status ? TONE[status].dot : isClosed ? 'bg-[#f4f6fa] dark:bg-slate-800' : d <= today ? 'bg-white border border-dashed border-[#c0c8d8] dark:bg-transparent dark:border-slate-600' : 'bg-[#f4f6fa] dark:bg-slate-900'}`} />
                 })}
               </div>
               <MonthNumbers row={row} />
@@ -414,13 +445,15 @@ function PersonMonthView({ data, staffId, today, canMark, saving, onOpenDay, onC
           {Array.from({ length: lead }, (_, i) => <div key={`lead${i}`} />)}
           {days.map((d) => {
             const m = own.get(d)
-            const isClosed = closed.has(istWeekday(d))
-            const label = `${shortDate(d)}: ${m ? markLabel(m) : isClosed ? 'Closed' : d > today ? 'Not yet' : 'Not marked'}`
+            const holiday = data.holidays?.[d]
+            const isClosed = closed.has(istWeekday(d)) || Boolean(holiday)
+            const label = `${shortDate(d)}: ${m ? markLabel(m) : holiday ? `Holiday · ${holiday}` : isClosed ? 'Closed' : d > today ? 'Not yet' : 'Not marked'}`
             return (
               <button key={d} type="button" title={m?.note ? `${label} · ${m.note}` : label} aria-label={label} onClick={() => canMark && d <= addDays(today, 62) && onOpenDay(d)}
                 className={`relative aspect-square min-h-[36px] max-h-[60px] w-full rounded-lg border flex flex-col items-center justify-center gap-0.5 ${canMark ? 'cursor-pointer hover:border-[#9db5ef]' : 'cursor-default'} ${d === today ? 'border-[#1D5BEA]' : 'border-[#eef1f6] dark:border-slate-800'} ${isClosed && !m ? 'bg-[#f8fafc] dark:bg-slate-900/50' : 'bg-white dark:bg-[#0b141a]'}`}>
                 <span className={`text-[12.5px] leading-none font-semibold ${d > today ? 'text-[#a3adc2]' : 'text-[#0E1B3D] dark:text-slate-200'}`}>{Number(d.slice(8))}</span>
                 {m ? <span className={`text-[10.5px] leading-none font-extrabold rounded px-1 py-[2px] ${TONE[m.status].soft}`}>{STATUS_INFO[m.status].short}</span>
+                  : holiday ? <CalendarHeart size={12} className="text-[#1D5BEA]" aria-hidden />
                   : <span className="text-[10.5px] leading-none text-transparent select-none">·</span>}
               </button>
             )
@@ -454,8 +487,8 @@ function PersonMonthView({ data, staffId, today, canMark, saving, onOpenDay, onC
 }
 
 /** Leave from one day to another for one person (closed days are left out by the server and here). */
-function LeaveSheet({ orgId, team, staffId, closedWeekdays, startDay, onClose, onSaved }: {
-  orgId: string; team: Person[]; staffId: string; closedWeekdays: number[]; startDay: string
+function LeaveSheet({ orgId, team, staffId, closedWeekdays, holidays, startDay, onClose, onSaved }: {
+  orgId: string; team: Person[]; staffId: string; closedWeekdays: number[]; holidays: Holiday[]; startDay: string
   onClose: () => void; onSaved: (message: string) => void
 }) {
   const [who, setWho] = useState(staffId || (team.length === 1 ? team[0].id : ''))
@@ -466,7 +499,7 @@ function LeaveSheet({ orgId, team, staffId, closedWeekdays, startDay, onClose, o
   const [note, setNote] = useState('')
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
-  const preview = who ? leaveRange({ staff_id: who, from, to, status, leave_kind: kind, note }, Date.now(), closedWeekdays) : null
+  const preview = who ? leaveRange({ staff_id: who, from, to, status, leave_kind: kind, note }, Date.now(), closedWeekdays, holidays) : null
   const count = preview && 'value' in preview ? preview.value.length : 0
 
   async function save() {
@@ -516,7 +549,7 @@ function LeaveSheet({ orgId, team, staffId, closedWeekdays, startDay, onClose, o
         )}
         <Field label="Note (if you like)"><input value={note} maxLength={200} onChange={(e) => setNote(e.target.value)} placeholder="Like “sister's wedding”" className={input} /></Field>
         <p className="text-[13.5px] text-[#4a5672] dark:text-slate-300">
-          {preview && 'value' in preview ? `${plural(count, 'day')} will be marked${closedWeekdays.length ? ' (days you are closed are left out)' : ''}. They are not offered for bookings on those days.` : preview && 'error' in preview ? preview.error : 'Choose who, and the days.'}
+          {preview && 'value' in preview ? `${plural(count, 'day')} will be marked${closedWeekdays.length || holidays.length ? ' (days you are closed and holidays are left out)' : ''}. They are not offered for bookings on those days.` : preview && 'error' in preview ? preview.error : 'Choose who, and the days.'}
         </p>
         {error && <p role="alert" className="rounded-xl bg-[#fdf0f0] dark:bg-red-950/30 px-3.5 py-2.5 text-[14px] font-semibold text-[#b91c1c] dark:text-red-300">{error}</p>}
       </div>

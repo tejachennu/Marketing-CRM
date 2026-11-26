@@ -59,6 +59,8 @@ export const DEFAULT_SALON_SETTINGS = {
   review_link: null as string | null,
   /** "We take appointments" (appointments-switch.ts): off for shops that only bill walk-ins */
   takes_appointments: true,
+  /** Shop holidays (holidays.ts): closed like a weekly closed day */
+  holidays: [] as unknown[],
 }
 
 export async function loadSalonSettings(db: any, organizationId: string) {

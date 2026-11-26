@@ -97,7 +97,7 @@ export function WhatsAppSettings({ orgId, setup, onChange, flash, children }: { 
             <select className={input} value={form.closes_at} onChange={(e) => set({ closes_at: e.target.value })}>{TIMES.map((t) => <option key={t} value={t}>{timeLabel(t)}</option>)}</select>
           </Field>
         </div>
-        <Field group label="Closed on" hint={takes ? 'Chat bookings are not offered on these days.' : 'Shown on your website and told to customers who ask.'}>
+        <Field group label="Closed on" hint={`${takes ? 'Chat bookings are not offered on these days.' : 'Shown on your website and told to customers who ask.'} Festival days and other holidays: Team → Attendance → Holidays.`}>
           <div className="flex flex-wrap gap-2">
             {DAYS.map((day, index) => {
               const closed = form.closed_weekdays.includes(index)

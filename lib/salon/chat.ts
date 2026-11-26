@@ -25,6 +25,7 @@ import { formatRupees } from './invoice'
 import { withSalonSchema } from './schema'
 import { awayBusyOn } from './attendance-store'
 import { addDays, formatIstDay, formatIstTime, fromIst, istDate, istDayRange, istTime, matchByName, phoneKey } from './spoken'
+import { holidayOn, holidaysSentence } from './holidays'
 
 export const MODEL = 'gpt-4o-mini'
 const MAX_TOOL_ROUNDS = 4
@@ -205,7 +206,7 @@ export function chatSystemPrompt(setup: ChatSetup, organization: any, customerNa
   return `You are the WhatsApp assistant of ${business}, ${BUSINESS_TYPES[businessType(s.business_type)].describe} in India.${customerName ? ` The customer's name is ${customerName}.` : ''}
 
 About the business:
-${[s.address && `Address: ${s.address}`, s.phone && `Phone: ${s.phone}`, describeHours(s)].filter(Boolean).join('\n')}
+${[s.address && `Address: ${s.address}`, s.phone && `Phone: ${s.phone}`, describeHours(s), holidaysSentence(s.holidays, now)].filter(Boolean).join('\n')}
 ${setup.staff.length ? `Team: ${setup.staff.map((m) => m.name).join(', ')}` : ''}
 
 Services and prices:
@@ -306,7 +307,9 @@ export async function sendFreeTimes(input: SalonChatInput, setup: ChatSetup, arg
     const next = nextOpenDay({ ...base, from: addDays(args.date, 1), busyFor: (d) => cache.get(d) || [] })
     // The person asked for is not in that day (attendance): say so, without saying why
     const away = staffId && busy.some((b) => b.away && b.staff_ids.includes(staffId)) ? setup.staff.find((m) => m.id === staffId)?.name : null
-    return { note: `${away ? `${away} is not in on ${args.date}. Offer another day, or anyone else free that day. ` : ''}No free time on ${args.date}${away ? ` with ${away}` : ''}${next ? `. The next day with free times is ${next} (${formatIstDay(next, today)})` : ''}. Tell the customer and offer that day.`, nextDay: next }
+    // A shop holiday: say why there is no time that day
+    const holiday = holidayOn(args.date, setup.settings.holidays)
+    return { note: `${holiday ? `The business is closed on ${args.date} for ${holiday.name} (a holiday). ` : ''}${away ? `${away} is not in on ${args.date}. Offer another day, or anyone else free that day. ` : ''}No free time on ${args.date}${away ? ` with ${away}` : ''}${next ? `. The next day with free times is ${next} (${formatIstDay(next, today)})` : ''}. Tell the customer and offer that day.`, nextDay: next }
   }
 
   const { data: offer, error } = await withSalonSchema(() => input.supabase.from('salon_chat_offers').insert({

@@ -2,10 +2,13 @@
  * Staff attendance for Front Desk: one mark per person per day (present, absent, on leave, half day, week off).
  * Pure and browser-safe, so the screens, the API and the tests agree. India dates throughout (IST helpers in spoken.ts).
  * Who is away (absent, on leave, week off) is not offered for bookings that day; a half day stays bookable.
+ * Days the shop is closed (weekly closed days and its holidays, holidays.ts) are not working days: leave skips them
+ * and they are never "not marked".
  */
 
 import { addDays, istDate } from './spoken'
 import { istWeekday } from './availability'
+import { holidayDays } from './holidays'
 
 export const ATTENDANCE_STATUSES = ['present', 'absent', 'leave', 'half_day', 'week_off'] as const
 export type AttendanceStatus = (typeof ATTENDANCE_STATUSES)[number]
@@ -62,6 +65,13 @@ export function isAwayStatus(value: unknown): boolean {
 }
 
 const daysBetween = (from: string, to: string) => Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000)
+
+/** Is the shop closed that day: a weekly closed day or a holiday (holiday days worked out once for a range). */
+function closedDays(from: string, to: string, closedWeekdays: number[] = [], holidays: unknown = []): (day: string) => boolean {
+  const closed = new Set((closedWeekdays || []).filter((d) => Number.isInteger(d)))
+  const off = holidays && from <= to ? holidayDays(holidays, from, to) : {}
+  return (day: string) => closed.has(istWeekday(day)) || Boolean(off[day])
+}
 
 /** Why a day cannot be marked (too far ahead or back), or null when it can. */
 export function dayProblem(day: unknown, now: Date | number = Date.now()): string | null {
@@ -126,10 +136,10 @@ export function daysFrom(from: string, to: string): string[] {
 }
 
 /**
- * Leave from one day to another for one person, in one go. Days the business is closed (its weekly closed days) are
- * left out: they are not leave. Status is leave unless asked for week off or absent.
+ * Leave from one day to another for one person, in one go. Days the business is closed (its weekly closed days and
+ * its holidays) are left out: they are not leave. Status is leave unless asked for week off or absent.
  */
-export function leaveRange(input: any, now: Date | number = Date.now(), closedWeekdays: number[] = []): { value: AttendanceMark[] } | Refusal {
+export function leaveRange(input: any, now: Date | number = Date.now(), closedWeekdays: number[] = [], holidays: unknown = []): { value: AttendanceMark[] } | Refusal {
   const staffId = typeof input?.staff_id === 'string' ? input.staff_id.trim() : ''
   if (!staffId) return { error: 'Choose a team member.', field: 'staff_id' }
   const from = String(input?.from ?? '').trim()
@@ -146,8 +156,8 @@ export function leaveRange(input: any, now: Date | number = Date.now(), closedWe
   const kind = status === 'leave' && (LEAVE_KINDS as readonly string[]).includes(input?.leave_kind) ? (input.leave_kind as LeaveKind) : null
   if (input?.note != null && String(input.note).replace(/\s+/g, ' ').trim().length > NOTE_MAX) return { error: `Keep the note under ${NOTE_MAX} letters.`, field: 'note' }
   const note = cleanNote(input?.note)
-  const closed = new Set((closedWeekdays || []).filter((d) => Number.isInteger(d)))
-  const days = daysFrom(from, to).filter((day) => !closed.has(istWeekday(day)))
+  const isClosed = closedDays(from, to, closedWeekdays, holidays)
+  const days = daysFrom(from, to).filter((day) => !isClosed(day))
   if (!days.length) return { error: 'You are closed on all of those days.', field: 'from' }
   return { value: days.map((day) => ({ staff_id: staffId, day, status, leave_kind: kind, note })) }
 }
@@ -209,14 +219,15 @@ export interface PersonMonth {
 
 /**
  * A month for each person on the team: present, absent, leave, half days (0.5 each in `worked`), week offs, and
- * working days up to today with no mark. Days the business is closed are not counted as not marked.
+ * working days up to today with no mark. Days the business is closed (weekly closed days, holidays) are not counted
+ * as not marked.
  */
-export function monthSummary(staff: StaffLike[], marks: { staff_id: string; day: string; status: string }[], month: string, now: Date | number = Date.now(), closedWeekdays: number[] = []): PersonMonth[] {
+export function monthSummary(staff: StaffLike[], marks: { staff_id: string; day: string; status: string }[], month: string, now: Date | number = Date.now(), closedWeekdays: number[] = [], holidays: unknown = []): PersonMonth[] {
   const { first, last } = monthBounds(month)
   const today = istDate(now)
-  const closed = new Set(closedWeekdays || [])
   const upTo = today < last ? today : last
-  const workingDays = upTo < first ? [] : daysFrom(first, upTo).filter((day) => !closed.has(istWeekday(day)))
+  const isClosed = closedDays(first, last, closedWeekdays, holidays)
+  const workingDays = upTo < first ? [] : daysFrom(first, upTo).filter((day) => !isClosed(day))
   return staff.map((person) => {
     const own = marks.filter((m) => m.staff_id === person.id && m.day >= first && m.day <= last && isAttendanceStatus(m.status))
     const count = (status: AttendanceStatus) => own.filter((m) => m.status === status).length
@@ -246,12 +257,13 @@ export interface LeaveSpan { staff_id: string; from: string; to: string; days: n
 
 /**
  * A person's leave as ranges ("12 Nov to 15 Nov"): days next to each other with the same kind join up, and so do
- * days with only the business's closed days between them.
+ * days with only the business's closed days (or holidays) between them.
  */
-export function leaveSpans(marks: { staff_id: string; day: string; status: string; leave_kind?: string | null; note?: string | null }[], staffId?: string | null, closedWeekdays: number[] = []): LeaveSpan[] {
-  const closed = new Set(closedWeekdays || [])
+export function leaveSpans(marks: { staff_id: string; day: string; status: string; leave_kind?: string | null; note?: string | null }[], staffId?: string | null, closedWeekdays: number[] = [], holidays: unknown = []): LeaveSpan[] {
   const list = marks.filter((m) => m.status === 'leave' && (!staffId || m.staff_id === staffId))
     .sort((a, b) => (a.staff_id === b.staff_id ? a.day.localeCompare(b.day) : a.staff_id.localeCompare(b.staff_id)))
+  const days = list.map((m) => m.day).sort()
+  const isClosed = closedDays(days[0] || '', days[days.length - 1] || '', closedWeekdays, holidays)
   const spans: LeaveSpan[] = []
   for (const mark of list) {
     const kind = (LEAVE_KINDS as readonly string[]).includes(String(mark.leave_kind)) ? (mark.leave_kind as LeaveKind) : null
@@ -259,7 +271,7 @@ export function leaveSpans(marks: { staff_id: string; day: string; status: strin
     if (last && last.staff_id === mark.staff_id && last.leave_kind === kind) {
       // Only closed days between the end of the span and this day: the same leave
       let gap = addDays(last.to, 1)
-      while (gap < mark.day && closed.has(istWeekday(gap))) gap = addDays(gap, 1)
+      while (gap < mark.day && isClosed(gap)) gap = addDays(gap, 1)
       if (gap === mark.day) {
         last.to = mark.day
         last.days += 1

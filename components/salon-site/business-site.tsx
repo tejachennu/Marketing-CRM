@@ -11,7 +11,7 @@
 
 import { AtSign, CalendarCheck, Clock, CreditCard, IdCard, MapPin, MessageCircle, Navigation, Phone, ShoppingBag, Star } from 'lucide-react'
 import { planBenefits } from '@/lib/salon/membership-rules'
-import { openStatus, phoneBar, siteButtons, weekRows, fromPrice, type SiteSettings } from '@/lib/salon/website'
+import { comingHolidays, openStatus, phoneBar, siteButtons, weekRows, fromPrice, type SiteSettings } from '@/lib/salon/website'
 import { ServicesMenu } from './services-menu'
 import { BookButton } from './book-button'
 import { SiteChat } from '@/components/site-chat/site-chat'
@@ -20,7 +20,7 @@ import type { BookingPageView } from '@/lib/salon/booking-page'
 
 export interface BusinessSiteProps {
   view: BookingPageView
-  hours: { opens_at?: string | null; closes_at?: string | null; closed_weekdays?: number[] | null }
+  hours: { opens_at?: string | null; closes_at?: string | null; closed_weekdays?: number[] | null; holidays?: unknown }
   site: SiteSettings
   average: number
   count: number
@@ -76,6 +76,7 @@ export function BusinessSite({ view, hours, site, average, count, reviews, plans
   const shopHref = cta.shop ? storeLink : null
   const status = openStatus(hours, now)
   const week = weekRows(hours, now)
+  const holidays = comingHolidays(hours, now)
   const mapQuery = view.address ? encodeURIComponent(`${view.business}, ${view.address.replace(/\n/g, ', ')}`) : ''
   const directions = cta.directions ? `https://www.google.com/maps/search/?api=1&query=${mapQuery}` : null
   const showTeam = site.show.team && view.staff.length > 0
@@ -341,6 +342,18 @@ export function BusinessSite({ view, hours, site, average, count, reviews, plans
                     </li>
                   ))}
                 </ul>
+                {holidays.length > 0 && (
+                  <div className="mt-3 pt-3 border-t border-[#eef1f6]">
+                    <p className="text-[12px] font-bold uppercase tracking-wide text-[#8a94a8]">Holidays (closed)</p>
+                    <ul className="mt-1.5 space-y-1 text-[14px] text-[#4a5672]">
+                      {holidays.map((h) => (
+                        <li key={`${h.name}-${h.when}`} className={`flex justify-between gap-3 ${h.today ? 'font-bold text-[#0E1B3D]' : ''}`}>
+                          <span className="min-w-0 truncate">{h.name}{h.today ? ' (today)' : ''}</span><span className="shrink-0">{h.when}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
               </div>
               {(callHref || waHref) && (
                 <div className="flex flex-wrap gap-2">
