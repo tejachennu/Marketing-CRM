@@ -265,6 +265,7 @@ class WamaApp extends StatelessWidget {
       'attendance' => const AttendanceScreen(),
       'attendance_month' => const AttendanceScreen(startOnMonth: true),
       'attendance_person' => const AttendanceScreen(startOnMonth: true, person: 'st-ravi'),
+      'holidays' => const AttendanceScreen(startOnHolidays: true),
       'setup' => const SetupScreen(),
       'setup_services' => const ServicesSetup(),
       'setup_catalog' => const CatalogScreen(),

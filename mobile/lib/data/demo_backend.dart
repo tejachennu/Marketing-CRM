@@ -1,3 +1,4 @@
+import 'attendance_logic.dart';
 import 'demo_attendance.dart';
 import 'demo_billing.dart';
 import 'demo_commerce.dart';
@@ -116,6 +117,11 @@ class DemoBackend implements Backend {
         'opens_at': '10:00',
         'closes_at': '21:00',
         'closed_weekdays': [0],
+        // Shop holidays: a family function next week, and Republic Day every year
+        'holidays': [
+          {'id': 'h-family', 'name': 'Family function', 'start': addDay(istToday(), 5), 'days': 1, 'repeat': 'none'},
+          {'id': 'h-republic', 'name': 'Republic Day', 'start': suggestedStart('01-26', istToday()), 'days': 1, 'repeat': 'yearly'},
+        ],
         'chat_assistant': true,
         'auto_approve_bookings': false,
         'reminders_enabled': true,
@@ -667,6 +673,8 @@ class DemoBackend implements Backend {
   late final DemoAttendance _attendance = DemoAttendance(
     staff: () => [for (final s in (_setup['staff'] as List? ?? const [])) Map<String, dynamic>.from(s as Map)],
     closed: () => [for (final d in ((_setup['settings'] as Map?)?['closed_weekdays'] as List? ?? const [])) (d as num).toInt()],
+    holidays: () => readHolidays((_setup['settings'] as Map?)?['holidays']),
+    saveHolidays: (list) => (_setup['settings'] as Map)['holidays'] = list,
   );
 
   @override

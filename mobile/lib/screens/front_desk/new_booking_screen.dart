@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../data/app_state.dart';
+import '../../data/attendance_logic.dart' show holidayOn;
 import '../../data/format.dart';
 import '../../ui/theme.dart';
 import '../../ui/validate.dart';
@@ -36,10 +37,18 @@ class _NewBookingScreenState extends State<NewBookingScreen> {
     return p.length < 2 ? fallback : (int.tryParse(p[0]) ?? 0) * 60 + (int.tryParse(p[1]) ?? 0);
   }
 
-  /// 0 = Sunday, as the server keeps closed days.
+  /// 0 = Sunday, as the server keeps closed days. A shop holiday (Attendance → Holidays) is closed too.
   bool _closedOn(int offset) {
     final closed = [for (final d in (_settings['closed_weekdays'] as List? ?? const [])) (d as num).toInt()];
-    return closed.contains(_today.add(Duration(days: offset)).weekday % 7);
+    return closed.contains(_today.add(Duration(days: offset)).weekday % 7) || _holidayOn(offset) != null;
+  }
+
+  /// The shop's holiday on that day (its name), or null.
+  String? _holidayOn(int offset) {
+    final day = _today.add(Duration(days: offset));
+    final date = '${day.year}-${day.month.toString().padLeft(2, '0')}-${day.day.toString().padLeft(2, '0')}';
+    final holiday = holidayOn(date, _settings['holidays']);
+    return holiday == null ? null : '${holiday['name']}';
   }
 
   /// The picked day, or the first open day from today.
@@ -161,6 +170,7 @@ class _NewBookingScreenState extends State<NewBookingScreen> {
                             selected: _offset == i,
                             today: i == 0,
                             closed: _closedOn(i),
+                            holiday: _holidayOn(i) != null,
                             onTap: () => setState(() {
                               _dayOffset = i;
                               _time = null;
@@ -173,7 +183,12 @@ class _NewBookingScreenState extends State<NewBookingScreen> {
                 FormSection(
                   title: 'Time',
                   child: _closedOn(_offset)
-                      ? const Text('You are closed on this day (Setup → Hours). Pick another day.', style: TextStyle(color: Brand.muted))
+                      ? Text(
+                          _holidayOn(_offset) != null
+                              ? 'This day is a shop holiday (${_holidayOn(_offset)}). Pick another day.'
+                              : 'You are closed on this day (Setup → Hours). Pick another day.',
+                          style: const TextStyle(color: Brand.muted),
+                        )
                       : times.isEmpty
                       ? Text(_offset == 0 ? 'No times left today. Pick another day.' : 'No times on this day. Pick another day.', style: const TextStyle(color: Brand.muted))
                       : Wrap(
@@ -211,12 +226,15 @@ class _NewBookingScreenState extends State<NewBookingScreen> {
 }
 
 class _DayChip extends StatelessWidget {
-  const _DayChip({required this.day, required this.selected, required this.today, required this.onTap, this.closed = false});
+  const _DayChip({required this.day, required this.selected, required this.today, required this.onTap, this.closed = false, this.holiday = false});
   final DateTime day;
   final bool selected, today;
 
   /// The business is closed that day: greyed out, and it cannot be picked.
   final bool closed;
+
+  /// Closed for a shop holiday: says "Holiday" instead of "Closed"
+  final bool holiday;
   final VoidCallback onTap;
   @override
   Widget build(BuildContext context) {
@@ -239,7 +257,7 @@ class _DayChip extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
-                  closed ? 'Closed' : (today ? 'Today' : names[day.weekday - 1]),
+                  closed ? (holiday ? 'Holiday' : 'Closed') : (today ? 'Today' : names[day.weekday - 1]),
                   style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: selected ? Colors.white70 : Brand.muted),
                 ),
                 Text(

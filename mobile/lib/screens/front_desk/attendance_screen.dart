@@ -9,14 +9,17 @@ import '../../ui/widgets.dart';
 import 'logic.dart';
 
 /// Staff attendance (Team → Attendance, More → Attendance): today's team with one-tap Present / Absent / Leave /
-/// Half day / Week off, "Mark all present", notes, leave from one day to another, and a month calendar per person.
+/// Half day / Week off, "Mark all present", notes, leave from one day to another, a month calendar per person, and
+/// the shop's holidays (one-off or repeating: no bookings, not working days).
 /// Marks work offline: they wait in the outbox (sent with PUT / DELETE, safe to send again) and show at once.
+/// Holidays change what customers can book, so they are saved online only.
 /// People absent, on leave or on a week off are not offered for bookings that day.
 class AttendanceScreen extends StatefulWidget {
-  const AttendanceScreen({super.key, this.startOnMonth = false, this.person});
+  const AttendanceScreen({super.key, this.startOnMonth = false, this.startOnHolidays = false, this.person});
 
-  /// Open on the month (previews), and on one person's calendar.
+  /// Open on the month or the holidays (previews), and on one person's calendar.
   final bool startOnMonth;
+  final bool startOnHolidays;
   final String? person;
 
   @override
@@ -41,6 +44,8 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
 
   String get _dayKey => 'attendance:$_day';
   String get _monthKey => 'attendance:month:$_month';
+  static const _holidaysKey = 'holidays';
+  static const _holidaysPath = '/api/salon/holidays';
 
   @override
   void initState() {
@@ -48,7 +53,80 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _load(_dayKey, {'day': _day});
       _load(_monthKey, {'month': _month});
+      _loadHolidays();
     });
+  }
+
+  Future<void> _loadHolidays() async {
+    if (!mounted) return;
+    setState(() => _tried.remove(_holidaysKey));
+    await AppScope.read(context).load(_holidaysKey, _holidaysPath, force: true);
+    if (mounted) setState(() => _tried.add(_holidaysKey));
+  }
+
+  /// The shop's holidays: the holidays list when it has been read, else the last attendance answer, else the Front
+  /// Desk settings on the phone (so they work offline too).
+  List<Map<String, dynamic>> _rules(AppState app) => readHolidays(
+    app.cached(_holidaysKey)?['holidays'] ?? app.cached(_dayKey)?['holidayRules'] ?? app.cached(_monthKey)?['holidayRules'] ?? FrontDesk(app).settings['holidays'],
+  );
+
+  /// After a holiday is saved or removed: keep the server's list, and read again what depends on it.
+  Future<void> _afterHolidays(AppState app, Map<String, dynamic> data) async {
+    await app.store.write(_holidaysKey, data);
+    if (mounted) setState(() {});
+    app.load('setup', '/api/salon/setup', force: true).ignore();
+    _reloadBoth();
+  }
+
+  /// Add or change a holiday (online only). Throws with the server's words when it is refused.
+  Future<Map<String, dynamic>> _saveHoliday(AppState app, Map<String, dynamic> holiday) async {
+    final data = await app.ask(_holidaysPath, {'holiday': holiday});
+    await _afterHolidays(app, data);
+    return data;
+  }
+
+  Future<void> _editHoliday(AppState app, [Map<String, dynamic>? holiday]) async {
+    final message = await showModalBottomSheet<String>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (_) => _HolidaySheet(holiday: holiday, save: (h) => _saveHoliday(app, h)),
+    );
+    if (message != null && mounted) toast(context, message);
+  }
+
+  Future<void> _quickAdd(AppState app, Map suggestion) async {
+    try {
+      final data = await _saveHoliday(app, {'name': suggestion['name'], 'start': suggestion['start'], 'days': 1, 'repeat': 'yearly'});
+      if (mounted) toast(context, '${data['message'] ?? 'Holiday added.'}');
+    } catch (e) {
+      if (mounted) toast(context, '$e'.replaceFirst('Exception: ', ''));
+    }
+  }
+
+  Future<void> _removeHoliday(AppState app, Map<String, dynamic> holiday) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (d) => AlertDialog(
+        title: Text('Remove ${holiday['name']}?'),
+        content: Text(
+          holiday['repeat'] == 'none' ? 'Bookings can be taken that day again.' : 'It goes every time it repeats. Bookings can be taken on those days again.',
+          style: const TextStyle(height: 1.4),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(d, false), child: const Text('Keep')),
+          FilledButton(onPressed: () => Navigator.pop(d, true), child: const Text('Remove')),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    try {
+      final data = await app.ask(_holidaysPath, {'id': holiday['id']}, method: 'DELETE');
+      await _afterHolidays(app, data);
+      if (mounted) toast(context, '${data['message'] ?? 'Removed.'}');
+    } catch (e) {
+      if (mounted) toast(context, '$e'.replaceFirst('Exception: ', ''));
+    }
   }
 
   Future<void> _load(String key, Map<String, String> query) async {
@@ -62,6 +140,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
     _load(_dayKey, {'day': _day});
     _load(_monthKey, {'month': _month});
   }
+
 
   /// The changes still waiting to sync, oldest first.
   List<({String method, Map<String, dynamic> body})> _pending(AppState app) => [for (final item in app.pending('attendance')) (method: item.method, body: item.body)];
@@ -81,6 +160,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
     _pending(app),
     staffIds: [for (final m in _team(app)) '${m['id']}'],
     closed: _closed(app),
+    holidays: _rules(app),
     today: istToday(),
   );
 
@@ -95,6 +175,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
         [(method: method, body: body)],
         staffIds: [for (final m in _team(app)) '${m['id']}'],
         closed: _closed(app),
+        holidays: _rules(app),
         today: istToday(),
       );
       await app.store.write(key, {...data, 'marks': marks});
@@ -155,6 +236,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
         staffId: staffId,
         start: _day.compareTo(istToday()) >= 0 ? _day : istToday(),
         closed: _closed(app),
+        holidays: _rules(app),
         onSave: (leave) => _send(app, 'Leave for ${_team(app).firstWhere((m) => m['id'] == leave['staff_id'])['name']}', 'PUT', {
           'organizationId': app.orgId,
           'leave': leave,
@@ -173,16 +255,16 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
     if (waiting < _pendingSeen) WidgetsBinding.instance.addPostFrameCallback((_) => _reloadBoth());
     _pendingSeen = waiting;
     return DefaultTabController(
-      length: 2,
-      initialIndex: widget.startOnMonth ? 1 : 0,
+      length: 3,
+      initialIndex: widget.startOnHolidays ? 2 : (widget.startOnMonth ? 1 : 0),
       child: Scaffold(
         backgroundColor: Brand.page,
         appBar: AppBar(
           title: const Text('Attendance'),
-          bottom: const TabBar(tabs: [Tab(text: 'Day'), Tab(text: 'Month')]),
+          bottom: const TabBar(tabs: [Tab(text: 'Day'), Tab(text: 'Month'), Tab(text: 'Holidays')]),
         ),
         // A context under the tab controller, so a day tapped on the calendar can open the Day tab
-        body: Builder(builder: (tabs) => TabBarView(children: [_dayView(app), _monthView(app, tabs)])),
+        body: Builder(builder: (tabs) => TabBarView(children: [_dayView(app), _monthView(app, tabs), _holidaysView(app)])),
       ),
     );
   }
@@ -198,6 +280,8 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
     final counts = {for (final s in attendanceStatuses) s: marks.where((m) => m['status'] == s && team.any((p) => p['id'] == m['staff_id'])).length};
     final notMarked = team.where((p) => !byPerson.containsKey(p['id'])).length;
     final today = istToday();
+    // A shop holiday: closed, so nobody needs marking (someone who came in can still be marked)
+    final holiday = holidayOn(_day, _rules(app));
     return RefreshIndicator(
       onRefresh: () => _load(_dayKey, {'day': _day}),
       child: ListView(
@@ -227,6 +311,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
               _load(_dayKey, {'day': _day});
             },
           ),
+          if (holiday != null) ...[const SizedBox(height: 10), _HolidayBanner(holiday: holiday)],
           const SizedBox(height: 10),
           Wrap(
             spacing: 6,
@@ -255,6 +340,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
                   label: const Text('Mark all present'),
                 );
                 final leave = OutlinedButton.icon(onPressed: () => _addLeave(app), icon: const Icon(Icons.event_busy_outlined, size: 18), label: const Text('Add leave'));
+                if (holiday != null) return leave;
                 if (box.maxWidth < 340) return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [all, const SizedBox(height: 8), leave]);
                 return Row(
                   children: [
@@ -307,6 +393,8 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
     final team = _team(app);
     final marks = _marks(app, _monthKey).where((m) => '${m['day']}'.startsWith(_month)).toList();
     final closed = _closed(app);
+    final rules = _rules(app);
+    final off = holidayDays(rules, '$_month-01', monthDays(_month).last);
     final today = istToday();
     final person = team.cast<Map<String, dynamic>?>().firstWhere((m) => m!['id'] == _person, orElse: () => null);
     void moveMonth(int by) {
@@ -351,6 +439,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
                 month: _month,
                 marks: marks,
                 closed: closed,
+                holidays: rules,
                 today: today,
                 onTap: () => setState(() => _person = '${p['id']}'),
               ),
@@ -362,6 +451,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
               month: _month,
               marks: marks,
               closed: closed,
+              holidays: rules,
               today: today,
               onDay: (day) {
                 if (daysBetween(today, day) > maxDaysAhead) return;
@@ -376,7 +466,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
             ),
             Builder(
               builder: (context) {
-                final spans = leaveSpans(marks, '${person['id']}', closed: closed);
+                final spans = leaveSpans(marks, '${person['id']}', closed: closed, holidays: rules);
                 if (spans.isEmpty) {
                   return const Panel(
                     child: Text('No leave this month.', style: TextStyle(color: Brand.muted)),
@@ -409,12 +499,418 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
               },
             ),
           ],
+          if (off.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Icon(Icons.beach_access_outlined, size: 18, color: Brand.blue),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Holidays this month: ${[for (final span in holidaySpans(rules, '$_month-01', monthDays(_month).last)) '${span['name']} (${spanLabel(span)})'].join(', ')}',
+                    style: const TextStyle(fontSize: 13, color: Brand.textSoft, height: 1.35),
+                  ),
+                ),
+              ],
+            ),
+          ],
           const SizedBox(height: 12),
           const _Legend(),
         ],
       ),
     );
   }
+
+  // ── Holidays ──
+
+  Widget _holidaysView(AppState app) {
+    final data = app.cached(_holidaysKey);
+    final manage = (data?['canChange'] as bool?) ?? app.can('manage');
+    final today = istToday();
+    final rules = _rules(app);
+    final coming = upcomingHolidays(rules, today).take(6).toList();
+    final suggestions = [
+      for (final s in suggestedHolidays)
+        if (!rules.any((h) => h['repeat'] == 'yearly' && '${h['start']}'.substring(5) == s.monthDay)) {'name': s.name, 'start': suggestedStart(s.monthDay, today)},
+    ];
+    return RefreshIndicator(
+      onRefresh: _loadHolidays,
+      child: ListView(
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
+        children: [
+          Panel(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      width: 40,
+                      height: 40,
+                      decoration: BoxDecoration(color: Brand.blueSoft, borderRadius: BorderRadius.circular(12)),
+                      child: const Icon(Icons.beach_access_outlined, color: Brand.blue),
+                    ),
+                    const SizedBox(width: 12),
+                    const Expanded(child: Text('Shop holidays', style: TextStyle(fontSize: 16.5, fontWeight: FontWeight.w700))),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                const Text(
+                  'Days the shop is closed. No bookings are taken on them (WhatsApp, booking page and website), your website says Closed, and attendance skips them. Bills can still be made.',
+                  style: TextStyle(fontSize: 13.5, color: Brand.textSoft, height: 1.4),
+                ),
+                const SizedBox(height: 8),
+                const Text('Closed on the same day every week? Set it in Setup → WhatsApp → Closed on.', style: TextStyle(fontSize: 12.5, color: Brand.muted, height: 1.35)),
+              ],
+            ),
+          ),
+          if (manage) ...[
+            const SizedBox(height: 12),
+            FilledButton.icon(onPressed: () => _editHoliday(app), icon: const Icon(Icons.add, size: 20), label: const Text('Add holiday')),
+          ],
+          if (manage && suggestions.isNotEmpty) ...[
+            const SectionLabel('Add with one tap'),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final s in suggestions)
+                  ActionChip(
+                    avatar: const Icon(Icons.add, size: 16, color: Brand.blue),
+                    label: Text('${s['name']} · ${holidayDay(s['start']!)}', maxLines: 1, overflow: TextOverflow.ellipsis),
+                    onPressed: () => _quickAdd(app, s),
+                  ),
+              ],
+            ),
+            const Padding(
+              padding: EdgeInsets.only(top: 6),
+              child: Text('Each one repeats every year.', style: TextStyle(fontSize: 12, color: Brand.muted)),
+            ),
+          ],
+          if (rules.isEmpty && data == null && !_tried.contains(_holidaysKey))
+            const SizedBox(height: 240, child: SkeletonCards(cards: 2))
+          else if (rules.isEmpty) ...[
+            const SizedBox(height: 12),
+            EmptyState(
+              icon: Icons.beach_access_outlined,
+              title: 'No holidays yet',
+              text: manage
+                  ? 'Add the days your shop is closed, like Diwali or a family function. Repeating ones, like Republic Day, are added once.'
+                  : 'Your manager adds the days the shop is closed.',
+            ),
+          ] else ...[
+            const SectionLabel('Coming up'),
+            if (coming.isEmpty)
+              const Panel(
+                child: Text('No holidays in the next year.', style: TextStyle(color: Brand.muted)),
+              )
+            else
+              Card(
+                child: Column(children: [for (final span in coming) _ComingHoliday(span: span, today: today)]),
+              ),
+            const SectionLabel('All holidays'),
+            Card(
+              child: Column(
+                children: [
+                  for (final h in rules)
+                    _HolidayRow(
+                      holiday: h,
+                      today: today,
+                      manage: manage,
+                      onEdit: () => _editHoliday(app, h),
+                      onRemove: () => _removeHoliday(app, h),
+                    ),
+                ],
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/// "Shop holiday: Diwali (8 to 10 Nov)" on the Day view.
+class _HolidayBanner extends StatelessWidget {
+  const _HolidayBanner({required this.holiday});
+  final Map<String, dynamic> holiday;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.all(12),
+    decoration: BoxDecoration(color: Brand.blueSoft, borderRadius: BorderRadius.circular(12), border: Border.all(color: Brand.blue.withValues(alpha: 0.25))),
+    child: Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Icon(Icons.beach_access_outlined, color: Brand.blue, size: 22),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Shop holiday: ${holiday['name']} (${spanLabel(holiday)})', style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w700, color: Brand.navy)),
+              const SizedBox(height: 2),
+              const Text('The shop is closed: no bookings; nobody needs marking.', style: TextStyle(fontSize: 13, color: Brand.textSoft, height: 1.35)),
+            ],
+          ),
+        ),
+      ],
+    ),
+  );
+}
+
+/// The next time a holiday falls: the date as a small calendar leaf, its name, and how soon.
+class _ComingHoliday extends StatelessWidget {
+  const _ComingHoliday({required this.span, required this.today});
+  final Map<String, dynamic> span;
+  final String today;
+
+  @override
+  Widget build(BuildContext context) {
+    final start = '${span['start']}';
+    final away = daysBetween(today, start);
+    final soon = start.compareTo(today) <= 0 ? 'Today' : (away == 1 ? 'Tomorrow' : 'In $away days');
+    return ListTile(
+      leading: Container(
+        width: 46,
+        padding: const EdgeInsets.symmetric(vertical: 4),
+        decoration: BoxDecoration(color: Brand.page, borderRadius: BorderRadius.circular(10), border: Border.all(color: Brand.line)),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(holidayDay(start).split(' ').last.toUpperCase(), style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: Brand.blue)),
+            Text('${int.parse(start.substring(8))}', style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: Brand.navy, height: 1.1)),
+          ],
+        ),
+      ),
+      title: Text('${span['name']}', maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w700)),
+      subtitle: Text(
+        [dayTitle(start).split(',').first, if ((span['days'] as int) > 1) spanLabel(span), soon].join(' · '),
+        maxLines: 2,
+        overflow: TextOverflow.ellipsis,
+      ),
+    );
+  }
+}
+
+/// One saved holiday: name, how it repeats and when it falls next. Managers can change or remove it.
+class _HolidayRow extends StatelessWidget {
+  const _HolidayRow({required this.holiday, required this.today, required this.manage, required this.onEdit, required this.onRemove});
+  final Map<String, dynamic> holiday;
+  final String today;
+  final bool manage;
+  final VoidCallback onEdit, onRemove;
+
+  @override
+  Widget build(BuildContext context) {
+    final next = nextTime(holiday, today);
+    return ListTile(
+      onTap: manage ? onEdit : null,
+      title: Text('${holiday['name']}', maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w700)),
+      subtitle: Text(
+        '${repeatLabel(holiday)}\n${next == null ? 'Already gone' : '${holiday['repeat'] == 'none' ? 'On' : 'Next'}: ${spanLabel(next, withYear: true)}'}',
+        style: const TextStyle(height: 1.35),
+      ),
+      isThreeLine: true,
+      trailing: manage
+          ? PopupMenuButton<String>(
+              tooltip: 'More for ${holiday['name']}',
+              onSelected: (v) => v == 'edit' ? onEdit() : onRemove(),
+              itemBuilder: (_) => const [
+                PopupMenuItem(value: 'edit', child: Text('Change')),
+                PopupMenuItem(value: 'remove', child: Text('Remove')),
+              ],
+            )
+          : null,
+    );
+  }
+}
+
+/// Add or change a holiday: name (or a tap on a festival), the day, how many days, and how it repeats.
+class _HolidaySheet extends StatefulWidget {
+  const _HolidaySheet({this.holiday, required this.save});
+  final Map<String, dynamic>? holiday;
+  final Future<Map<String, dynamic>> Function(Map<String, dynamic> holiday) save;
+
+  @override
+  State<_HolidaySheet> createState() => _HolidaySheetState();
+}
+
+class _HolidaySheetState extends State<_HolidaySheet> {
+  late final _name = TextEditingController(text: '${widget.holiday?['name'] ?? ''}');
+  late String _start = '${widget.holiday?['start'] ?? istToday()}';
+  late int _days = (widget.holiday?['days'] as int?) ?? 1;
+  late String _repeat = '${widget.holiday?['repeat'] ?? 'none'}';
+  bool _tried = false;
+  bool _saving = false;
+  String? _error;
+
+  int get _maxDays => _repeat == 'none' || _repeat == 'yearly' ? maxHolidayDays : maxMonthlyHolidayDays;
+
+  void _setStart(String day) {
+    _start = day;
+    final choices = [for (final c in repeatChoices(day)) c.value];
+    if (!choices.contains(_repeat)) {
+      _repeat = _repeat == 'monthly_weekday' && choices.contains('monthly_last_weekday')
+          ? 'monthly_last_weekday'
+          : (_repeat == 'monthly_last_weekday' && choices.contains('monthly_weekday') ? 'monthly_weekday' : 'none');
+    }
+  }
+
+  Future<void> _pickDay() async {
+    final now = istNow();
+    final today = DateTime(now.year, now.month, now.day);
+    final current = DateTime.parse(_start);
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: current,
+      firstDate: current.isBefore(today) ? current : today,
+      lastDate: today.add(const Duration(days: maxHolidayDaysAhead)),
+    );
+    if (picked == null || !mounted) return;
+    setState(() => _setStart(picked.toIso8601String().substring(0, 10)));
+  }
+
+  Future<void> _save(Map<String, dynamic> holiday) async {
+    setState(() {
+      _saving = true;
+      _error = null;
+    });
+    try {
+      final data = await widget.save(holiday);
+      if (mounted) Navigator.pop(context, '${data['message'] ?? 'Saved.'}');
+    } catch (e) {
+      if (mounted) setState(() => _error = '$e'.replaceFirst('Exception: ', ''));
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final today = istToday();
+    final input = {if (widget.holiday?['id'] != null) 'id': widget.holiday!['id'], 'name': _name.text, 'start': _start, 'days': _days, 'repeat': _repeat};
+    final checked = cleanHoliday(input, today);
+    // Before the first Save, a missing name is not an error yet: the preview still shows the dates
+    final preview = checked.value ?? (checked.field == 'name' && !_tried ? cleanHoliday({...input, 'name': 'Holiday'}, today).value : null);
+    final next = preview == null ? null : nextTime({...preview, 'id': 'preview'}, today);
+    final problem = checked.value == null && (checked.field != 'name' || _tried) ? checked.error : null;
+    return Padding(
+      padding: EdgeInsets.fromLTRB(20, 0, 20, MediaQuery.of(context).viewInsets.bottom + 20),
+      child: SingleChildScrollView(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(widget.holiday == null ? 'Add a holiday' : 'Change holiday', style: const TextStyle(fontSize: 19, fontWeight: FontWeight.w700)),
+            const SizedBox(height: 2),
+            const Text('The shop is closed: no bookings that day', style: TextStyle(color: Brand.muted)),
+            const SizedBox(height: 16),
+            TextField(
+              controller: _name,
+              maxLength: holidayNameMax,
+              textCapitalization: TextCapitalization.words,
+              decoration: const InputDecoration(labelText: 'Name', hintText: 'Like Diwali or Family function'),
+              onChanged: (_) => setState(() {}),
+            ),
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: [
+                for (final idea in holidayNameIdeas)
+                  ChoiceChip(
+                    visualDensity: VisualDensity.compact,
+                    label: Text(idea),
+                    selected: _name.text.trim() == idea,
+                    onSelected: (_) => setState(() => _name.text = idea),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            _DateField(label: 'Day', day: _start, withYear: true, onTap: _pickDay),
+            const SizedBox(height: 14),
+            Row(
+              children: [
+                const Expanded(child: Text('How many days', style: TextStyle(fontWeight: FontWeight.w700))),
+                IconButton.outlined(onPressed: _days > 1 ? () => setState(() => _days--) : null, icon: const Icon(Icons.remove, size: 18), tooltip: 'One day less'),
+                SizedBox(
+                  width: 64,
+                  child: Text(_days == 1 ? '1 day' : '$_days days', textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.w700)),
+                ),
+                IconButton.outlined(onPressed: _days < _maxDays ? () => setState(() => _days++) : null, icon: const Icon(Icons.add, size: 18), tooltip: 'One day more'),
+              ],
+            ),
+            const SizedBox(height: 10),
+            const Text('Repeats', style: TextStyle(fontWeight: FontWeight.w700)),
+            const SizedBox(height: 4),
+            for (final choice in repeatChoices(_start))
+              _RepeatOption(
+                label: choice.label,
+                selected: _repeat == choice.value,
+                onTap: () => setState(() {
+                  _repeat = choice.value;
+                  if (_days > _maxDays) _days = _maxDays;
+                }),
+              ),
+            const SizedBox(height: 8),
+            Text(
+              problem ??
+                  (next == null
+                      ? ''
+                      : '${_repeat == 'none' ? 'On' : 'Next'}: ${spanLabel(next, withYear: true)}. No bookings are taken ${(next['days'] as int) > 1 ? 'on those days' : 'that day'}.'),
+              style: TextStyle(fontSize: 13, color: problem != null ? Brand.red : Brand.textSoft, height: 1.35),
+            ),
+            if (_error != null) ...[
+              const SizedBox(height: 8),
+              Text(_error!, style: const TextStyle(fontSize: 13.5, color: Brand.red, fontWeight: FontWeight.w600)),
+            ],
+            const SizedBox(height: 14),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton(
+                onPressed: _saving
+                    ? null
+                    : () {
+                        setState(() => _tried = true);
+                        if (checked.value != null) _save(checked.value!);
+                      },
+                child: Text(_saving ? 'Saving…' : 'Save holiday'),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// One way to repeat, as a row with a round tick (long words wrap on small phones).
+class _RepeatOption extends StatelessWidget {
+  const _RepeatOption({required this.label, required this.selected, required this.onTap});
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) => Semantics(
+    selected: selected,
+    button: true,
+    child: InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(10),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 2),
+        child: Row(
+          children: [
+            Icon(selected ? Icons.radio_button_checked : Icons.radio_button_unchecked, color: selected ? Brand.blue : Brand.faint, size: 22),
+            const SizedBox(width: 10),
+            Expanded(child: Text(label, style: TextStyle(fontSize: 14.5, fontWeight: selected ? FontWeight.w700 : FontWeight.w500))),
+          ],
+        ),
+      ),
+    ),
+  );
 }
 
 /// ‹ Today, Wed 25 Nov ›: tap the middle to pick a day (when [onPick] is given).
@@ -595,18 +1091,21 @@ class _StatusButton extends StatelessWidget {
 
 /// Everyone's month: days in, a strip of the month's days, and the totals. Tap for the calendar.
 class _PersonMonthCard extends StatelessWidget {
-  const _PersonMonthCard({required this.person, required this.month, required this.marks, required this.closed, required this.today, required this.onTap});
+  const _PersonMonthCard({required this.person, required this.month, required this.marks, required this.closed, this.holidays = const [], required this.today, required this.onTap});
   final Map<String, dynamic> person;
   final String month;
   final List<Map<String, dynamic>> marks;
   final List<int> closed;
+  final List<Map<String, dynamic>> holidays;
   final String today;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     final id = '${person['id']}';
-    final sum = personMonth(marks, id, month, today, closed: closed);
+    final sum = personMonth(marks, id, month, today, closed: closed, holidays: holidays);
+    final off = holidayDays(holidays, '$month-01', monthDays(month).last);
+    bool isOff(String d) => closed.contains(weekdayOf(d)) || off.containsKey(d);
     final own = {for (final m in marks.where((m) => m['staff_id'] == id)) '${m['day']}': '${m['status']}'};
     return Panel(
       onTap: onTap,
@@ -639,9 +1138,9 @@ class _PersonMonthCard extends StatelessWidget {
                   width: 11,
                   height: 11,
                   decoration: BoxDecoration(
-                    color: own[d] != null ? _tones[own[d]]!.$2 : (closed.contains(weekdayOf(d)) || d.compareTo(today) > 0 ? Brand.lineSoft : Colors.white),
+                    color: own[d] != null ? _tones[own[d]]!.$2 : (isOff(d) || d.compareTo(today) > 0 ? Brand.lineSoft : Colors.white),
                     borderRadius: BorderRadius.circular(3),
-                    border: own[d] == null && !closed.contains(weekdayOf(d)) && d.compareTo(today) <= 0 ? Border.all(color: Brand.border) : null,
+                    border: own[d] == null && !isOff(d) && d.compareTo(today) <= 0 ? Border.all(color: Brand.border) : null,
                   ),
                 ),
             ],
@@ -674,11 +1173,12 @@ class _Totals extends StatelessWidget {
 
 /// One person's month as a calendar (Monday first). Tap a day to mark it.
 class _Calendar extends StatelessWidget {
-  const _Calendar({required this.person, required this.month, required this.marks, required this.closed, required this.today, required this.onDay});
+  const _Calendar({required this.person, required this.month, required this.marks, required this.closed, this.holidays = const [], required this.today, required this.onDay});
   final Map<String, dynamic> person;
   final String month;
   final List<Map<String, dynamic>> marks;
   final List<int> closed;
+  final List<Map<String, dynamic>> holidays;
   final String today;
   final ValueChanged<String> onDay;
 
@@ -688,7 +1188,8 @@ class _Calendar extends StatelessWidget {
     final days = monthDays(month);
     final lead = (weekdayOf(days.first) + 6) % 7;
     final own = {for (final m in marks.where((m) => m['staff_id'] == id)) '${m['day']}': m};
-    final sum = personMonth(marks, id, month, today, closed: closed);
+    final sum = personMonth(marks, id, month, today, closed: closed, holidays: holidays);
+    final off = holidayDays(holidays, days.first, days.last);
     return Panel(
       padding: const EdgeInsets.all(12),
       child: Column(
@@ -730,7 +1231,7 @@ class _Calendar extends StatelessWidget {
             childAspectRatio: 0.82,
             children: [
               for (var i = 0; i < lead; i++) const SizedBox.shrink(),
-              for (final d in days) _DayCell(day: d, mark: own[d], closed: closed.contains(weekdayOf(d)), today: today, onTap: () => onDay(d)),
+              for (final d in days) _DayCell(day: d, mark: own[d], closed: closed.contains(weekdayOf(d)), holiday: off[d], today: today, onTap: () => onDay(d)),
             ],
           ),
           const SizedBox(height: 10),
@@ -742,10 +1243,13 @@ class _Calendar extends StatelessWidget {
 }
 
 class _DayCell extends StatelessWidget {
-  const _DayCell({required this.day, required this.mark, required this.closed, required this.today, required this.onTap});
+  const _DayCell({required this.day, required this.mark, required this.closed, this.holiday, required this.today, required this.onTap});
   final String day;
   final Map<String, dynamic>? mark;
   final bool closed;
+
+  /// The shop's holiday that day (its name), shaded like a closed day and marked "Hol"
+  final String? holiday;
   final String today;
   final VoidCallback onTap;
 
@@ -753,11 +1257,12 @@ class _DayCell extends StatelessWidget {
   Widget build(BuildContext context) {
     final status = mark?['status'] as String?;
     final tone = status == null ? null : _tones[status];
+    final off = closed || holiday != null;
     return Semantics(
-      label: '${shortDay(day)}: ${status != null ? markLabel(mark) : closed ? 'closed' : 'not marked'}',
+      label: '${shortDay(day)}: ${status != null ? markLabel(mark) : holiday != null ? 'holiday, $holiday' : closed ? 'closed' : 'not marked'}',
       button: true,
       child: Material(
-        color: closed && status == null ? Brand.lineSoft : Colors.white,
+        color: off && status == null ? Brand.lineSoft : Colors.white,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8), side: BorderSide(color: day == today ? Brand.blue : Brand.line, width: day == today ? 1.5 : 1)),
         child: InkWell(
           onTap: onTap,
@@ -775,8 +1280,8 @@ class _DayCell extends StatelessWidget {
                     padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
                     decoration: BoxDecoration(color: tone?.$1 ?? Colors.transparent, borderRadius: BorderRadius.circular(4)),
                     child: Text(
-                      status == null ? ' ' : attendanceLetters[status]!,
-                      style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w800, color: tone?.$2 ?? Colors.transparent),
+                      status == null ? (holiday != null ? 'Hol' : ' ') : attendanceLetters[status]!,
+                      style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w800, color: tone?.$2 ?? (holiday != null ? Brand.muted : Colors.transparent)),
                     ),
                   ),
                 ],
@@ -809,17 +1314,32 @@ class _Legend extends StatelessWidget {
             Text('${attendanceLetters[s]} = ${s == 'leave' ? 'On leave' : attendanceLabels[s]}', style: const TextStyle(fontSize: 12, color: Brand.muted)),
           ],
         ),
+      Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 10,
+            height: 10,
+            decoration: BoxDecoration(color: Brand.lineSoft, borderRadius: BorderRadius.circular(3), border: Border.all(color: Brand.border)),
+          ),
+          const SizedBox(width: 4),
+          const Text('Grey = closed or holiday (Hol)', style: TextStyle(fontSize: 12, color: Brand.muted)),
+        ],
+      ),
     ],
   );
 }
 
 /// Leave from one day to another for one person: who, from, to, leave or week off, kind, note.
 class _LeaveSheet extends StatefulWidget {
-  const _LeaveSheet({required this.team, required this.staffId, required this.start, required this.closed, required this.onSave});
+  const _LeaveSheet({required this.team, required this.staffId, required this.start, required this.closed, this.holidays = const [], required this.onSave});
   final List<Map<String, dynamic>> team;
   final String? staffId;
   final String start;
   final List<int> closed;
+
+  /// The shop's holidays: left out of the leave, like closed days
+  final List<Map<String, dynamic>> holidays;
   final void Function(Map<String, dynamic> leave) onSave;
 
   @override
@@ -847,7 +1367,9 @@ class _LeaveSheetState extends State<_LeaveSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final result = _who.isEmpty ? null : leaveDays(staffId: _who, from: _from, to: _to, today: istToday(), status: _status, kind: _kind, note: _note.text, closed: widget.closed);
+    final result = _who.isEmpty
+        ? null
+        : leaveDays(staffId: _who, from: _from, to: _to, today: istToday(), status: _status, kind: _kind, note: _note.text, closed: widget.closed, holidays: widget.holidays);
     final count = result?.marks.length ?? 0;
     return Padding(
       padding: EdgeInsets.fromLTRB(20, 0, 20, MediaQuery.of(context).viewInsets.bottom + 20),
@@ -928,7 +1450,8 @@ class _LeaveSheetState extends State<_LeaveSheet> {
             Text(
               result == null
                   ? 'Choose who, and the days.'
-                  : result.error ?? '${daysText(count)} will be marked${widget.closed.isNotEmpty ? ' (days you are closed are left out)' : ''}. Not offered for bookings on those days.',
+                  : result.error ??
+                        '${daysText(count)} will be marked${widget.closed.isNotEmpty || widget.holidays.isNotEmpty ? ' (days you are closed and holidays are left out)' : ''}. Not offered for bookings on those days.',
               style: TextStyle(fontSize: 13, color: result?.error != null ? Brand.red : Brand.textSoft, height: 1.35),
             ),
             const SizedBox(height: 14),
@@ -952,9 +1475,12 @@ class _LeaveSheetState extends State<_LeaveSheet> {
 }
 
 class _DateField extends StatelessWidget {
-  const _DateField({required this.label, required this.day, required this.onTap});
+  const _DateField({required this.label, required this.day, required this.onTap, this.withYear = false});
   final String label, day;
   final VoidCallback onTap;
+
+  /// "Fri, 27 Nov 2026" (a holiday can be far ahead) instead of "27 Nov"
+  final bool withYear;
   @override
   Widget build(BuildContext context) => InkWell(
     onTap: onTap,
@@ -962,7 +1488,7 @@ class _DateField extends StatelessWidget {
     child: InputDecorator(
       decoration: InputDecoration(labelText: label, suffixIcon: const Icon(Icons.calendar_today_outlined, size: 18)),
       // "26 Nov": fits two side by side on a 320px phone
-      child: Text(shortDay(day), maxLines: 1, overflow: TextOverflow.ellipsis),
+      child: Text(withYear ? '${dayTitle(day)} ${day.substring(0, 4)}' : shortDay(day), maxLines: 1, overflow: TextOverflow.ellipsis),
     ),
   );
 }

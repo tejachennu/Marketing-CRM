@@ -1,11 +1,12 @@
 import 'attendance_logic.dart';
+import 'backend.dart';
 import 'format.dart';
 
 /// Demo answers for staff attendance, shaped like the real GET / PUT / DELETE /api/salon/attendance: this month
 /// marked so far (a few leaves, a half day, week offs), Lakshmi on a half day today and Ravi on sick leave until
-/// the day after tomorrow.
+/// the day after tomorrow. Also the shop's holidays, like GET / POST / DELETE /api/salon/holidays.
 class DemoAttendance {
-  DemoAttendance({required this.staff, required this.closed}) {
+  DemoAttendance({required this.staff, required this.closed, required this.holidays, required this.saveHolidays}) {
     final today = istToday();
     final month = today.substring(0, 7);
     final people = staff();
@@ -38,15 +39,49 @@ class DemoAttendance {
   final List<Map<String, dynamic>> Function() staff;
   final List<int> Function() closed;
 
+  /// The shop's holidays, kept in the demo's Front Desk settings (as the server keeps salon_settings.holidays).
+  final List<Map<String, dynamic>> Function() holidays;
+  final void Function(List<Map<String, dynamic>> list) saveHolidays;
+
   final Map<String, Map<String, dynamic>> _marks = {};
   void _put(Map<String, dynamic> m) => _marks['${m['staff_id']}|${m['day']}'] = m;
   List<Map<String, dynamic>> get _all => _marks.values.toList();
 
   List<Map<String, dynamic>> get _team => staff().where((m) => m['active'] != false).map((m) => {'id': m['id'], 'name': m['name'], 'active': true}).toList();
 
+  /// The holidays answer, as the server's /api/salon/holidays.
+  Map<String, dynamic> _holidaysAnswer([Map<String, dynamic> extra = const {}]) {
+    final today = istToday();
+    final list = readHolidays(holidays());
+    return {
+      'success': true,
+      'today': today,
+      'canChange': true,
+      'holidays': [
+        for (final h in list)
+          {
+            ...h,
+            'label': repeatLabel(h),
+            'next': switch (nextTime(h, today)) {
+              final Map<String, dynamic> n => {'start': n['start'], 'end': n['end'], 'label': spanLabel(n, withYear: true)},
+              _ => null,
+            },
+          },
+      ],
+      'upcoming': [for (final s in upcomingHolidays(list, today).take(12)) {...s, 'label': spanLabel(s, withYear: true)}],
+      'suggestions': [
+        for (final s in suggestedHolidays)
+          if (!list.any((h) => h['repeat'] == 'yearly' && '${h['start']}'.substring(5) == s.monthDay)) {'name': s.name, 'start': suggestedStart(s.monthDay, today), 'repeat': 'yearly'},
+      ],
+      ...extra,
+    };
+  }
+
   Map<String, dynamic>? get(String path, Map<String, String>? query) {
+    if (path == '/api/salon/holidays') return _holidaysAnswer();
     if (path != '/api/salon/attendance') return null;
     final today = istToday();
+    final rules = readHolidays(holidays());
     final team = _team;
     final month = query?['month'];
     if (month != null || query?['staffId'] != null) {
@@ -60,22 +95,27 @@ class DemoAttendance {
         'today': today,
         'canMark': true,
         'closedWeekdays': closed(),
+        'holidays': holidayDays(rules, '$m-01', monthDays(m).last),
+        'holidayRules': rules,
         'staff': people,
         'marks': marks,
         'summary': [
-          for (final p in people) {'staff_id': p['id'], 'name': p['name'], ...personMonth(marks, '${p['id']}', m, today, closed: closed())},
+          for (final p in people) {'staff_id': p['id'], 'name': p['name'], ...personMonth(marks, '${p['id']}', m, today, closed: closed(), holidays: rules)},
         ],
-        'leave': [for (final p in people) ...leaveSpans(marks, '${p['id']}', closed: closed())],
+        'leave': [for (final p in people) ...leaveSpans(marks, '${p['id']}', closed: closed(), holidays: rules)],
       };
     }
     final day = query?['day'] ?? today;
     final marks = _all.where((x) => x['day'] == day).toList();
+    final holiday = holidayOn(day, rules);
     return {
       'success': true,
       'day': day,
       'today': today,
       'canMark': true,
       'closedWeekdays': closed(),
+      'holiday': holiday == null ? null : {'name': holiday['name'], 'start': holiday['start'], 'end': holiday['end'], 'label': spanLabel(holiday)},
+      'holidayRules': rules,
       'staff': team,
       'marks': marks,
       'rows': [
@@ -90,10 +130,31 @@ class DemoAttendance {
       if (m['day'] == day && m['status'] != 'present') {'staff_id': m['staff_id'], 'status': m['status'], 'leave_kind': m['leave_kind']},
   ];
 
+  /// Add or change a holiday (POST / PUT), or remove one (DELETE), with the server's checks and words.
+  Map<String, dynamic> _sendHoliday(String method, Map<String, dynamic> body) {
+    final list = readHolidays(holidays());
+    if (method == 'DELETE') {
+      final id = '${body['id'] ?? ''}';
+      if (id.isEmpty) throw ApiException(400, 'Choose the holiday to remove.');
+      final gone = list.cast<Map<String, dynamic>?>().firstWhere((h) => h!['id'] == id, orElse: () => null);
+      if (gone == null) return _holidaysAnswer({'removed': false, 'message': 'Already removed.'});
+      saveHolidays(list.where((h) => h['id'] != id).toList());
+      return _holidaysAnswer({'removed': true, 'message': '${gone['name']} removed.'});
+    }
+    final checked = cleanHoliday(body['holiday'] is Map ? body['holiday'] as Map : const {}, istToday());
+    if (checked.value == null) throw ApiException(400, checked.error!);
+    final holiday = {'id': 'h_${DateTime.now().microsecondsSinceEpoch}', ...checked.value!};
+    final changing = list.any((h) => h['id'] == holiday['id']);
+    if (!changing && list.length >= maxHolidays) throw ApiException(400, 'You can keep at most $maxHolidays holidays. Remove old ones first.');
+    saveHolidays(readHolidays(changing ? [for (final h in list) h['id'] == holiday['id'] ? holiday : h] : [...list, holiday]));
+    return _holidaysAnswer({'saved': holiday, 'bookings': {'count': 0, 'days': <String>[]}, 'message': changing ? 'Holiday changed.' : 'Holiday added. No bookings will be taken that day.'});
+  }
+
   Map<String, dynamic>? send(String method, String path, Map<String, dynamic> body) {
+    if (path == '/api/salon/holidays' || path.startsWith('/api/salon/holidays?')) return _sendHoliday(method, body);
     if (path != '/api/salon/attendance') return null;
     final before = _marks.length;
-    final saved = applyPending(_all, [(method: method, body: body)], staffIds: [for (final p in _team) '${p['id']}'], closed: closed(), today: istToday());
+    final saved = applyPending(_all, [(method: method, body: body)], staffIds: [for (final p in _team) '${p['id']}'], closed: closed(), holidays: holidays(), today: istToday());
     _marks
       ..clear()
       ..addEntries(saved.map((m) => MapEntry('${m['staff_id']}|${m['day']}', m)));

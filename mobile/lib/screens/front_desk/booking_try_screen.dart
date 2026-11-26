@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../../data/app_state.dart';
+import '../../data/attendance_logic.dart' show holidayOn;
 import '../../data/format.dart';
 import '../../ui/theme.dart';
 import 'booking_steps.dart';
@@ -254,7 +255,7 @@ class _BookingTryScreenState extends State<BookingTryScreen> {
     );
   }
 
-  /// Open days ahead, from the opening hours and closed days in Setup.
+  /// Open days ahead, from the opening hours and closed days in Setup, and the shop's holidays (Attendance).
   void _days(String body) {
     final settings = _desk.settings;
     final closed = [for (final d in (settings['closed_weekdays'] as List? ?? const [])) (d as num).toInt()];
@@ -263,6 +264,7 @@ class _BookingTryScreenState extends State<BookingTryScreen> {
     for (var i = 0; i < widget.daysAhead && days.length < 10; i++) {
       final d = DateTime(today.year, today.month, today.day).add(Duration(days: i));
       if (closed.contains(d.weekday % 7)) continue;
+      if (holidayOn(DateFormat('yyyy-MM-dd').format(d), settings['holidays']) != null) continue;
       // Today only while a time is still open (the same rule as the time list below)
       if (i == 0 && _openTimes(d).isEmpty) continue;
       days.add(d);
