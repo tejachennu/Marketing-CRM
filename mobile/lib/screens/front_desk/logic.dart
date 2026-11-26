@@ -184,6 +184,29 @@ class FrontDesk {
     return [for (final r in (today['requests'] as List? ?? const [])) Map<String, dynamic>.from(r)].where((r) => !status.containsKey('${r['id']}')).toList();
   }
 
+  /// Bookings customers made themselves lately (website, WhatsApp, API) for any day, not yet marked seen on this
+  /// phone: the server sends them with today's list ("fresh"). Newest first.
+  List<Map<String, dynamic>> get freshBookings {
+    if (!app.takesAppointments) return <Map<String, dynamic>>[];
+    final seen = {for (final id in (app.store.read(seenBookingsKey)?['ids'] as List? ?? const [])) '$id'};
+    final today = app.cached(AppState.dayKey(istToday())) ?? const {};
+    return [
+      for (final b in (today['fresh'] as List? ?? const []))
+        if (b is Map && !seen.contains('${b['id']}') && istDateOf(DateTime.tryParse('${b['starts_at']}') ?? DateTime(2000)).compareTo(istToday()) >= 0)
+          Map<String, dynamic>.from(b),
+    ];
+  }
+
+  static const seenBookingsKey = 'seen_bookings';
+
+  /// "Got it": these bookings leave the card on this phone.
+  Future<void> markBookingsSeen(Iterable<String> ids) async {
+    final old = [for (final id in (app.store.read(seenBookingsKey)?['ids'] as List? ?? const [])) '$id'];
+    final next = {...old, ...ids}.toList();
+    await app.store.write(seenBookingsKey, {'ids': next.length > 200 ? next.sublist(next.length - 200) : next});
+    app.changed();
+  }
+
   /// Today's bills (India date), newest first, with the ones made on this phone still waiting to sync.
   List<Map<String, dynamic>> get billsToday {
     final today = istToday();

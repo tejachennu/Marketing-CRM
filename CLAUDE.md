@@ -118,6 +118,40 @@ Email: `HOSTINGER_SMTP_*`, `SENDGRID_*`. Other: `NEXT_PUBLIC_APP_URL`, `CRON_SEC
 
 ## What has been built (recent history, newest first)
 
+- **Fixes after the owner's own test of the websites; new customer bookings stand out; Google reviews** (owner, 26 Nov
+  2026: "login ... something error page ... back kodithe login ayyi chupinchesindi", "front desk website nunchi booking
+  chesthe ikkada raaledu", "UI improvements", "5 star review ... Google ki connect cheyagalama").
+  - **The "missing" website booking** was saved (Magnetora AI Solutions, booked for Sat 28 Nov 10:30, `source online`):
+    it was for another day, and Front Desk had since been switched off for that workspace (one connector at a time), so
+    neither the counter nor the website showed it. Now `GET /api/salon/appointments?date=` also returns `fresh`: bookings
+    customers made themselves (`SELF_BOOKED_SOURCES` online / chat / api) in the last 72 h, booked, still to come
+    (`lib/salon/new-bookings.ts`); web counter card **New bookings from customers** (`components/salon/new-bookings.tsx`,
+    tap → that day, "Got it" hides them per device in localStorage `wama-seen-bookings:<org>`); app Front Desk card the
+    same (`_NewBookings` in `front_desk_screen.dart`, `FrontDesk.freshBookings`, seen ids in the phone store
+    `seen_bookings`; demo shows one).
+  - **Sign-in error page**: not reproducible from here (no login). Hardened: `/login` (password and code) and
+    `/auth/callback` go to the dashboard with a full page load (`window.location.replace`), not an in-page move; the
+    Google return page and the store's shopper sign-in (`app/s/[slug]/signin`) carry on when the code was already used
+    but a session exists (`getSession()` fallback; the shopper page runs once via a ref) instead of showing "did not
+    finish"; error pages `app/global-error.tsx`, `app/dashboard/error.tsx`, `app/{s,v,b}/[slug]/error.tsx` with Try
+    again (`components/errors/error-screen.tsx`), reloading once by itself when a new version went live
+    (`lib/new-version.ts` `isNewVersionError`, remembered a minute).
+  - Front Desk website (`business-site.tsx`): no stray coloured strip on the hero, quick facts only for what exists (no
+    empty boxes), no grey map without an address, team buttons say Book (fit at 320 px), service chips wrap on wide
+    screens; booking form (`booking-wizard.tsx`) gets a search box and type chips when there are more than 8 services.
+    Online store: `Picture` checks after load for photos that failed before the page came alive (placeholder, not alt
+    text); `dropOwnBrand` (storefront.ts) hides a brand that is just the business / store name (Meta catalog syncs put it
+    on every product); banner text kept off the drawn picture on phones; promise strip has no half-empty row; no empty
+    Contact us; product grid's empty cells white.
+  - **Google reviews**: Google has no way for an app to post a review for a customer (only the customer, from their own
+    Google account), and its rules forbid asking only happy customers ("review gating"). So the feedback form's thank-you
+    now has **Post it on Google too** (copies the customer's words, opens the business's review link; they paste and tap
+    Post) for 4–5 stars, and a quiet "review us on Google" for lower ratings; `/api/salon/feedback/submit` and the
+    WhatsApp `thanksText` give the link after every rating. Reading Google reviews into WAMA / replying from WAMA needs
+    the Google Business Profile API (an access request to Google + the business connecting its profile): not built.
+  - Holidays app part done too (Attendance → Holidays, `attendance_logic.dart`, `test/holidays_test.dart`).
+  - This environment's network now allows `wamacrm.magnetora.in` (to look at the live websites).
+
 - **Front Desk: shop holidays in Attendance, one-off or repeating** (owner, 26 Nov 2026: "store holidays in attendance
   recurring holidays").
   - Rules `lib/salon/holidays.ts` (pure, browser-safe): a holiday is `{ id, name ≤40, start, days, repeat }` with repeat

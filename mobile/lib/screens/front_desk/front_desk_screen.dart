@@ -415,6 +415,7 @@ class _Today extends StatelessWidget {
               ],
             ),
           ),
+          _NewBookings(desk: desk, onDay: onDay),
           if (appointments.isEmpty)
             EmptyState(icon: Icons.event_available_outlined, title: desk.isToday ? 'No visits today yet' : 'No visits this day', text: 'Tap Book to add one, or New bill for a walk-in.')
           else ...[
@@ -425,6 +426,105 @@ class _Today extends StatelessWidget {
         ],
       ),
     );
+  }
+}
+
+/// "New bookings from customers": made on the website, WhatsApp or the API lately, for any day (the list shows one day
+/// at a time, so a booking for Saturday was easy to miss). A tap opens its day; "Got it" hides them on this phone.
+class _NewBookings extends StatelessWidget {
+  const _NewBookings({required this.desk, required this.onDay});
+  final FrontDesk desk;
+  final ValueChanged<String> onDay;
+
+  static String _source(Object? source) => switch ('$source') { 'online' => 'Website', 'chat' => 'WhatsApp', 'api' => 'Your app', _ => 'Counter' };
+
+  @override
+  Widget build(BuildContext context) {
+    final list = desk.freshBookings;
+    if (list.isEmpty) return const SizedBox.shrink();
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 10, 16, 4),
+      decoration: BoxDecoration(color: Colors.white, border: Border.all(color: Brand.line), borderRadius: BorderRadius.circular(16)),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(14, 10, 4, 6),
+            child: Row(
+              children: [
+                const Icon(Icons.notifications_active_outlined, color: Brand.blue, size: 22),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    'New bookings from customers · ${list.length}',
+                    style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: Brand.navy),
+                  ),
+                ),
+                TextButton(
+                  onPressed: () => desk.markBookingsSeen([for (final b in list) '${b['id']}']),
+                  child: const Text('Got it'),
+                ),
+              ],
+            ),
+          ),
+          for (final b in list.take(5)) ...[
+            const Divider(height: 1),
+            InkWell(
+              onTap: () {
+                final at = DateTime.tryParse('${b['starts_at']}');
+                if (at != null) onDay(istDateOf(at));
+              },
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(14, 10, 10, 10),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            '${_dayWords(b['starts_at'])}, ${formatTime('${b['starts_at']}')}',
+                            style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: Brand.navy),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            [
+                              '${b['customer_name'] ?? 'Customer'}',
+                              for (final s in (b['services'] as List? ?? const [])) if (s is Map && s['name'] != null) '${s['name']}',
+                            ].join(' · '),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(fontSize: 13.5, color: Brand.muted),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                      decoration: BoxDecoration(color: Brand.page, borderRadius: BorderRadius.circular(8)),
+                      child: Text(_source(b['source']), style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Brand.muted)),
+                    ),
+                    const Icon(Icons.chevron_right, color: Brand.muted),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  /// "Today", "Tomorrow", "Sat, 28 Nov"
+  static String _dayWords(Object? startsAt) {
+    final at = DateTime.tryParse('$startsAt');
+    if (at == null) return '';
+    final day = istDateOf(at);
+    final today = istToday();
+    if (day == today) return 'Today';
+    if (DateTime.parse(day).difference(DateTime.parse(today)).inDays == 1) return 'Tomorrow';
+    return formatDay(DateTime.parse(day));
   }
 }
 

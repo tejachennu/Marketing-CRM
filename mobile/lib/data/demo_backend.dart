@@ -716,6 +716,20 @@ class DemoBackend implements Backend {
           'requests': _requests,
           'invoices': _invoices.where((i) => _appointments.any((a) => a['invoice_id'] == i['id'])).toList(),
           'attendance': _attendance.notices(istToday()),
+          // A customer booked Saturday on the website an hour ago
+          'fresh': [
+            {
+              'id': 'ap-web-1',
+              'customer_name': 'Sneha Reddy',
+              'starts_at': '${addDay(istToday(), 2)}T05:00:00.000Z',
+              'created_at': DateTime.now().subtract(const Duration(hours: 1)).toUtc().toIso8601String(),
+              'source': 'online',
+              'status': 'booked',
+              'services': [
+                {'name': 'Hair spa'},
+              ],
+            },
+          ],
         };
       case '/api/salon/invoices':
         final paid = _invoices.where((i) => i['status'] == 'paid');

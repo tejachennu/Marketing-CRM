@@ -1323,7 +1323,8 @@ class _Legend extends StatelessWidget {
             decoration: BoxDecoration(color: Brand.lineSoft, borderRadius: BorderRadius.circular(3), border: Border.all(color: Brand.border)),
           ),
           const SizedBox(width: 4),
-          const Text('Grey = closed or holiday (Hol)', style: TextStyle(fontSize: 12, color: Brand.muted)),
+          // Flexible: wraps on a narrow phone with large text instead of running off the screen
+          const Flexible(child: Text('Grey = closed or holiday', style: TextStyle(fontSize: 12, color: Brand.muted))),
         ],
       ),
     ],
