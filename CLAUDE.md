@@ -118,6 +118,35 @@ Email: `HOSTINGER_SMTP_*`, `SENDGRID_*`. Other: `NEXT_PUBLIC_APP_URL`, `CRON_SEC
 
 ## What has been built (recent history, newest first)
 
+- **Front Desk: shop holidays in Attendance, one-off or repeating** (owner, 26 Nov 2026: "store holidays in attendance
+  recurring holidays").
+  - Rules `lib/salon/holidays.ts` (pure, browser-safe): a holiday is `{ id, name ≤40, start, days, repeat }` with repeat
+    `none` (1–31 days) / `yearly` (29 Feb → 28 Feb; spans can cross the new year) / `monthly` (31st → month end) /
+    `monthly_weekday` (the nth weekday of the start date; a 5th = the last) / `monthly_last_weekday` (monthly ≤7 days);
+    `holidayOn`, `holidaySpans`, `holidayDays`, `upcomingHolidays`, `nextTime`, `cleanHoliday` (plain-English refusals,
+    ≤2 years ahead, a one-off cannot be in the past), `readHolidays` (forgiving, ≤60), `withHoliday` / `withoutHoliday`,
+    `dropOldHolidays` (one-offs over a year old), `repeatLabel` / `repeatChoices` ("Every month on the 2nd Tuesday"),
+    `spanLabel`, `SUGGESTED_HOLIDAYS` (Republic Day, Independence Day, Gandhi Jayanti, Christmas, New Year's Day),
+    `holidaysSentence` (for the AI). Weekly closed days stay in Setup → WhatsApp → Closed on.
+  - Stored in `salon_settings.holidays` (JSONB list; lock **724519041**, migration `20261214_front_desk_holidays.sql`,
+    `lib/salon/holidays-store.ts` `withHolidaysSchema`, `loadHolidays`, `saveHolidays`, `bookingsOnHoliday`). Settings are
+    read with `select('*')`, so nothing needs the column until the first save. API `GET/POST/PUT/DELETE
+    /api/salon/holidays` (everyone looks, managers change: `automation.manage`; logged in the change history; POST answers
+    how many bookings are already on that day: they stay, the team calls those customers).
+  - **A holiday is a closed day everywhere**: `isClosedOn` in `availability.ts` checks `hours.holidays`, so free times
+    (WhatsApp assistant, booking flow, booking page `bookableDays`, booking payments, `/api/v1` availability, which now
+    reads `salon_settings` with `select('*')`) are empty that day; the assistant's prompt lists the next two months'
+    holidays and its "no time" note says why; the website (`openStatus`: "Closed today · Diwali · opens Friday 10 am",
+    next open day skips holidays; `comingHolidays` → "Holidays (closed)" under the opening hours) and the website chat
+    (`deskFacts` `holidays`) follow them; the counter's New booking says "This day is a shop holiday (Diwali)" but can
+    still book. Bills are never blocked.
+  - Attendance: holidays are not working days (`leaveRange`, `monthSummary`, `leaveSpans` take `holidays`); the attendance
+    API returns `holiday` (day) / `holidays` map (month) and `holidayRules`. Web Front Desk → Team → Attendance →
+    **Day | Month | Holidays** (`components/salon/salon-holidays.tsx`: explanation, one-tap national holidays, Coming up,
+    All holidays with Change / Remove, Add holiday sheet with quick names, day stepper, repeat choices and a "Next: …"
+    line); a holiday banner on the day view (no Mark all present), holiday days marked on the month views, Add leave
+    leaves holidays out. Tests `tests/holidays.test.cjs`. **Not tried against the real database yet.**
+
 - **Front Desk: appointments can be switched off (walk-in shops); website buttons on/off; staff attendance with leave**
   (owner, 26 Nov 2026: "in some shops they don't need appointment booking, they can hide it", "staff attendance
   maintenance (staff leave marking)", "website lo call to action button enable or disable").
@@ -151,7 +180,7 @@ Email: `HOSTINGER_SMTP_*`, `SENDGRID_*`. Other: `NEXT_PUBLIC_APP_URL`, `CRON_SEC
     page / website ("Anyone" goes to someone who is in) and `/api/v1` free times; half day stays bookable; existing
     bookings stay with an "on leave" chip on the counter and a warning in New booking; an attendance read error counts
     everyone as in. Team numbers show "N days in" once attendance is used. Tests `tests/staff-attendance*.test.cjs`,
-    `mobile/test/attendance_test.dart`. **Next free lock: 724519041.**
+    `mobile/test/attendance_test.dart`. (724519041 is now used by holidays: **next free lock 724519042**.)
   - **Not tried against the real database, WhatsApp or the AI yet** (both new columns / tables set themselves up on first use).
 
 - **Invoices redesigned; editable WhatsApp templates sent for approval; real phone pop-ups; own expense kinds; UI pass on
