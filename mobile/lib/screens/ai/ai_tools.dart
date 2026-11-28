@@ -441,9 +441,9 @@ class _ReplyStyleScreenState extends State<ReplyStyleScreen> {
     return Scaffold(
       backgroundColor: Brand.page,
       appBar: AppBar(title: const Text('How the AI replies')),
-      bottomNavigationBar: canEdit && s != null
+      bottomNavigationBar: KeyboardBar.wrap(canEdit && s != null
           ? SafeArea(child: Padding(padding: const EdgeInsets.fromLTRB(16, 8, 16, 10), child: FilledButton(style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(50)), onPressed: _saving ? null : _save, child: Text(_saving ? 'Saving…' : 'Save'))))
-          : null,
+          : null),
       body: s == null || st == null
           ? (_error.isNotEmpty ? _LoadFailed(text: _error, onRetry: _retry) : const SkeletonCards())
           : ListView(

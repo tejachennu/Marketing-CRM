@@ -311,7 +311,7 @@ class _TemplateEditorScreenState extends State<TemplateEditorScreen> {
                   _previewTab(),
                 ],
               ),
-              bottomNavigationBar: SafeArea(
+              bottomNavigationBar: KeyboardBar.wrap(SafeArea(
                 child: Container(
                   padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
                   decoration: const BoxDecoration(
@@ -335,7 +335,7 @@ class _TemplateEditorScreenState extends State<TemplateEditorScreen> {
                     ],
                   ),
                 ),
-              ),
+              )),
             ),
           );
         },

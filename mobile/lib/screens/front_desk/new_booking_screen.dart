@@ -210,7 +210,7 @@ class _NewBookingScreenState extends State<NewBookingScreen> {
           ),
         ],
       ),
-      bottomNavigationBar: SafeArea(
+      bottomNavigationBar: KeyboardBar.wrap(SafeArea(
         top: false,
         child: Container(
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
@@ -220,7 +220,7 @@ class _NewBookingScreenState extends State<NewBookingScreen> {
           ),
           child: FilledButton.icon(onPressed: () => _save(desk), icon: const Icon(Icons.event_available), label: Text(_time == null ? 'Book' : 'Book ${formatDay(_day)}, ${_label(_time!)}')),
         ),
-      ),
+      )),
     );
   }
 }

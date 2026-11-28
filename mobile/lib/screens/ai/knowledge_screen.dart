@@ -219,7 +219,7 @@ class _ArticleScreenState extends State<ArticleScreen> {
           ),
         ],
       ),
-      bottomNavigationBar: SafeArea(
+      bottomNavigationBar: KeyboardBar.wrap(SafeArea(
         top: false,
         child: Container(
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
@@ -245,7 +245,7 @@ class _ArticleScreenState extends State<ArticleScreen> {
             label: const Text('Save answer'),
           ),
         ),
-      ),
+      )),
     );
   }
 }

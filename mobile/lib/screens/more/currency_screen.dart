@@ -73,7 +73,7 @@ class _CurrencyScreenState extends State<CurrencyScreen> {
           ),
         ],
       ),
-      bottomNavigationBar: canChange
+      bottomNavigationBar: KeyboardBar.wrap(canChange
           ? SafeArea(
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
@@ -84,7 +84,7 @@ class _CurrencyScreenState extends State<CurrencyScreen> {
                 ),
               ),
             )
-          : null,
+          : null),
     );
   }
 }

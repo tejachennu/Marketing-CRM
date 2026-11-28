@@ -263,7 +263,7 @@ class _TemplateSetupScreenState extends State<TemplateSetupScreen> {
           ),
         ],
       ),
-      bottomNavigationBar: SafeArea(
+      bottomNavigationBar: KeyboardBar.wrap(SafeArea(
         child: Padding(
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
           child: Row(
@@ -279,7 +279,7 @@ class _TemplateSetupScreenState extends State<TemplateSetupScreen> {
             ],
           ),
         ),
-      ),
+      )),
     );
   }
 }

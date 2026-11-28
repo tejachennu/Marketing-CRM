@@ -186,14 +186,14 @@ class _WebsiteSettingsScreenState extends State<WebsiteSettingsScreen> {
       child: Scaffold(
         backgroundColor: Brand.page,
         appBar: AppBar(title: Text(screenTitle)),
-        bottomNavigationBar: canEdit
+        bottomNavigationBar: KeyboardBar.wrap(canEdit
             ? SafeArea(
                 child: Padding(
                   padding: const EdgeInsets.fromLTRB(16, 8, 16, 10),
                   child: FilledButton(style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(50)), onPressed: !dirty || _saving ? null : _save, child: Text(_saving ? 'Saving…' : dirty ? 'Save website' : 'Saved')),
                 ),
               )
-            : null,
+            : null),
         body: ListView(
           padding: const EdgeInsets.all(16),
           children: [

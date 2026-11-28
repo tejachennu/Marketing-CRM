@@ -136,6 +136,23 @@ class WaitingPill extends StatelessWidget {
   }
 }
 
+/// The bar at the bottom of a form (Save, Bill, Next, Send) moves up above the phone's keyboard instead of hiding
+/// behind it (owner, 28 Nov 2026: "half screen hide avendi, crop avi"). Flutter keeps a Scaffold's bottom bar at
+/// the very bottom, under the keyboard; this lifts it by the keyboard's height, and the page above shrinks to fit.
+class KeyboardBar extends StatelessWidget {
+  const KeyboardBar({super.key, required this.child});
+  final Widget child;
+
+  /// For `bottomNavigationBar:` (nothing stays nothing).
+  static Widget? wrap(Widget? child) => child == null ? null : KeyboardBar(child: child);
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
+    child: child,
+  );
+}
+
 class SectionLabel extends StatelessWidget {
   const SectionLabel(this.text, {super.key, this.trailing});
   final String text;

@@ -203,13 +203,13 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           ),
         ],
       ),
-      bottomNavigationBar: BillBar(
+      bottomNavigationBar: KeyboardBar.wrap(BillBar(
         count: lines.length,
         total: toCollect,
         caption: !paidBefore ? null : (toCollect <= 0 ? 'Already paid' : '${lines.length} service${lines.length == 1 ? '' : 's'} · to collect'),
         label: 'Make the bill',
         onPressed: () => _save(desk),
-      ),
+      )),
     );
   }
 }

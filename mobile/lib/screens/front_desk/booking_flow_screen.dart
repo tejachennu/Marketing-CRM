@@ -315,7 +315,7 @@ class _BookingFlowScreenState extends State<BookingFlowScreen> {
             ),
           ],
         ),
-        bottomNavigationBar: SafeArea(
+        bottomNavigationBar: KeyboardBar.wrap(SafeArea(
           top: false,
           child: Container(
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
@@ -329,7 +329,7 @@ class _BookingFlowScreenState extends State<BookingFlowScreen> {
               label: Text(_saving ? 'Saving…' : 'Save booking flow'),
             ),
           ),
-        ),
+        )),
       ),
     );
   }

@@ -313,7 +313,7 @@ class _ProductsTabState extends State<ProductsTab> with AutomaticKeepAliveClient
     final filtered = _search.isNotEmpty || _availability != 'all' || _catalog != 'all';
     return Scaffold(
       backgroundColor: Brand.page,
-      bottomNavigationBar: _picked.isEmpty
+      bottomNavigationBar: KeyboardBar.wrap(_picked.isEmpty
           ? null
           : SafeArea(
               child: Container(
@@ -335,7 +335,7 @@ class _ProductsTabState extends State<ProductsTab> with AutomaticKeepAliveClient
                   ],
                 ),
               ),
-            ),
+            )),
       body: RefreshIndicator(
         onRefresh: () => _load(_page),
         child: ListView(

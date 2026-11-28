@@ -557,7 +557,7 @@ class _NewCampaignScreenState extends State<NewCampaignScreen> {
             ),
           ],
         ),
-        bottomNavigationBar: SafeArea(
+        bottomNavigationBar: KeyboardBar.wrap(SafeArea(
           top: false,
           child: Container(
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
@@ -577,7 +577,7 @@ class _NewCampaignScreenState extends State<NewCampaignScreen> {
               label: Text(_when == 0 ? 'Send to ${list.recipients.length}' : 'Schedule for ${list.recipients.length}'),
             ),
           ),
-        ),
+        )),
       ),
     );
   }
@@ -991,7 +991,7 @@ class _ChoosePeopleScreenState extends State<ChoosePeopleScreen> {
           ),
         ],
       ),
-      bottomNavigationBar: SafeArea(
+      bottomNavigationBar: KeyboardBar.wrap(SafeArea(
         top: false,
         child: Container(
           padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
@@ -1018,7 +1018,7 @@ class _ChoosePeopleScreenState extends State<ChoosePeopleScreen> {
             ],
           ),
         ),
-      ),
+      )),
     );
   }
 }

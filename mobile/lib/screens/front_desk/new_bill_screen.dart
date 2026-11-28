@@ -199,14 +199,14 @@ class _NewBillScreenState extends State<NewBillScreen> {
           ),
         ],
       ),
-      bottomNavigationBar: BillBar(
+      bottomNavigationBar: KeyboardBar.wrap(BillBar(
         count: _units,
         total: toCollect,
         caption: fromCard <= 0 ? null : (toCollect <= 0 ? 'Paid by the membership card' : '$_units service${_units == 1 ? '' : 's'} · to collect'),
         label: 'Save bill',
         icon: Icons.check,
         onPressed: _saving || _services.isEmpty ? null : () => _save(desk),
-      ),
+      )),
     );
   }
 }

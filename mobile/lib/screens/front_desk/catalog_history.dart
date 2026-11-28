@@ -270,7 +270,7 @@ class _CatalogScreenState extends State<CatalogScreen> {
                 ],
               ],
             ),
-      bottomNavigationBar: (items?.isNotEmpty ?? false)
+      bottomNavigationBar: KeyboardBar.wrap((items?.isNotEmpty ?? false)
           ? SafeArea(
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
@@ -281,7 +281,7 @@ class _CatalogScreenState extends State<CatalogScreen> {
                 ),
               ),
             )
-          : null,
+          : null),
     );
   }
 

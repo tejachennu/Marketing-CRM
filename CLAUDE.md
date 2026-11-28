@@ -124,6 +124,17 @@ Email: `HOSTINGER_SMTP_*`, `SENDGRID_*`. Other: `NEXT_PUBLIC_APP_URL`, `CRON_SEC
 
 ## What has been built (recent history, newest first)
 
+- **App: Save / Bill / Next buttons stay above the keyboard** (owner, 28 Nov 2026: "mobile app use chestunapudu half
+  screen hide avendi crop avi natu issues"; answer: "Cut when keyboard opens"). Android already resizes for the keyboard
+  (`adjustResize`), but Flutter keeps a Scaffold's `bottomNavigationBar` at the very bottom, under the keyboard: on a
+  360 × 640 phone the New bill "Save bill" bar sat at y 578 with the keyboard from 340. `KeyboardBar` (`ui/widgets.dart`,
+  `KeyboardBar.wrap(...)` for `bottomNavigationBar:`) lifts the bar by the keyboard's height; used on the 17 form bars
+  (New bill, Checkout, New booking, Setup services / team, catalog picker, booking flow, website settings, knowledge,
+  AI tools, templates create / editor, new campaign, contacts, products bulk bar, currency). The app's tab bar still hides
+  under the keyboard (normal). New check `mobile/test/keyboard_check.dart` + `keyboard_test.dart`: 46 screens with text
+  boxes, each box tapped with a 300 px keyboard; the box must stay in sight and a form's bottom buttons above the
+  keyboard (fails without the fix). Bottom sheets with text boxes already pad for the keyboard.
+
 - **One currency for the whole business; the old USD default fixed** (owner, 28 Nov 2026: "e-commerce and frontdesk and
   sales currency configuration add in the settings"; chose one for the whole business and a short list).
   - `lib/money.ts` (pure, browser-safe): `CURRENCIES` INR, USD, AED, SAR, QAR, GBP, EUR, SGD, AUD, CAD; `moneyText`
