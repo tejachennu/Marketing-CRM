@@ -19,6 +19,7 @@ import { CatalogPicker, ChangeHistory, ItemThumb } from './salon-catalog'
 import { sampleMatches } from '@/lib/salon/sample'
 import { takesAppointments } from '@/lib/salon/appointments-switch'
 import { AppointmentsSwitch } from './salon-appointments-switch'
+import { currencySymbol } from '@/lib/money'
 
 const DURATIONS = [15, 30, 45, 60, 90, 120]
 const GST_RATES = [0, 5, 12, 18, 28]
@@ -500,7 +501,7 @@ export function SalonSetupTab({ orgId, setup, onChange, flash, initialSection = 
               <Field label="Note at the bottom of invoices"><input className={input} value={settings.invoice_note || ''} onChange={(e) => setSettings({ ...settings, invoice_note: e.target.value })} placeholder="Thank you! See you again soon." /></Field>
             </div>
             <div className="mt-5 rounded-2xl border border-[#e3e8f2] dark:border-slate-800 divide-y divide-[#eef1f6] dark:divide-slate-800">
-              <label className="flex items-center justify-between gap-4 px-4 py-3.5 text-[15px] text-[#0E1B3D] dark:text-white"><span><strong>Prices include GST</strong><span className="block text-[13.5px] text-[#6B7894]">On: ₹590 means ₹500 + ₹90 GST. Off: GST is added on top.</span></span><Toggle checked={settings.prices_include_tax} onChange={(value) => setSettings({ ...settings, prices_include_tax: value })} label="Prices include GST" /></label>
+              <label className="flex items-center justify-between gap-4 px-4 py-3.5 text-[15px] text-[#0E1B3D] dark:text-white"><span><strong>Prices include GST</strong><span className="block text-[13.5px] text-[#6B7894]">On: {formatRupees(590)} means {formatRupees(500)} + {formatRupees(90)} GST. Off: GST is added on top.</span></span><Toggle checked={settings.prices_include_tax} onChange={(value) => setSettings({ ...settings, prices_include_tax: value })} label="Prices include GST" /></label>
             </div>
             <div className="mt-5 flex justify-end"><button type="button" onClick={saveSettings} disabled={busy !== null} className={primaryButton}>{busy === 'settings' && <Loader2 size={18} className="animate-spin" />} Save details</button></div>
           </div>
@@ -566,7 +567,7 @@ export function SalonSetupTab({ orgId, setup, onChange, flash, initialSection = 
               <input className={input} value={serviceForm.category || ''} onChange={(e) => setServiceForm({ ...serviceForm, category: e.target.value })} placeholder="Or type a new one" aria-label="Category" />
             </Field>
             <div className={`grid gap-4 ${serviceForm.takes_time === false ? 'grid-cols-1' : 'grid-cols-2'}`}>
-              <Field label="Price (₹)"><input className={input} type="number" min={0} inputMode="decimal" value={serviceForm.price ?? ''} onChange={(e) => setServiceForm({ ...serviceForm, price: e.target.value as any })} placeholder="600" /></Field>
+              <Field label={`Price (${currencySymbol()})`}><input className={input} type="number" min={0} inputMode="decimal" value={serviceForm.price ?? ''} onChange={(e) => setServiceForm({ ...serviceForm, price: e.target.value as any })} placeholder="600" /></Field>
               {serviceForm.takes_time !== false && <Field label="Minutes"><input className={input} type="number" min={5} inputMode="numeric" value={serviceForm.duration_minutes ?? ''} onChange={(e) => setServiceForm({ ...serviceForm, duration_minutes: e.target.value as any })} /></Field>}
             </div>
             {serviceForm.takes_time !== false && <div className="flex flex-wrap gap-2">{DURATIONS.map((m) => <Chip key={m} selected={Number(serviceForm.duration_minutes) === m} onClick={() => setServiceForm({ ...serviceForm, duration_minutes: m })}>{m} min</Chip>)}</div>}

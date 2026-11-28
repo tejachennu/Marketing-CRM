@@ -7,6 +7,7 @@
 
 import { Ban, CheckCircle2, Clock3 } from 'lucide-react'
 import { PrintButton, RateLink, ShareButton } from './invoice-actions'
+import { moneyFixed } from '@/lib/money'
 
 export type InvoiceStamp = 'paid' | 'unpaid' | 'cancelled'
 
@@ -76,10 +77,9 @@ export interface InvoiceView {
   rateHref?: string | null
 }
 
-/** "₹1,911.60", always with paise, so the amounts line up in their columns. */
-export function invoiceMoney(value: unknown): string {
-  const amount = Math.round((Number(value) || 0) * 100) / 100
-  return `₹${amount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+/** "₹1,911.60", always with paise, so the amounts line up in their columns; in the bill's own currency. */
+export function invoiceMoney(value: unknown, currency?: string | null): string {
+  return moneyFixed(Number(value) || 0, currency || 'INR')
 }
 
 /** "25 Nov 2026" in India time. */

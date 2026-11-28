@@ -1,11 +1,13 @@
 /**
  * Paying while booking (the website and the booking page): at the shop, online, or the customer's choice; online
- * in full or an advance (a share of the total). Kept in salon_settings.website.bookingPay. Pure, no imports
+ * in full or an advance (a share of the total). Kept in salon_settings.website.bookingPay. Pure (only the pure money helpers)
  * (browser-safe).
  *
  * A booking paid online is saved as 'awaiting_payment' and holds its time for HOLD_MINUTES; once paid it becomes
  * booked (or a request when the business confirms each booking). Unpaid, it lets the time go by itself.
  */
+
+import { moneyText, screenCurrency } from '../money'
 
 export interface BookingPay {
   /** shop = pay at the shop (no online payment), online = must pay online, choice = the customer picks */
@@ -54,7 +56,7 @@ export interface PaidBooking {
   services?: { price?: number | string | null }[] | null
 }
 
-const rupees = (n: number) => `₹${n.toLocaleString('en-IN', { maximumFractionDigits: 2 })}`
+const rupees = (n: number, currency?: string) => moneyText(n, currency || screenCurrency())
 
 /** The visit's price from its services. */
 export function bookingTotal(b: PaidBooking): number {
@@ -62,12 +64,12 @@ export function bookingTotal(b: PaidBooking): number {
 }
 
 /** "Paid ₹800 online", "₹200 paid online · ₹600 at the shop", "Waiting for payment", "" (nothing paid online). */
-export function paymentNote(b: PaidBooking): string {
+export function paymentNote(b: PaidBooking, currency?: string): string {
   const paid = Number(b.payment_paid) || 0
   if (b.status === AWAITING_PAYMENT || b.payment_status === 'pending') return 'Waiting for online payment'
   if (b.payment_status !== 'paid' || paid <= 0) return ''
   const rest = Math.round((bookingTotal(b) - paid) * 100) / 100
-  return rest > 0 ? `${rupees(paid)} paid online · ${rupees(rest)} at the shop` : `Paid ${rupees(paid)} online`
+  return rest > 0 ? `${rupees(paid, currency)} paid online · ${rupees(rest, currency)} at the shop` : `Paid ${rupees(paid, currency)} online`
 }
 
 /** The advance a bill takes off: what was paid online for the visit, never more than the bill. */

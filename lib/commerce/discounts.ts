@@ -2,8 +2,10 @@
  * Offers and discount codes for the shop: percent off, flat ₹ off, free delivery, buy X get Y free.
  * Each can need a code (DIWALI10) or apply by itself, need a minimum order, be for a first order only,
  * be used once per phone number, have a start and end, and a limit on total uses.
- * Pure rules with no imports: the store page shows them, the server decides them (never the browser).
+ * Pure rules (only the pure money helpers): the store page shows them, the server decides them (never the browser).
  */
+
+import { moneyText, screenCurrency } from '../money'
 
 export type DiscountKind = 'percent' | 'flat' | 'free_delivery' | 'buy_get'
 
@@ -31,7 +33,7 @@ export interface Discount {
 
 export const KIND_LABELS: Record<DiscountKind, string> = {
   percent: '% off',
-  flat: '₹ off',
+  flat: 'Amount off',
   free_delivery: 'Free delivery',
   buy_get: 'Buy X get Y free',
 }
@@ -46,7 +48,7 @@ export function cleanCode(v: unknown): string | null {
 }
 
 /** The offer as typed in the dashboard, checked; or what is wrong with it in plain words. */
-export function parseDiscount(raw: any): { discount: Discount } | { error: string } {
+export function parseDiscount(raw: any, currency?: string): { discount: Discount } | { error: string } {
   const kind = (['percent', 'flat', 'free_delivery', 'buy_get'] as const).find((k) => k === raw?.kind)
   if (!kind) return { error: 'Choose what the offer gives.' }
   const automatic = raw?.automatic === true || raw?.code === null
@@ -75,7 +77,7 @@ export function parseDiscount(raw: any): { discount: Discount } | { error: strin
   const forPhone = String(raw?.for_phone ?? '').replace(/\D/g, '').slice(-10)
   if (raw?.for_phone && forPhone.length !== 10) return { error: 'Type the customer\'s 10-digit phone number, or leave it empty for everyone.' }
   if (forPhone && automatic) return { error: 'An offer for one customer needs a code. Give it a code like ASHA15.' }
-  const title = clean(raw?.title, 80) || defaultTitle({ kind, value, buy_qty: buy, get_qty: get, min_order: minOrder > 0 ? minOrder : 0 })
+  const title = clean(raw?.title, 80) || defaultTitle({ kind, value, buy_qty: buy, get_qty: get, min_order: minOrder > 0 ? minOrder : 0 }, currency)
   return {
     discount: {
       ...(raw?.id ? { id: String(raw.id) } : {}),
@@ -92,13 +94,13 @@ export function parseDiscount(raw: any): { discount: Discount } | { error: strin
   }
 }
 
-const rupees = (n: number) => `₹${Math.round(n).toLocaleString('en-IN')}`
+const rupees = (n: number, currency?: string) => moneyText(Math.round(n), currency || screenCurrency())
 
 /** "10% off", "₹200 off on ₹999 or more", "Free delivery on ₹999 or more", "Buy 2 get 1 free". */
-export function defaultTitle(d: Pick<Discount, 'kind' | 'value' | 'buy_qty' | 'get_qty' | 'min_order'>): string {
-  const above = d.min_order > 0 ? ` on ${rupees(d.min_order)} or more` : ''
+export function defaultTitle(d: Pick<Discount, 'kind' | 'value' | 'buy_qty' | 'get_qty' | 'min_order'>, currency?: string): string {
+  const above = d.min_order > 0 ? ` on ${rupees(d.min_order, currency)} or more` : ''
   if (d.kind === 'percent') return `${d.value}% off${above}`
-  if (d.kind === 'flat') return `${rupees(d.value)} off${above}`
+  if (d.kind === 'flat') return `${rupees(d.value, currency)} off${above}`
   if (d.kind === 'free_delivery') return `Free delivery${above}`
   return `Buy ${d.buy_qty} get ${d.get_qty} free${above}`
 }

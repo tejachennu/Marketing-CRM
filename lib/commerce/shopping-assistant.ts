@@ -14,6 +14,7 @@ import { LANGUAGE_RULES, fuzzyWordMatch } from '@/lib/chat-language'
 import { buildMultiProductMessage, buildSingleProductMessage, buildTextMessage } from './commerce-messages'
 import { sendWhatsAppMessage } from './commerce-webhook-handler'
 import { ORDER_STATUS_LABELS, formatMoney, getFulfillment, type OrderStatus } from './commerce-utils'
+import { businessCurrency } from '../money'
 
 const MODEL = 'gpt-4o-mini'
 const MAX_TOOL_ROUNDS = 4
@@ -120,7 +121,7 @@ const TOOLS = [
 
 function systemPrompt(organization: any, customerName: string): string {
   const store = String(organization.name || 'our store')
-  const currency = String(organization.currency || 'INR').toUpperCase()
+  const currency = businessCurrency(organization)
   return `You are the WhatsApp shopping assistant of ${store}. Prices are in ${currency}.
 ${customerName ? `The customer's name is ${customerName}.` : ''}
 

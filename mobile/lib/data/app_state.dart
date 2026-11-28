@@ -28,7 +28,10 @@ const _uuid = Uuid();
 /// - When the server refuses a change (say, the time has passed), it stops and shows why, with
 ///   Try again and Discard.
 class AppState extends ChangeNotifier {
-  AppState({required this.backend, required this.store});
+  AppState({required this.backend, required this.store}) {
+    // Every amount on the screens is in the workspace's currency (More → Currency)
+    businessCurrencySource = () => '${(me?['organization'] as Map?)?['currency'] ?? 'INR'}';
+  }
 
   final Backend backend;
   final LocalStore store;

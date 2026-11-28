@@ -81,7 +81,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
           : { code: null, title: `${pointsUsed} points`, amount: pointsUsed, freeDelivery: false }
       }
     }
-    const made = await createManualOrder(db, org || page.organization, parsed.order, createOrderNumber)
+    // In the business's currency (Settings), never the old column's 'USD' default
+    const made = await createManualOrder(db, { ...(org || page.organization), currency: page.organization.currency }, parsed.order, createOrderNumber)
     if ('error' in made) return NextResponse.json({ error: made.error }, { status: 400 })
     const order = made.order
     const total = formatMoney(order.total_amount, order.currency)

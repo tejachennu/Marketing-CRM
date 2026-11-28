@@ -12,6 +12,7 @@ import { formatMoney } from '@/lib/pipeline/rules'
 import { CategoryPicker } from './category-picker'
 import { can } from '@/lib/rbac'
 import { PAY_METHODS, addMonths, categoryLabel, istToday, methodLabel, monthName, shortMonth, type Insight, type MonthTotals } from '@/lib/expenses/rules'
+import { currencySymbol } from '@/lib/money'
 
 interface Expense { id: string; spent_on: string; category: string; amount: number; note: string | null; paid_to: string | null; method: string | null; repeat_monthly: boolean; repeat_key: string | null }
 interface Overview {
@@ -29,7 +30,7 @@ interface Overview {
 }
 
 const money = (value: number) => formatMoney(value)
-const shortMoney = (value: number) => formatMoney(value, 'INR', true)
+const shortMoney = (value: number) => formatMoney(value, undefined, true)
 const dayLabel = (day: string) => new Date(`${day}T00:00:00Z`).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', timeZone: 'UTC' })
 
 export function ExpensesPage() {
@@ -428,7 +429,7 @@ function ExpenseForm({ orgId, month, expense, own, onClose, onSaved }: { orgId: 
         </>
       }>
       <div className="flex flex-col gap-4">
-        <Field label="How much (₹)">
+        <Field label={`How much (${currencySymbol()})`}>
           <input className={`${input} text-[18px] font-bold`} inputMode="decimal" autoFocus={!expense} placeholder="0" value={amount} onChange={(e) => setAmount(e.target.value.replace(/[^\d.,]/g, ''))} />
         </Field>
         <Field label="What for" group>

@@ -9,6 +9,7 @@ import { accountFor } from '@/lib/instagram/store'
 import { igReplyHours } from '@/lib/instagram/rules'
 import { getOrganizationCredentials } from '@/lib/organization-access'
 import { takesAppointments } from '@/lib/salon/appointments-switch'
+import { businessCurrency } from '@/lib/money'
 
 export const runtime = 'nodejs'
 
@@ -32,7 +33,7 @@ export async function GET(request: NextRequest) {
   return NextResponse.json({
     success: true,
     user: { id: user.id, name: user.full_name || null, email: user.email || null, role: getRoleDisplay(user.role).label },
-    organization: { id: organization.id, name: organization.name || 'Workspace', currency: String(organization.currency || 'INR').toUpperCase() },
+    organization: { id: organization.id, name: organization.name || 'Workspace', currency: businessCurrency(organization) },
     can: {
       write: !isReadOnly(user),
       manage: can(user, 'automation.manage'),

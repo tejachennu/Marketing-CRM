@@ -20,6 +20,7 @@ import { api, Avatar, Chip, Field, input, Modal, primaryButton, secondaryButton,
 import type { Appointment, SalonSetup, Service } from './types'
 import { applyCard, creditToUse } from '@/lib/salon/membership-rules'
 import { MembershipBox } from './membership-box'
+import { currencySymbol } from '@/lib/money'
 
 export type PaymentChoice = 'cash' | 'upi' | 'card' | null
 
@@ -636,13 +637,13 @@ export function BillSheet({ orgId, setup, target, onClose, onBilled }: {
           <section className="space-y-2">
             <p className={sectionTitle}>Discount</p>
             <div className="flex flex-wrap gap-2">
-              {PRESET_DISCOUNTS.map((option) => <Chip key={option.label} selected={!customOff && Boolean(sameDiscount(discount, option.value))} onClick={() => { setCustomOff(null); setDiscount(option.value) }}>{option.label}</Chip>)}
+              {PRESET_DISCOUNTS.map((option) => <Chip key={option.label} selected={!customOff && Boolean(sameDiscount(discount, option.value))} onClick={() => { setCustomOff(null); setDiscount(option.value) }}>{option.value?.type === 'amount' ? `${formatRupees(option.value.value)} off` : option.label}</Chip>)}
               <Chip selected={Boolean(customOff)} onClick={() => setCustomOff(customOff || { type: 'amount', value: '' })}>Other</Chip>
             </div>
             {customOff && (
               <div className="flex items-center gap-2">
                 <div role="radiogroup" aria-label="Discount in" className="inline-flex rounded-xl bg-[#eef1f6] dark:bg-slate-900 p-1 shrink-0">
-                  {(['amount', 'percent'] as const).map((type) => <button key={type} type="button" role="radio" aria-checked={customOff.type === type} onClick={() => setCustomOff({ ...customOff, type })} className={`h-9 w-11 rounded-lg text-[15px] font-bold cursor-pointer ${customOff.type === type ? 'bg-white dark:bg-[#111b21] text-[#0E1B3D] dark:text-white shadow-sm' : 'text-[#6B7894]'}`}>{type === 'amount' ? '₹' : '%'}</button>)}
+                  {(['amount', 'percent'] as const).map((type) => <button key={type} type="button" role="radio" aria-checked={customOff.type === type} onClick={() => setCustomOff({ ...customOff, type })} className={`h-9 w-11 rounded-lg text-[15px] font-bold cursor-pointer ${customOff.type === type ? 'bg-white dark:bg-[#111b21] text-[#0E1B3D] dark:text-white shadow-sm' : 'text-[#6B7894]'}`}>{type === 'amount' ? currencySymbol() : '%'}</button>)}
                 </div>
                 <input type="number" min={0} inputMode="decimal" autoFocus value={customOff.value} onChange={(e) => setCustomOff({ ...customOff, value: e.target.value })} placeholder={customOff.type === 'amount' ? '150' : '12'} aria-label="Discount" className={`${input} w-32`} />
               </div>

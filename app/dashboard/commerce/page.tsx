@@ -23,6 +23,7 @@ import { ShopMessagesCard } from '@/components/commerce/shop-messages-card'
 import { InvoiceSettingsCard } from '@/components/commerce/invoice-settings-card'
 import { ReturnsSettingsCard } from '@/components/commerce/order-returns'
 import { Metric, cardClass, secondaryButton } from '@/components/commerce/ui'
+import { businessCurrency } from '@/lib/money'
 
 type Tab = 'orders' | 'products' | 'reports' | 'reviews' | 'offers' | 'website' | 'flow' | 'settings'
 const MANAGER_TABS: Tab[] = ['website', 'flow', 'settings']
@@ -96,7 +97,8 @@ export default function CommercePage() {
   }, [])
 
   const setup = useMemo(() => getCommerceSetup(orgData), [orgData])
-  const currency = String(orgData?.currency || 'INR').toUpperCase()
+  // The business's currency (Settings → Currency); the older currency column said USD for most businesses
+  const currency = businessCurrency(orgData)
 
   // Everyone sees orders and products; changing the catalog or the store setup is for admins and managers
   const canManageStore = can(viewer, 'automation.manage')
@@ -248,8 +250,8 @@ export default function CommercePage() {
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
           <Metric
             label="Revenue received"
-            value={summary ? formatMoney(revenue[0]?.amount || 0, revenue[0]?.currency || currency) : '—'}
-            note={revenue.length > 1 ? `Also ${revenue.slice(1).map((item) => formatMoney(item.amount, item.currency)).join(', ')}` : 'Paid orders, excluding canceled'}
+            value={summary ? formatMoney(revenue.reduce((sum, item) => sum + (Number(item.amount) || 0), 0), currency) : '—'}
+            note="Paid orders, excluding canceled"
             icon={Wallet}
             tone="text-[#008069]"
           />

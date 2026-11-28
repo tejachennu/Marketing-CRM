@@ -23,7 +23,7 @@ export function invoiceMessage(invoice: any, link: string): string {
   const firstName = String(invoice.customer_name || '').split(' ')[0]
   const greeting = firstName && firstName !== 'Walk-in' ? `Hi ${firstName}` : 'Hi'
   const paid = invoice.status === 'paid' ? ' (paid, thank you!)' : ''
-  return `${greeting}, thank you for visiting ${business}! 🙏\nYour bill ${invoice.number}: ${formatRupees(Number(invoice.total))}${paid}\nView or download: ${link}`
+  return `${greeting}, thank you for visiting ${business}! 🙏\nYour bill ${invoice.number}: ${formatRupees(Number(invoice.total), invoice.business?.currency)}${paid}\nView or download: ${link}`
 }
 
 export function cardLink(origin: string, token: string): string {
@@ -31,11 +31,11 @@ export function cardLink(origin: string, token: string): string {
 }
 
 /** The message with a customer's membership card: what it gives, until when, and its link. */
-export function cardMessage(card: any, businessName: string | null, link: string): string {
+export function cardMessage(card: any, businessName: string | null, link: string, currency?: string): string {
   const firstName = String(card.customer_name || '').split(' ')[0]
   const plan = card.plan || {}
   const parts: string[] = []
-  if (Number(card.credit_balance) > 0) parts.push(`${formatRupees(Number(card.credit_balance))} to spend`)
+  if (Number(card.credit_balance) > 0) parts.push(`${formatRupees(Number(card.credit_balance), currency)} to spend`)
   for (const s of card.sessions || []) if (s.total - s.used > 0) parts.push(`${s.total - s.used} × ${s.name}`)
   if (Number(plan.discount_percent) > 0) parts.push(`${Number(plan.discount_percent)}% off services`)
   const until = new Date(card.expires_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' })
@@ -213,7 +213,7 @@ export function billTemplate(invoice: any): TemplateFallback {
     purpose: 'bill',
     values: {
       first_name: firstNameOf(invoice.customer_name), customer_name: invoice.customer_name || 'Customer', business: invoice.business?.name || 'us',
-      bill_number: invoice.number, amount: formatRupees(Number(invoice.total)), services: servicesOf(invoice.items) || 'your visit', staff: staffOf(invoice.items, invoice.staff_name),
+      bill_number: invoice.number, amount: formatRupees(Number(invoice.total), invoice.business?.currency), services: servicesOf(invoice.items) || 'your visit', staff: staffOf(invoice.items, invoice.staff_name),
       date: formatIstDay(istDate(invoice.issued_at || Date.now())), link: invoice.public_token,
     },
   }

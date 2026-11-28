@@ -162,7 +162,7 @@ export async function adjustCard(db: any, organizationId: string, cardId: string
       const next = Math.round(((Number(current.credit_balance) || 0) + n) * 100) / 100
       if (next < 0) throw new Error('The card does not have that much credit.')
       amount = n
-      detail = `${n > 0 ? 'Added' : 'Took off'} ₹${Math.abs(n).toLocaleString('en-IN')} credit${change.note ? ` · ${String(change.note).slice(0, 100)}` : ''}`
+      detail = `${n > 0 ? 'Added' : 'Took off'} ${Math.abs(n).toLocaleString('en-IN')} credit${change.note ? ` · ${String(change.note).slice(0, 100)}` : ''}`
       return { credit_balance: next }
     }
     const count = Math.round(change.count)

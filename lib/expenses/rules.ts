@@ -1,8 +1,10 @@
 /**
  * Expenses and the money picture: what the business spent (salaries, rent, stock…), what it sold, what was left, and
- * the once-a-month AI review of its sales. Pure and browser-safe (no imports), so the web page, the server and the
+ * the once-a-month AI review of its sales. Pure and browser-safe (only the pure money helpers), so the web page, the server and the
  * tests agree. Months are India time ("2026-11"); days are "2026-11-25".
  */
+
+import { moneyText, readCurrency } from '../money'
 
 export const EXPENSE_CATEGORIES = [
   { key: 'salaries', label: 'Salaries' },
@@ -374,15 +376,16 @@ export interface InsightFacts {
   topItems: SoldItem[]
   customers: number
   returning: number
+  /** The business's currency (INR when not given) */
+  currency?: string
 }
-
-const rupees = (value: number) => `₹${Math.round(value).toLocaleString('en-IN')}`
 
 /** The numbers the AI is given, in plain lines (only these; it must not make any up). */
 export function insightFactsText(facts: InsightFacts): string {
+  const rupees = (value: number) => moneyText(Math.round(value), readCurrency(facts.currency))
   const t = facts.totals
   const lines = [
-    `Business: ${facts.business || 'a small business'} (${facts.kind || 'small business'}) in India.`,
+    `Business: ${facts.business || 'a small business'} (${facts.kind || 'small business'})${readCurrency(facts.currency) === 'INR' ? ' in India' : ''}.`,
     `Month: ${facts.monthLabel}${facts.soFar ? ` (still going on: ${facts.daysCounted} days so far)` : ''}.`,
     `Sales: ${rupees(t.sales)} from ${t.salesCount} ${t.salesCount === 1 ? 'sale' : 'sales'}${t.salesCount ? `, average ${rupees(t.sales / t.salesCount)}` : ''}. Money received: ${rupees(t.received)}; still to collect: ${rupees(Math.max(0, t.sales - t.received))}.`,
     `Expenses: ${rupees(t.expenses)}. Left after expenses: ${rupees(t.profit)}${t.sales > 0 ? ` (${Math.round((t.profit / t.sales) * 100)}% of sales)` : ''}.`,
@@ -403,7 +406,7 @@ export function insightPrompt(facts: InsightFacts): string {
   return [
     'You are a friendly business advisor for small shops and service businesses in India.',
     `Review this business's ${facts.soFar ? 'month so far' : 'month'} using ONLY the numbers below. Never make up a number, a percentage or a name that is not below. If something is not known, do not guess it.`,
-    'Write for a busy shop owner: plain, simple English, short sentences, no jargon, no English idioms. Use ₹ with Indian grouping.',
+    `Write for a busy shop owner: plain, simple English, short sentences, no jargon, no English idioms. ${readCurrency(facts.currency) === 'INR' ? 'Use ₹ with Indian grouping.' : `Write money as ${moneyText(1250, facts.currency)} (the business's currency).`}`,
     'Give practical sales ideas they can do this month with WhatsApp, offers, repeat customers, slow days, best sellers and costs.',
     '',
     facts.soFar ? 'The month is not over: say "so far" and compare carefully (the month before was a full month).' : '',

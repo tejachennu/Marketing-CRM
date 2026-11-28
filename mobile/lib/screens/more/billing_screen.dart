@@ -74,7 +74,7 @@ bool _awaitingApproval(Map b) => b['pendingPlan'] is Map && b['status'] == 'acti
 ({String tone, IconData icon, String eyebrow, String title, String body, String? action, String? actionKind, String? caption, double? progress, List<(String, String)> facts}) _status(Map b) {
   final until = _date(b['accessUntil']);
   final plan = (b['plan'] as Map?) ?? const {};
-  final price = formatRupees(plan['price'] ?? 1499);
+  final price = formatInr(plan['price'] ?? 1499);
   final planName = 'WAMA CRM ${plan['name'] ?? 'Growth'}';
   final pending = b['pendingPlan'] as Map?;
   if (b['configured'] != true) {
@@ -126,7 +126,7 @@ bool _awaitingApproval(Map b) => b['pendingPlan'] is Map && b['status'] == 'acti
       if (_awaitingApproval(b)) {
         // An upgrade already paid for has only its new auto-pay left; a downgrade has not started at all
         final same = pending!['id'] == plan['id'];
-        final newPrice = formatRupees(pending['price']);
+        final newPrice = formatInr(pending['price']);
         return (
           tone: 'amber',
           icon: Icons.pending_actions_outlined,
@@ -178,13 +178,13 @@ bool _awaitingApproval(Map b) => b['pendingPlan'] is Map && b['status'] == 'acti
         body: pending == null
             ? 'Your plan renews automatically every month for your whole team.'
             : pending['id'] == plan['id']
-            ? 'Its new auto-pay of ${formatRupees(pending['price'])} a month starts on $until.'
+            ? 'Its new auto-pay of ${formatInr(pending['price'])} a month starts on $until.'
             : 'Your change to ${pending['name']} starts on $until.',
         action: 'Stop auto-renew',
         actionKind: 'cancel',
         caption: null,
         progress: null,
-        facts: [('Plan', planName), ('Next charge', until.isEmpty ? '$price monthly' : '${pending != null ? formatRupees(pending['price']) : price} · $until'), ('Pay with', 'Razorpay auto-pay')],
+        facts: [('Plan', planName), ('Next charge', until.isEmpty ? '$price monthly' : '${pending != null ? formatInr(pending['price']) : price} · $until'), ('Pay with', 'Razorpay auto-pay')],
       );
     case 'past_due':
       return (
@@ -331,7 +331,7 @@ class _BillingScreenState extends State<BillingScreen> {
       _notice = '';
     });
     try {
-      final price = formatRupees(((_b?['plan'] as Map?) ?? const {})['price'] ?? 1499);
+      final price = formatInr(((_b?['plan'] as Map?) ?? const {})['price'] ?? 1499);
       final data = await app.ask('/api/billing/subscribe', {'plan': ((_b?['plan'] as Map?) ?? const {})['id']});
       final startsAt = data['startsAt'];
       final paid = await _checkout({
@@ -417,9 +417,9 @@ class _BillingScreenState extends State<BillingScreen> {
           content: Text(
             paying
                 ? up
-                      ? '${plan['name']} starts as soon as you pay the difference for the days left this month. From your next bill date it is ${formatRupees(plan['price'])} a month.'
-                      : 'You keep ${current['name']} until your next bill date (${_date(b['accessUntil'])}). From then it is ${formatRupees(plan['price'])} a month.'
-                : '${plan['name']} is ${formatRupees(plan['price'])} a month after your free trial. You can switch again any time.',
+                      ? '${plan['name']} starts as soon as you pay the difference for the days left this month. From your next bill date it is ${formatInr(plan['price'])} a month.'
+                      : 'You keep ${current['name']} until your next bill date (${_date(b['accessUntil'])}). From then it is ${formatInr(plan['price'])} a month.'
+                : '${plan['name']} is ${formatInr(plan['price'])} a month after your free trial. You can switch again any time.',
           ),
           actions: [
             TextButton(onPressed: () => Navigator.pop(d, false), child: const Text('Not now')),
@@ -460,14 +460,14 @@ class _BillingScreenState extends State<BillingScreen> {
           final paid = await _checkout({
             'key': data['keyId'],
             'subscription_id': data['subscriptionId'],
-            'description': '${plan['name']} · ${formatRupees(plan['price'])} a month',
+            'description': '${plan['name']} · ${formatInr(plan['price'])} a month',
             'notes': {'organization_id': app.orgId},
           });
           if (paid != null) {
             final confirmed = await _confirm(app, '/api/billing/change-plan', {...paid, 'razorpay_subscription_id': data['subscriptionId']});
             final from = _date(data['startsAt']);
             final done = up
-                ? 'You are on ${plan['name']}. ${formatRupees(plan['price'])} a month from ${from.isEmpty ? 'today' : from}.'
+                ? 'You are on ${plan['name']}. ${formatInr(plan['price'])} a month from ${from.isEmpty ? 'today' : from}.'
                 : 'Done. ${plan['name']} starts on ${from.isEmpty ? 'your next bill date' : from}.';
             if (mounted && confirmed != null) setState(() => _notice = done);
           }
@@ -495,7 +495,7 @@ class _BillingScreenState extends State<BillingScreen> {
       if (paid == null) return;
       final confirmed = await _confirm(app, '/api/billing/topup', {...paid, 'wallet': 'messages'});
       if (!mounted) return;
-      if (confirmed != null) setState(() => _notice = '${formatRupees(value)} added to your message wallet.');
+      if (confirmed != null) setState(() => _notice = '${formatInr(value)} added to your message wallet.');
       await _load();
     } catch (e) {
       if (mounted) setState(() => _error = '$e'.replaceFirst('Exception: ', ''));
@@ -842,7 +842,7 @@ class _BillingScreenState extends State<BillingScreen> {
                               spacing: 6,
                               runSpacing: 6,
                               children: [
-                                for (final o in options) ChoiceChip(label: Text(formatRupees(o)), selected: _amount == o, onSelected: (_) => setState(() => _amount = o)),
+                                for (final o in options) ChoiceChip(label: Text(formatInr(o)), selected: _amount == o, onSelected: (_) => setState(() => _amount = o)),
                                 ChoiceChip(label: const Text('Other'), selected: _amount == 'other', onSelected: (_) => setState(() => _amount = 'other')),
                               ],
                             ),
@@ -852,7 +852,7 @@ class _BillingScreenState extends State<BillingScreen> {
                                 controller: _custom,
                                 keyboardType: TextInputType.number,
                                 onChanged: (_) => setState(() {}),
-                                decoration: InputDecoration(labelText: 'Amount (₹)', hintText: '$minTopup to ${formatRupees(maxTopup).replaceAll('₹', '')}'),
+                                decoration: InputDecoration(labelText: 'Amount (₹)', hintText: '$minTopup to ${formatInr(maxTopup).replaceAll('₹', '')}'),
                               ),
                             ],
                             const SizedBox(height: 10),
@@ -862,7 +862,7 @@ class _BillingScreenState extends State<BillingScreen> {
                                 onPressed: !chosenValid || _busy != null || !paymentsOn ? null : () => _topup(chosen),
                                 child: _busy == 'topup'
                                     ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                                    : Text(chosenValid ? 'Add ${formatRupees(chosen)} of AI credit' : 'Choose an amount (₹$minTopup+)'),
+                                    : Text(chosenValid ? 'Add ${formatInr(chosen)} of AI credit' : 'Choose an amount (₹$minTopup+)'),
                               ),
                             ),
                           ],
@@ -923,7 +923,7 @@ class _BillingScreenState extends State<BillingScreen> {
                             mainAxisAlignment: MainAxisAlignment.center,
                             crossAxisAlignment: CrossAxisAlignment.end,
                             children: [
-                              Text(formatRupees(p['amount']), style: const TextStyle(fontWeight: FontWeight.w700)),
+                              Text(formatInr(p['amount']), style: const TextStyle(fontWeight: FontWeight.w700)),
                               const Text(
                                 'Paid',
                                 style: TextStyle(fontSize: 12, color: Brand.blue, fontWeight: FontWeight.w600),

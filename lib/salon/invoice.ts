@@ -7,6 +7,8 @@
  * - Amounts are rounded to paise per line; totals are the sum of the rounded lines.
  */
 
+import { moneyText, screenCurrency } from '../money'
+
 export interface InvoiceLineInput {
   service_id?: string | null
   name: string
@@ -196,9 +198,10 @@ export function isInterState(businessGstin: unknown, customerGstin: unknown): bo
   return business.slice(0, 2) !== customer.slice(0, 2)
 }
 
-/** "₹1,500" for whole rupees, "₹1,911.60" when there are paise. */
-export function formatRupees(amount: number): string {
-  const value = Math.round((Number(amount) || 0) * 100) / 100
-  const paise = !Number.isInteger(value)
-  return `₹${value.toLocaleString('en-IN', { minimumFractionDigits: paise ? 2 : 0, maximumFractionDigits: 2 })}`
+/**
+ * "₹1,500" for whole rupees, "₹1,911.60" when there are paise; in the business's currency when it has another one
+ * ("AED 1,500"). On the screens the currency comes from the workspace (lib/money.ts); server code passes it.
+ */
+export function formatRupees(amount: number, currency?: string | null): string {
+  return moneyText(amount, currency || screenCurrency())
 }

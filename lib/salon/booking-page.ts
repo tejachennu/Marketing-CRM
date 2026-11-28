@@ -22,6 +22,7 @@ import { busyOn as busyFor, loadChatSetup, staffFor, type ChatSetup } from './ch
 import { isSafeLogoUrl } from './logo'
 import { withPaymentsSchema } from '../payments/schema'
 import { formatIstDay, formatIstTime, fromIst, istDate, parsePhoneNumber } from './spoken'
+import { businessCurrency } from '../money'
 
 /** How many days ahead a customer can book. */
 export const BOOKING_DAYS_AHEAD = 30
@@ -50,7 +51,7 @@ export async function loadBookingPage(db: any, slug: string): Promise<BookingPag
   const setup = await loadChatSetup(db, organization.id)
   if (setup.settings.booking_page_enabled === false || !setup.services.length) return null
   return {
-    organization: { id: organization.id, name: organization.name, slug: organization.slug, currency: String(organization.currency || 'INR').toUpperCase(), domain: organization.store_domain || null },
+    organization: { id: organization.id, name: organization.name, slug: organization.slug, currency: businessCurrency(organization), domain: organization.store_domain || null },
     setup,
     pay: { settings: readBookingPay((setup.settings as any)?.website?.bookingPay), gateway: onlineGateway(organization) },
     bookings: takesAppointments(setup.settings),
@@ -63,6 +64,8 @@ export function publicView(page: BookingPage) {
   return {
     slug: page.organization.slug,
     business: settings.business_name || page.organization.name,
+    /** The business's currency (Settings → Currency): prices are shown in it */
+    currency: page.organization.currency || 'INR',
     logo: isSafeLogoUrl(settings.logo_url) ? settings.logo_url : null,
     address: settings.address || null,
     phone: settings.phone || null,

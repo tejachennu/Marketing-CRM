@@ -26,6 +26,7 @@ import { withSalonSchema } from './schema'
 import { awayBusyOn } from './attendance-store'
 import { addDays, formatIstDay, formatIstTime, fromIst, istDate, istDayRange, istTime, matchByName, phoneKey } from './spoken'
 import { holidayOn, holidaysSentence } from './holidays'
+import { businessCurrency } from '../money'
 
 export const MODEL = 'gpt-4o-mini'
 const MAX_TOOL_ROUNDS = 4
@@ -200,7 +201,7 @@ export function chatSystemPrompt(setup: ChatSetup, organization: any, customerNa
     return `${new Date(`${date}T12:00:00+05:30`).toLocaleDateString('en-IN', { weekday: 'long', timeZone: 'Asia/Kolkata' })} ${date}`
   }).join(', ')
   const groups = groupByCategory(s.service_categories, setup.services).filter(([, list]) => list.length > 0)
-  const menu = groups.map(([category, list]) => `${category}:\n${list.map((x) => `- ${x.name}: ${formatRupees(Number(x.price))}, ${x.duration_minutes} min`).join('\n')}`).join('\n') || '(no services yet)'
+  const menu = groups.map(([category, list]) => `${category}:\n${list.map((x) => `- ${x.name}: ${formatRupees(Number(x.price), businessCurrency(organization))}, ${x.duration_minutes} min`).join('\n')}`).join('\n') || '(no services yet)'
   const gst = s.gstin ? (s.prices_include_tax ? 'Prices include GST.' : 'GST (usually 18%) is added to these prices.') : ''
   // Shops that only bill walk-ins switch appointments off: the assistant then answers questions and never offers times
   const takes = takesAppointments(s)

@@ -9,6 +9,7 @@ import { isConnectorOn } from '../connectors'
 import { can, canAssign, canSeeAll, isReadOnly, type Permission } from '../rbac'
 import { withPipelineSchema } from './schema'
 import type { PipelineActor } from './store'
+import { businessCurrency } from '../money'
 
 export interface PipelineContext {
   db: any
@@ -36,7 +37,7 @@ export async function pipelineAccess(request: NextRequest, organizationId: strin
   }
   const user = access.user
   const actor: PipelineActor = { db, organizationId: String(organizationId), userId: user?.id || null, seeAll: canSeeAll(user), canAssign: canAssign(user) }
-  return { ok: true, ctx: { db, user, organizationId: String(organizationId), organization, actor, currency: String(organization.currency || 'INR').toUpperCase() } }
+  return { ok: true, ctx: { db, user, organizationId: String(organizationId), organization, actor, currency: businessCurrency(organization) } }
 }
 
 /** What this person may do, for the screens to show only the buttons that work. */

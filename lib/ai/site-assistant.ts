@@ -6,8 +6,9 @@
  */
 
 import type { KnowledgeHit } from './knowledge-rules'
+import { moneyText } from '../money'
 
-const rupees = (n: number, currency = 'INR') => (currency === 'INR' ? `₹${(Math.round(Number(n) * 100) / 100).toLocaleString('en-IN')}` : `${currency} ${n}`)
+const rupees = (n: number, currency = 'INR') => moneyText(n, currency)
 const oneLine = (v: unknown, max: number) => String(v ?? '').replace(/\s+/g, ' ').trim().slice(0, max)
 
 // ── Questions answered from the data ────────────────────────────────────────
@@ -169,11 +170,13 @@ export interface DeskFactsInput {
   bookOnSite?: boolean
   /** The shop's coming holidays (closed): "Diwali 8 to 10 Nov" */
   holidays?: { name: string; when: string }[]
+  /** The business's currency (INR when not given) */
+  currency?: string
 }
 
-function planLine(p: NonNullable<DeskFactsInput['plans']>[number]): string {
-  const gets = [p.credit ? `${rupees(p.credit)} to spend` : '', ...(p.sessions || []).map((x) => `${x.count} × ${x.name}`), p.discount_percent ? `${p.discount_percent}% off services` : '', p.validity_days ? `valid ${p.validity_days} days` : ''].filter(Boolean)
-  return `${p.name} ${rupees(p.price)}${gets.length ? ` (${gets.join(', ')})` : ''}`
+function planLine(p: NonNullable<DeskFactsInput['plans']>[number], currency?: string): string {
+  const gets = [p.credit ? `${rupees(p.credit, currency)} to spend` : '', ...(p.sessions || []).map((x) => `${x.count} × ${x.name}`), p.discount_percent ? `${p.discount_percent}% off services` : '', p.validity_days ? `valid ${p.validity_days} days` : ''].filter(Boolean)
+  return `${p.name} ${rupees(p.price, currency)}${gets.length ? ` (${gets.join(', ')})` : ''}`
 }
 
 const duration = (m: number) => (m < 60 ? `${m} min` : `${Math.floor(m / 60)} h${m % 60 ? ` ${m % 60} min` : ''}`)
@@ -183,7 +186,7 @@ export function deskFacts(d: DeskFactsInput): string {
   const showPrices = d.showPrices !== false
   const byCategory = new Map<string, DeskService[]>()
   for (const s of d.services) byCategory.set(s.category || 'General', [...(byCategory.get(s.category || 'General') || []), s])
-  const menu = [...byCategory.entries()].map(([cat, list]) => `  ${cat}: ${list.slice(0, 60).map((s) => `${s.name} (${showPrices && s.price > 0 ? `${rupees(s.price)}, ` : ''}${duration(s.minutes)})`).join('; ')}`)
+  const menu = [...byCategory.entries()].map(([cat, list]) => `  ${cat}: ${list.slice(0, 60).map((s) => `${s.name} (${showPrices && s.price > 0 ? `${rupees(s.price, d.currency)}, ` : ''}${duration(s.minutes)})`).join('; ')}`)
   const serviceName = new Map(d.services.map((s) => [s.id, s.name]))
   const pay = d.pay
   const bookings = d.bookings !== false
@@ -204,7 +207,7 @@ export function deskFacts(d: DeskFactsInput): string {
       ? `- Booking: customers book on this website (tap Book, pick services, a person or anyone, a day and a free time). ${d.approval ? 'The business confirms each booking on WhatsApp.' : 'Bookings are confirmed at once on WhatsApp.'} Free times change all the time: never promise a time; ask them to tap Book to see free times.`
       : `- No appointments: this business does not take bookings. Customers just walk in during the opening hours${d.phone ? ' or call' : ''}. Never offer to book a time.`,
     pay && bookings && d.bookOnSite !== false ? `- Paying for a booking: ${!pay.online ? 'at the shop after the visit (cash, UPI or card).' : pay.mode === 'online' ? `online when booking (${pay.advance >= 100 ? 'the full amount' : `a ${pay.advance}% advance, the rest at the shop`}; ${pay.methods}).` : `online when booking (${pay.advance >= 100 ? 'full amount' : `${pay.advance}% advance`}, ${pay.methods}) or at the shop, the customer chooses.`}` : '',
-    d.plans?.length ? `- Memberships (bought at the shop): ${d.plans.slice(0, 8).map(planLine).join('; ')}.` : '',
+    d.plans?.length ? `- Memberships (bought at the shop): ${d.plans.slice(0, 8).map((p) => planLine(p, d.currency)).join('; ')}.` : '',
     d.rating && d.rating.count > 0 ? `- Customers rate it ${d.rating.average} out of 5 (${d.rating.count} reviews).` : '',
     d.about ? `- About: ${oneLine(d.about, 600)}` : '',
     bookings ? '- To check their own booking, customers can give the phone number and first name they booked with.' : '',
@@ -217,7 +220,7 @@ export function deskFacts(d: DeskFactsInput): string {
 const wordsOf = (t: string) => String(t || '').toLowerCase().normalize('NFKD').replace(/[^\p{L}\p{N}\s]/gu, ' ').split(/\s+/).filter((w) => w.length > 1)
 
 /** The services matching a text, best first, as knowledge items (kind 'service'). */
-export function serviceHits(services: DeskService[], text: string, max = 4, showPrices = true, bookable = true): KnowledgeHit[] {
+export function serviceHits(services: DeskService[], text: string, max = 4, showPrices = true, bookable = true, currency = 'INR'): KnowledgeHit[] {
   const typed = [...new Set(wordsOf(text))]
   if (!typed.length) return []
   const scored = services.map((s, i) => {
@@ -233,16 +236,16 @@ export function serviceHits(services: DeskService[], text: string, max = 4, show
   }).filter((x) => x.score >= 2)
   return scored.sort((a, b) => b.score - a.score || a.i - b.i).slice(0, max).map(({ s }) => ({
     id: s.id, title: s.name, kind: 'service' as const, score: 1, similarity: null, wordScore: null,
-    content: [`Service in the ${s.category} menu`, showPrices && s.price > 0 ? `Price: ${rupees(s.price)}` : 'Price: ask the shop', `Takes about ${duration(s.minutes)}`, bookable ? 'Book it on this website (Book button).' : 'No booking needed: walk in during opening hours.'].join('\n'),
+    content: [`Service in the ${s.category} menu`, showPrices && s.price > 0 ? `Price: ${rupees(s.price, currency)}` : 'Price: ask the shop', `Takes about ${duration(s.minutes)}`, bookable ? 'Book it on this website (Book button).' : 'No booking needed: walk in during opening hours.'].join('\n'),
   }))
 }
 
 // ── Amount check ────────────────────────────────────────────────────────────
 
-/** The money amounts written in a text: "₹1,500", "Rs. 300", "INR 99.50", "300 rupees". */
+/** The money amounts written in a text: "₹1,500", "Rs. 300", "INR 99.50", "300 rupees", "$25", "AED 99", "40 dirhams". */
 export function amountsIn(text: string): number[] {
   const out: number[] = []
-  const re = /(?:₹|rs\.?|inr)\s*(\d[\d,]*(?:\.\d{1,2})?)|(\d[\d,]*(?:\.\d{1,2})?)\s*(?:rupees|rs\b|\/-)/gi
+  const re = /(?:₹|rs\.?|inr|\$|£|€|\b(?:usd|aed|sar|qar|gbp|eur|sgd|aud|cad)\b)\s*(\d[\d,]*(?:\.\d{1,2})?)|(\d[\d,]*(?:\.\d{1,2})?)\s*(?:rupees|rs\b|\/-|dollars?\b|dirhams?\b|riyals?\b|pounds?\b|euros?\b)/gi
   for (const m of String(text || '').matchAll(re)) {
     const n = Number(String(m[1] || m[2]).replace(/,/g, ''))
     if (Number.isFinite(n)) out.push(Math.round(n * 100) / 100)

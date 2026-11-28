@@ -4,6 +4,7 @@ import { isUuid } from '@/lib/record-visibility'
 import { listDiscounts, rowToDiscount, withDiscountSchema } from '@/lib/commerce/discount-store'
 import { withLoyaltySchema } from '@/lib/commerce/loyalty-store'
 import { parseDiscount } from '@/lib/commerce/discounts'
+import { businessCurrency } from '@/lib/money'
 
 export const runtime = 'nodejs'
 
@@ -20,10 +21,11 @@ export async function POST(request: NextRequest) {
   const body = await request.json().catch(() => ({}))
   const access = await verifyOrgAccess(request, body?.organizationId, { permission: 'automation.manage' })
   if (!access.authorized) return NextResponse.json({ error: access.error }, { status: access.status })
-  const parsed = parseDiscount(body?.discount)
+  const db = getSupabaseAdminClient()
+  const { data: org } = await db.from('organizations').select('*').eq('id', body.organizationId).maybeSingle()
+  const parsed = parseDiscount(body?.discount, businessCurrency(org))
   if ('error' in parsed) return NextResponse.json({ error: parsed.error }, { status: 400 })
   const { id, uses: _uses, ...values } = parsed.discount as any
-  const db = getSupabaseAdminClient()
   const row = { ...values, organization_id: body.organizationId, updated_at: new Date().toISOString() }
   // Codes for one customer need the for_phone column (added with loyalty points)
   const save = () => id && isUuid(id)

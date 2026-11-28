@@ -190,5 +190,7 @@ test('Memberships: the report counts money in, use, and what is still owed', () 
 
 test('Memberships: the rules file has no server code (it runs in the browser)', () => {
   const src = fs.readFileSync(path.join(__dirname, '../lib/salon/membership-rules.ts'), 'utf8')
-  assert.doesNotMatch(src, /^import /m)
+  // Only the pure money helpers (the business's currency), which import nothing themselves
+  for (const line of src.match(/^import .*$/gm) || []) assert.match(line, /from '\.\.\/money'$/)
+  assert.doesNotMatch(fs.readFileSync(path.join(__dirname, '../lib/money.ts'), 'utf8'), /^import /m)
 })

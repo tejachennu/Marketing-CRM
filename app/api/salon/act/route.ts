@@ -4,6 +4,7 @@ import { claimClientRef, isClientRef, releaseClientRef, saveClientResult } from 
 import { executeCounterAction, parseCounterAction } from '@/lib/salon/actions'
 import { appOrigin, badRequest, loadSalonSettings, salonAccess } from '@/lib/salon/server'
 import { billTemplate, bookingMessage, bookingTemplate, cardLink, cardMessage, invoiceLink, invoiceMessage, sendCustomerText } from '@/lib/salon/whatsapp'
+import { businessCurrency } from '@/lib/money'
 
 export const runtime = 'nodejs'
 export const maxDuration = 30
@@ -40,7 +41,7 @@ export async function POST(request: NextRequest) {
       invoice: (invoice) => sendCustomerText(db, organizationId, invoice.customer_phone, invoiceMessage(invoice, invoiceLink(origin, invoice.public_token)), billTemplate(invoice)),
       booking: (appointment, staffName) => sendCustomerText(db, organizationId, appointment.customer_phone, bookingMessage(appointment, settings.business_name, staffName), bookingTemplate(appointment, settings.business_name, staffName)),
       text: (phone, body) => sendCustomerText(db, organizationId, phone, body),
-      card: (card) => sendCustomerText(db, organizationId, card.customer_phone, cardMessage(card, settings.business_name, cardLink(origin, card.public_token))),
+      card: (card) => sendCustomerText(db, organizationId, card.customer_phone, cardMessage(card, settings.business_name, cardLink(origin, card.public_token), businessCurrency(access.ctx.organization))),
     })
     const response = { success: true, ...result, link: result.invoice ? invoiceLink(origin, result.invoice.public_token) : undefined, cardLink: result.membership ? cardLink(origin, result.membership.public_token) : undefined }
     if (clientRef) await saveClientResult(db, organizationId, clientRef, response)

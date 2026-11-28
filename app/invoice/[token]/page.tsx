@@ -18,7 +18,7 @@ function shopView(invoice: any, notes: any[], credit: boolean): InvoiceView {
   const cancelled = invoice.status === 'cancelled'
   const lines: any[] = Array.isArray(invoice.lines) ? invoice.lines : []
   const taxRows: any[] = Array.isArray(invoice.tax_summary) ? invoice.tax_summary : []
-  const money = invoiceMoney
+  const money = (value: unknown) => invoiceMoney(value, business.currency)
   const payment = credit ? `Given back${invoice.reason ? ` · ${invoice.reason}` : ''}` : cancelled ? 'Cancelled' : invoice.payment || '—'
 
   const totals: InvoiceAmountRow[] = [{ label: 'Items', value: money(invoice.items_total) }]

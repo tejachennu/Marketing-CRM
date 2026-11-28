@@ -4,6 +4,7 @@
  */
 
 import { addDays, istDate } from '../salon/spoken'
+import { currencyInfo, knownCurrency, moneyText, screenCurrency } from '../money'
 
 export const LEAD_STATUSES = ['active', 'won', 'lost', 'on_hold'] as const
 export type LeadStatus = (typeof LEAD_STATUSES)[number]
@@ -46,9 +47,9 @@ export const isUuid = (value: unknown): value is string => UUID.test(String(valu
  * An amount in the workspace's currency. Rupees use Indian grouping (₹12,50,000), and in short
  * form lakh and crore (₹12.5 L, ₹3.3 Cr). Other currencies use the browser's own formatting.
  */
-export function formatMoney(value: number | string | null | undefined, currency = 'INR', short = false): string {
+export function formatMoney(value: number | string | null | undefined, currency: string = screenCurrency(), short = false): string {
   const amount = Number(value) || 0
-  const code = (currency || 'INR').toUpperCase()
+  const code = (currency || screenCurrency()).toUpperCase()
   if (code === 'INR') {
     if (short) {
       const abs = Math.abs(amount)
@@ -58,6 +59,12 @@ export function formatMoney(value: number | string | null | undefined, currency 
       if (abs >= 1e3) return `₹${trim(amount / 1e3)}K`
     }
     return `₹${Math.round(amount).toLocaleString('en-IN')}`
+  }
+  // The business's own symbol ("AED 1,250", "$12K"); Intl for any other code
+  if (knownCurrency(code)) {
+    const info = currencyInfo(code)
+    if (short && Math.abs(amount) >= 1e3) return `${info.symbol}${new Intl.NumberFormat('en', { notation: 'compact', maximumFractionDigits: 1 }).format(amount)}`
+    return moneyText(Math.round(amount), code)
   }
   try {
     return new Intl.NumberFormat('en', { style: 'currency', currency: code, maximumFractionDigits: 0, ...(short ? { notation: 'compact' } : {}) }).format(amount)

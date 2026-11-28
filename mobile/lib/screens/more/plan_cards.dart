@@ -105,7 +105,7 @@ class PlanCard extends StatelessWidget {
                     TextSpan(
                       children: [
                         TextSpan(
-                          text: formatRupees(price),
+                          text: formatInr(price),
                           style: const TextStyle(
                             fontSize: 20,
                             fontWeight: FontWeight.w700,
@@ -255,7 +255,7 @@ class MessageWalletCard extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  formatRupees(balance),
+                  formatInr(balance),
                   style: TextStyle(
                     fontSize: 26,
                     fontWeight: FontWeight.w700,
@@ -263,7 +263,7 @@ class MessageWalletCard extends StatelessWidget {
                   ),
                 ),
                 Text(
-                  '${left != null ? 'About ${formatRupees(left).replaceFirst('₹', '')} booking messages at ${formatRupees(price)} each.' : 'Booking messages are free right now.'}${low ? ' Top up so confirmations and reminders keep going out.' : ''}',
+                  '${left != null ? 'About ${formatInr(left).replaceFirst('₹', '')} booking messages at ${formatInr(price)} each.' : 'Booking messages are free right now.'}${low ? ' Top up so confirmations and reminders keep going out.' : ''}',
                   style: const TextStyle(color: Brand.textSoft, fontSize: 13),
                 ),
               ],
@@ -286,7 +286,7 @@ class MessageWalletCard extends StatelessWidget {
                           onPressed: busy ? null : () => onTopup!(amount),
                           child: FittedBox(
                             fit: BoxFit.scaleDown,
-                            child: Text('+ ${formatRupees(amount)}'),
+                            child: Text('+ ${formatInr(amount)}'),
                           ),
                         ),
                       ),
@@ -330,7 +330,7 @@ class MessageWalletCard extends StatelessWidget {
                       ),
                     ),
                     Text(
-                      '${((row['amount'] as num?) ?? 0) < 0 ? '−' : '+'}${formatRupees(((row['amount'] as num?) ?? 0).abs())}',
+                      '${((row['amount'] as num?) ?? 0) < 0 ? '−' : '+'}${formatInr(((row['amount'] as num?) ?? 0).abs())}',
                       style: const TextStyle(
                         fontWeight: FontWeight.w600,
                         fontSize: 13,

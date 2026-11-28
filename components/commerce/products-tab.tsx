@@ -576,7 +576,7 @@ export function ProductsTab({ orgId, currency, canEdit, canManageStore, catalogL
                       )}
                     </div>
                     <div className="mt-auto pt-2.5 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between gap-2 min-w-0">
-                      <span className="font-bold text-base text-slate-900 dark:text-white tabular-nums truncate">{formatMoney(product.price, product.currency)}</span>
+                      <span className="font-bold text-base text-slate-900 dark:text-white tabular-nums truncate">{formatMoney(product.price, currency)}</span>
                       <div className="flex items-center gap-0.5 shrink-0">
                         {canManageStore && (
                           <>
@@ -857,7 +857,7 @@ function ShareModal({ orgId, target, catalogLinked, onClose, onSent, onError }: 
   const [recipient, setRecipient] = useState<Recipient | null>(null)
   const [message, setMessage] = useState(
     target.kind === 'product'
-      ? `Check out ${target.product.title} for ${formatMoney(target.product.price, target.product.currency)}:`
+      ? `Check out ${target.product.title} for ${formatMoney(target.product.price)}:`
       : target.kind === 'collection'
         ? 'Here are a few things we picked for you. Tap one to see it and add it to your cart.'
         : 'Tap below to browse our catalog and place your order.'
@@ -948,7 +948,7 @@ function ShareModal({ orgId, target, catalogLinked, onClose, onSent, onError }: 
             )}
             <div className="min-w-0">
               <p className="font-bold text-sm text-slate-900 dark:text-white truncate">{target.product.title}</p>
-              <p className="text-xs text-slate-500">{formatMoney(target.product.price, target.product.currency)} · SKU {target.product.retailer_id}</p>
+              <p className="text-xs text-slate-500">{formatMoney(target.product.price)} · SKU {target.product.retailer_id}</p>
             </div>
           </div>
         )}

@@ -8,6 +8,8 @@
  *   someone else's points by typing their number.
  */
 
+import { moneyText, screenCurrency } from '../money'
+
 export interface LoyaltySettings {
   on: boolean
   /** Points back as a percent of what the customer paid */
@@ -64,7 +66,7 @@ export function pointsUsable(balance: number, orderAmount: number, settings: Loy
   return Math.max(0, Math.min(Math.floor(balance), cap))
 }
 
-/** "Get 2% back as points. 1 point = ₹1." for the store page. */
-export function loyaltyLine(settings: LoyaltySettings): string {
-  return settings.on ? `Get ${settings.percent}% back as points on every order. 1 point = ₹1 off your next order.` : ''
+/** "Get 2% back as points. 1 point = ₹1." for the store page (in the business's currency). */
+export function loyaltyLine(settings: LoyaltySettings, currency?: string): string {
+  return settings.on ? `Get ${settings.percent}% back as points on every order. 1 point = ${moneyText(1, currency || screenCurrency())} off your next order.` : ''
 }

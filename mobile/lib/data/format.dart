@@ -18,19 +18,69 @@ String istDateOf(DateTime moment) => DateFormat('yyyy-MM-dd').format(toIst(momen
 /// An India date and time as a real moment (UTC).
 DateTime fromIst(DateTime date, int hour, int minute) => DateTime.utc(date.year, date.month, date.day, hour, minute).subtract(istOffset);
 
-final _rupees = NumberFormat.currency(locale: 'en_IN', symbol: '₹', decimalDigits: 0);
-final _rupeesPaise = NumberFormat.currency(locale: 'en_IN', symbol: '₹', decimalDigits: 2);
+// ── Money ──────────────────────────────────────────────────────────────────
+// One currency for the whole business (web Settings → Currency, app More → Currency), used by Front Desk, the shop
+// and the sales pipeline. Same list as the server's lib/money.ts. WAMA's own plan prices stay in rupees (formatInr).
 
-/// ₹1,50,000 (Indian grouping); paise only when there are any.
-String formatRupees(Object? value) {
-  final amount = value is num ? value : num.tryParse('$value') ?? 0;
-  return amount == amount.roundToDouble() ? _rupees.format(amount) : _rupeesPaise.format(amount);
+class CurrencyChoice {
+  final String code, symbol, name, locale;
+  const CurrencyChoice(this.code, this.symbol, this.name, this.locale);
 }
 
-/// Short money for tiles: ₹1.2L, ₹3.4Cr.
+const currencies = [
+  CurrencyChoice('INR', '₹', 'Indian rupee', 'en_IN'),
+  CurrencyChoice('USD', r'$', 'US dollar', 'en_US'),
+  CurrencyChoice('AED', 'AED ', 'UAE dirham', 'en_US'),
+  CurrencyChoice('SAR', 'SAR ', 'Saudi riyal', 'en_US'),
+  CurrencyChoice('QAR', 'QAR ', 'Qatari riyal', 'en_US'),
+  CurrencyChoice('GBP', '£', 'British pound', 'en_US'),
+  CurrencyChoice('EUR', '€', 'Euro', 'en_US'),
+  CurrencyChoice('SGD', r'S$', 'Singapore dollar', 'en_US'),
+  CurrencyChoice('AUD', r'A$', 'Australian dollar', 'en_US'),
+  CurrencyChoice('CAD', r'C$', 'Canadian dollar', 'en_US'),
+];
+
+/// Where the business's currency comes from: the app state points it at the signed-in workspace's profile.
+String Function() businessCurrencySource = () => 'INR';
+
+/// The currency's details; anything not on the list is INR.
+CurrencyChoice currencyInfo(Object? code) {
+  final wanted = '${code ?? ''}'.trim().toUpperCase();
+  return currencies.firstWhere((c) => c.code == wanted, orElse: () => currencies.first);
+}
+
+/// The business's currency code ("INR" until it chooses another).
+String get appCurrency => currencyInfo(businessCurrencySource()).code;
+
+/// "₹", "\$", "AED": the sign alone, for a field's prefix or a label.
+String currencySymbol([Object? code]) => currencyInfo(code ?? appCurrency).symbol.trim();
+
+num _amount(Object? value) => value is num ? value : num.tryParse('$value') ?? 0;
+
+/// An amount in a given currency: "₹1,50,000", "\$12.50", "AED 99"; decimals only when there are any.
+String moneyIn(Object? value, Object? code) {
+  final info = currencyInfo(code);
+  final amount = _amount(value);
+  final cents = amount != amount.roundToDouble();
+  return NumberFormat.currency(locale: info.locale, symbol: info.symbol, decimalDigits: cents ? 2 : 0).format(amount);
+}
+
+/// An amount in the business's currency: ₹1,50,000 (Indian grouping for rupees); paise only when there are any.
+String formatRupees(Object? value) => moneyIn(value, appCurrency);
+
+/// WAMA's own prices (plans, AI credit, top-ups): always rupees.
+String formatInr(Object? value) => moneyIn(value, 'INR');
+
+/// Short money for tiles: ₹1.2L, ₹3.4Cr in rupees; \$1.2M in other currencies.
 String shortRupees(num amount) {
-  if (amount >= 1e7) return '₹${(amount / 1e7).toStringAsFixed(amount >= 1e8 ? 0 : 1)}Cr';
-  if (amount >= 1e5) return '₹${(amount / 1e5).toStringAsFixed(amount >= 1e6 ? 0 : 1)}L';
+  final code = appCurrency;
+  final sign = currencyInfo(code).symbol;
+  if (code == 'INR') {
+    if (amount >= 1e7) return '$sign${(amount / 1e7).toStringAsFixed(amount >= 1e8 ? 0 : 1)}Cr';
+    if (amount >= 1e5) return '$sign${(amount / 1e5).toStringAsFixed(amount >= 1e6 ? 0 : 1)}L';
+  } else if (amount >= 1e6) {
+    return '$sign${(amount / 1e6).toStringAsFixed(amount >= 1e7 ? 0 : 1)}M';
+  }
   return formatRupees(amount.round());
 }
 

@@ -17,6 +17,7 @@ import { BookButton } from './book-button'
 import { SiteChat } from '@/components/site-chat/site-chat'
 import { BookingWizard } from '@/app/b/[slug]/booking-wizard'
 import type { BookingPageView } from '@/lib/salon/booking-page'
+import { moneyText } from '@/lib/money'
 
 export interface BusinessSiteProps {
   view: BookingPageView
@@ -42,7 +43,6 @@ export interface BusinessSiteProps {
   now?: number
 }
 
-const rupees = (n: number) => `₹${Math.round(n).toLocaleString('en-IN')}`
 const initials = (name: string) => name.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join('').toUpperCase()
 
 function Stars({ value, size = 16 }: { value: number; size?: number }) {
@@ -67,6 +67,8 @@ function SectionHead({ id, kicker, title, children }: { id?: string; kicker: str
 
 export function BusinessSite({ view, hours, site, average, count, reviews, plans, reviewLink, storeLink, bookHref, days, startService = null, startPerson = null, instagramPosts = [], chat = false, now = Date.now() }: BusinessSiteProps) {
   const phoneDigits = String(view.phone || '').replace(/\D/g, '')
+  const currency = view.currency || 'INR'
+  const rupees = (n: number) => moneyText(Math.round(n), currency)
   // The buttons the business switched on, that can work (Book now also needs appointments on)
   const cta = siteButtons(site, { bookings: view.bookings !== false, store: Boolean(storeLink), phone: phoneDigits.length >= 10, address: Boolean(view.address) })
   const bar = phoneBar(cta)
@@ -181,7 +183,7 @@ export function BusinessSite({ view, hours, site, average, count, reviews, plans
           <SectionHead id="services" kicker="What we do" title="Services and prices">
             {cta.book && <a href="#book" className="h-10 px-4 rounded-full bg-[var(--c)] text-white text-[14px] font-bold inline-flex items-center gap-2"><CalendarCheck size={16} /> Book a visit</a>}
           </SectionHead>
-          <ServicesMenu services={view.services} showPrices={site.show.prices} money="INR" bookable={cta.book} />
+          <ServicesMenu services={view.services} showPrices={site.show.prices} money={currency} bookable={cta.book} />
         </section>
 
         {/* Book online, right here: live free times, and pay online or at the shop */}
@@ -222,7 +224,7 @@ export function BusinessSite({ view, hours, site, average, count, reviews, plans
                   <p className="mt-2 text-[28px] font-extrabold">{rupees(Number(p.price) || 0)}</p>
                   {Number(p.validity_days) > 0 && <p className="text-[13px] text-[#6B7894]">Valid for {p.validity_days} days</p>}
                   <ul className="mt-3 space-y-1.5 text-[14px] text-[#4a5672] flex-1">
-                    {planBenefits({ credit: Number(p.credit) || 0, discount_percent: Number(p.discount_percent) || 0, sessions: p.sessions || [], validity_days: Number(p.validity_days) || 0 }).map((b) => <li key={b} className="flex gap-2"><span className="mt-2 h-1.5 w-1.5 rounded-full bg-[var(--c)] shrink-0" aria-hidden />{b}</li>)}
+                    {planBenefits({ credit: Number(p.credit) || 0, discount_percent: Number(p.discount_percent) || 0, sessions: p.sessions || [], validity_days: Number(p.validity_days) || 0 }, currency).map((b) => <li key={b} className="flex gap-2"><span className="mt-2 h-1.5 w-1.5 rounded-full bg-[var(--c)] shrink-0" aria-hidden />{b}</li>)}
                   </ul>
                   {waHref && <a href={`https://wa.me/${phoneDigits}?text=${encodeURIComponent(`Hi ${view.business}, I would like the ${p.name} membership.`)}`} target="_blank" rel="noreferrer" className="mt-4 h-10 rounded-full border-2 border-[var(--c)] text-[var(--c)] text-[14px] font-bold inline-flex items-center justify-center">Ask about it</a>}
                 </div>
@@ -425,7 +427,7 @@ export function BusinessSite({ view, hours, site, average, count, reviews, plans
         </div>
       </footer>
 
-      {chat && <SiteChat kind="desk" endpoint={`/api/public/booking/${view.slug}/chat`} storageKey={`site-chat:${view.slug}`} name={view.business} logo={view.logo} whatsapp={waHref ? phoneDigits : null} phone={callHref ? view.phone : null} bookable={cta.book} raised={showBar} flat={!showBar} />}
+      {chat && <SiteChat kind="desk" endpoint={`/api/public/booking/${view.slug}/chat`} storageKey={`site-chat:${view.slug}`} name={view.business} logo={view.logo} whatsapp={waHref ? phoneDigits : null} phone={callHref ? view.phone : null} bookable={cta.book} raised={showBar} flat={!showBar} currency={currency} />}
       {/* Phones: Call · WhatsApp · Book now (or Shop online); no bar at all when every one is off */}
       {showBar && (
         <nav aria-label="Quick actions" className={`md:hidden fixed bottom-0 inset-x-0 z-30 h-16 bg-white border-t border-[#e3e8f2] grid ${barCols} shadow-[0_-2px_10px_rgba(14,27,61,0.08)]`}>

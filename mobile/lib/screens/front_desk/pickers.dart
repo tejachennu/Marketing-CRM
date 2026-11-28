@@ -508,19 +508,19 @@ class DiscountPicker extends StatelessWidget {
         ChoiceChip(label: const Text('None'), selected: value == null, onSelected: (_) => onChanged(null)),
         for (final p in [5, 10, 15, 20]) ChoiceChip(label: Text('$p%'), selected: !isAmount && value?['value'] == p, onSelected: (_) => onChanged({'type': 0, 'value': p})),
         ChoiceChip(
-          label: Text(isAmount ? '₹${value!['value']} off' : '₹ off'),
+          label: Text(isAmount ? '${formatRupees(value!['value'])} off' : 'Amount off'),
           selected: isAmount,
           onSelected: (_) async {
             final controller = TextEditingController(text: isAmount ? '${value!['value']}' : '');
             final typed = await showDialog<num>(
               context: context,
               builder: (d) => AlertDialog(
-                title: const Text('Rupees off'),
+                title: const Text('Amount off'),
                 content: TextField(
                   controller: controller,
                   autofocus: true,
                   keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                  decoration: const InputDecoration(prefixText: '₹ ', hintText: '100'),
+                  decoration: InputDecoration(prefixText: '${currencySymbol()} ', hintText: '100'),
                 ),
                 actions: [
                   TextButton(onPressed: () => Navigator.pop(d), child: const Text('Cancel')),

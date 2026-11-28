@@ -10,6 +10,7 @@ import {
   topItems, addMonths, daysInMonth,
   type ExpenseInput, type ExpenseRow, type Insight, type InsightFacts, type InsightKind, type SaleRow, type SoldItem,
 } from './rules'
+import { businessCurrency } from '../money'
 
 /** supabase/migrations/20261212_expenses.sql word for word. */
 export const EXPENSES_SQL = `-- Expenses (salaries, rent, stock…) and the once-a-month AI review of sales. Safe to run more than once.
@@ -211,7 +212,7 @@ export async function insightFacts(db: any, organizationId: string, month: strin
     expensesBetween(db, organizationId, monthBounds(months[0]).first, bounds.last),
     salesBetween(db, organizationId, monthBounds(months[0]).start, bounds.end),
     salesBetween(db, organizationId, bounds.start, bounds.end, true),
-    db.from('organizations').select('name, enabled_connectors, enable_commerce').eq('id', organizationId).maybeSingle(),
+    db.from('organizations').select('*').eq('id', organizationId).maybeSingle(),
   ])
   const trend = monthTotals(months, trendSales.sales, expenses)
   const totals = trend[trend.length - 1]
@@ -229,6 +230,7 @@ export async function insightFacts(db: any, organizationId: string, month: strin
   const connectors: string[] = Array.isArray(org?.data?.enabled_connectors) ? org.data.enabled_connectors : []
   return {
     business: String(org?.data?.name || ''),
+    currency: businessCurrency(org?.data),
     kind: connectors.includes('salon') ? 'service business with bookings and bills' : org?.data?.enable_commerce ? 'shop selling products' : 'small business',
     month,
     monthLabel: monthName(month),

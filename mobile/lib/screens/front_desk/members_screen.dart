@@ -513,7 +513,7 @@ class _PlanScreenState extends State<PlanScreen> {
           const SizedBox(height: 12),
           Row(
             children: [
-              Expanded(child: TextField(controller: _price, decoration: box('Price', prefix: '₹ '), keyboardType: const TextInputType.numberWithOptions(decimal: true))),
+              Expanded(child: TextField(controller: _price, decoration: box('Price', prefix: '${currencySymbol()} '), keyboardType: const TextInputType.numberWithOptions(decimal: true))),
               const SizedBox(width: 12),
               Expanded(child: TextField(controller: _days, decoration: box('Valid for', suffix: 'days'), keyboardType: TextInputType.number)),
             ],
@@ -531,7 +531,7 @@ class _PlanScreenState extends State<PlanScreen> {
           const SizedBox(height: 10),
           Row(
             children: [
-              Expanded(child: TextField(controller: _credit, decoration: box('Credit to spend', prefix: '₹ '), keyboardType: const TextInputType.numberWithOptions(decimal: true))),
+              Expanded(child: TextField(controller: _credit, decoration: box('Credit to spend', prefix: '${currencySymbol()} '), keyboardType: const TextInputType.numberWithOptions(decimal: true))),
               const SizedBox(width: 12),
               Expanded(child: TextField(controller: _discount, decoration: box('Discount', suffix: '%'), keyboardType: TextInputType.number)),
             ],

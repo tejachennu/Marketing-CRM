@@ -25,6 +25,7 @@ import { isOpen } from './discounts'
 import { STORE_PAGES, cleanPages, pageText, type StorePageKey } from './store-pages'
 import { cleanImages, readVideo, type ProductVideo } from './product-media'
 import { priceRange, variantInStock, variantPrice, type ProductOption } from './variants'
+import { businessCurrency, moneyText, readCurrency } from '../money'
 
 /** supabase/migrations/20261119_storefront.sql word for word. */
 export const STOREFRONT_SQL = `-- The online store page's settings (banners, categories, colour, delivery). Safe to run more than once.
@@ -370,7 +371,8 @@ export async function loadStore(db: any, slug: string): Promise<StorePage | null
   const products: StoreProduct[] = (rows || [])
     .map((p: any) => ({
       id: p.id, title: text(p.title, 150), description: longText(p.description, 2000), price: Number(p.price) || 0,
-      currency: String(p.currency || org.currency || 'INR').toUpperCase(), image: isImageUrl(p.image_url) ? p.image_url : '',
+      // The business's currency (Settings); a catalog product's own currency only when the business never chose one
+      currency: org.business_currency ? businessCurrency(org) : String(p.currency || 'INR').toUpperCase(), image: isImageUrl(p.image_url) ? p.image_url : '',
       category: text(p.category, 60) || 'Other', inStock: p.is_available !== false && (p.inventory_count ?? 1) > 0,
       options: readOptions(p.options),
       images: cleanImages(p.images).filter((url) => isImageUrl(url)),
@@ -402,7 +404,7 @@ export async function loadStore(db: any, slug: string): Promise<StorePage | null
   // Live Instagram: the connected account's latest posts (cached for 30 minutes)
   const instagramFeed = settings.instagram.live ? ((await latestPosts(db, org.id).catch(() => ({ posts: [] }))).posts as any[]).filter((p) => p.image).slice(0, 8).map((p) => ({ id: p.id, image: p.image, link: p.link, caption: p.caption })) : []
   return {
-    organization: { id: org.id, name: settings.title || org.name || 'Store', slug: org.slug, currency: String(org.currency || 'INR').toUpperCase(), domain: org.store_domain || null },
+    organization: { id: org.id, name: settings.title || org.name || 'Store', slug: org.slug, currency: businessCurrency(org), domain: org.store_domain || null },
     settings,
     products: shownProducts,
     categories: storeCategories(settings, shownProducts),
@@ -533,8 +535,7 @@ export function artUrl(appUrl: string, kind: 'banner' | 'logo' | 'tile', options
   return `${appUrl.replace(/\/$/, '')}/api/public/store-art?${params.toString()}`
 }
 
-const money = (value: number, currency?: string | null) =>
-  (String(currency || 'INR').toUpperCase() === 'INR' ? '₹' : `${String(currency).toUpperCase()} `) + value.toLocaleString('en-IN', { maximumFractionDigits: 2 })
+const money = (value: number, currency?: string | null) => moneyText(value, readCurrency(currency))
 
 /**
  * A full store page made from the business's own details: its name, logo, phone, address, WhatsApp,

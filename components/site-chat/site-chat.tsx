@@ -10,6 +10,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { CalendarCheck, Check, Clock, IndianRupee, Loader2, MapPin, MessageCircle, Package, Phone, RotateCcw, Send, Sparkles, Tag, Truck, X } from 'lucide-react'
+import { moneyText } from '@/lib/money'
 
 interface ProductCard { id: string; title: string; price: number; mrp: number | null; image: string; inStock: boolean; hasOptions: boolean }
 interface ServiceCard { id: string; name: string; category: string; minutes: number; price: number }
@@ -55,7 +56,6 @@ const QUICK = {
   ],
 }
 
-const inr = (n: number) => `₹${(Math.round(n * 100) / 100).toLocaleString('en-IN')}`
 const duration = (m: number) => (m < 60 ? `${m} min` : `${Math.floor(m / 60)} h${m % 60 ? ` ${m % 60} min` : ''}`)
 
 /** Words with *bold*, • lists and https links, written safely (no HTML from the server). */
@@ -143,7 +143,7 @@ function LookupForm({ kind, onSend, busy }: { kind: 'order' | 'booking'; onSend:
   )
 }
 
-export function SiteChat({ kind, endpoint, storageKey, name, logo, whatsapp, phone, raised = false, flat = false, bookable = true, money = inr, productHref, onAdd, authHeaders }: {
+export function SiteChat({ kind, endpoint, storageKey, name, logo, whatsapp, phone, raised = false, flat = false, bookable = true, currency = 'INR', money = (n: number) => moneyText(n, currency), productHref, onAdd, authHeaders }: {
   kind: 'store' | 'desk'
   endpoint: string
   storageKey: string
@@ -157,6 +157,8 @@ export function SiteChat({ kind, endpoint, storageKey, name, logo, whatsapp, pho
   flat?: boolean
   /** Front Desk website: the business takes bookings (services get a Book button; "My booking" is offered) */
   bookable?: boolean
+  /** The business's currency, for the default money format */
+  currency?: string
   money?: (n: number) => string
   productHref?: (id: string) => string
   onAdd?: (id: string) => void

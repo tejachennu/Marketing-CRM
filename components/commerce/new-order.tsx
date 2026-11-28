@@ -140,7 +140,7 @@ export function NewOrderModal({ orgId, currency, onClose, onCreated, showToast }
                 <li key={product.id}>
                   <button type="button" onClick={() => addProduct(product)} className="w-full px-3 py-2 text-left flex items-center justify-between gap-3 hover:bg-slate-50 dark:hover:bg-slate-800 cursor-pointer">
                     <span className="truncate font-medium text-slate-900 dark:text-white">{product.title}</span>
-                    <span className="shrink-0 text-slate-500">{formatMoney(product.price, product.currency)}</span>
+                    <span className="shrink-0 text-slate-500">{formatMoney(product.price, currency)}</span>
                   </button>
                 </li>
               ))}

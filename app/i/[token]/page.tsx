@@ -39,7 +39,7 @@ function billView(invoice: any, logo: string | null, token: string): InvoiceView
     rates.set(Number(item.tax_rate), row)
   }
   const igst = Number(invoice.igst) > 0
-  const money = invoiceMoney
+  const money = (value: unknown) => invoiceMoney(value, invoice.business?.currency)
   const status = String(invoice.status || 'unpaid')
   const total = Number(invoice.total) || 0
   const membershipPaid = Number(invoice.membership_paid) || 0

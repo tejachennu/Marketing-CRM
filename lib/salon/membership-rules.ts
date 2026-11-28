@@ -3,6 +3,8 @@
  * to a bill, and the report numbers. lib/salon/memberships.ts adds the database set-up.
  */
 
+import { moneyText, screenCurrency } from '../money'
+
 const isUuid = (value: unknown) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(value ?? ''))
 
 // ── Plans ────────────────────────────────────────────────────────────────────
@@ -68,12 +70,12 @@ export function readPlan(raw: any, services?: { id: string; name: string }[]): {
   }
 }
 
-const rupees = (n: number) => `₹${Math.round(n * 100) / 100 === Math.round(n) ? Math.round(n).toLocaleString('en-IN') : (Math.round(n * 100) / 100).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+const rupees = (n: number, currency?: string) => moneyText(n, currency || screenCurrency())
 
 /** "₹6,000 to spend · 4 × Haircut · 10% off services · valid 1 year" */
-export function planBenefits(plan: Pick<MembershipPlan, 'credit' | 'sessions' | 'discount_percent'> & { validity_days?: number }): string[] {
+export function planBenefits(plan: Pick<MembershipPlan, 'credit' | 'sessions' | 'discount_percent'> & { validity_days?: number }, currency?: string): string[] {
   const out: string[] = []
-  if (plan.credit > 0) out.push(`${rupees(plan.credit)} to spend`)
+  if (plan.credit > 0) out.push(`${rupees(plan.credit, currency)} to spend`)
   for (const s of plan.sessions || []) out.push(`${s.count} × ${s.name}`)
   if (plan.discount_percent > 0) out.push(`${plan.discount_percent}% off services`)
   if (plan.validity_days) out.push(`valid ${validityWords(plan.validity_days)}`)
@@ -237,13 +239,13 @@ export function publicCard(card: Membership, business: { name?: string | null; l
 }
 
 /** Words for one line of a card's history. */
-export function usageWords(u: { kind: string; detail?: string | null; amount?: number | string; sessions?: number }): string {
+export function usageWords(u: { kind: string; detail?: string | null; amount?: number | string; sessions?: number }, currency?: string): string {
   const amount = Number(u.amount) || 0
   switch (u.kind) {
-    case 'sale': return `Card bought${amount ? ` · ${rupees(amount)}` : ''}`
+    case 'sale': return `Card bought${amount ? ` · ${rupees(amount, currency)}` : ''}`
     case 'session': return `Used ${u.sessions || 1} × ${u.detail || 'session'}`
-    case 'discount': return `Saved ${rupees(amount)} with the discount`
-    case 'credit': return `Paid ${rupees(amount)} from credit`
+    case 'discount': return `Saved ${rupees(amount, currency)} with the discount`
+    case 'credit': return `Paid ${rupees(amount, currency)} from credit`
     case 'refund': return `Given back: ${u.detail || 'bill cancelled'}`
     case 'adjust': return u.detail || 'Changed by the shop'
     case 'cancel': return 'Card cancelled'

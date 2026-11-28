@@ -27,6 +27,7 @@ import '../instagram/instagram_screen.dart';
 import '../store/store_screen.dart';
 import 'chat_tickets_screen.dart';
 import 'connectors_screen.dart';
+import 'currency_screen.dart';
 import 'delete_account_screen.dart';
 import 'expenses_screen.dart';
 
@@ -210,6 +211,12 @@ class MoreScreen extends StatelessWidget {
                     subtitle: app.whatsappOn ? 'AI replies, chatbot instructions, ticket emails' : 'Locked · connect WhatsApp first',
                     onTap: () => open(app.whatsappOn ? const ChatTicketsScreen() : const WhatsAppLockedScreen(feature: 'Chat and tickets')),
                   ),
+                _Row(
+                  icon: Icons.currency_exchange,
+                  title: 'Currency',
+                  subtitle: '${currencyInfo(appCurrency).name} (${currencySymbol()}) · bills, shop and deals',
+                  onTap: () => open(const CurrencyScreen()),
+                ),
                 _Row(icon: Icons.credit_card, title: 'Billing', subtitle: 'Plan, AI credit and payments', onTap: () => open(const BillingScreen())),
                 _Row(
                   icon: Icons.notifications_active_outlined,

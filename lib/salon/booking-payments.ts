@@ -16,8 +16,9 @@ import type { BookingPage } from './booking-page'
 import { staffFor } from './chat'
 import { formatIstDay, formatIstTime, istDate, istDayRange } from './spoken'
 import { bookingMessage, bookingTemplate, sendCustomerText } from './whatsapp'
+import { moneyText } from '../money'
 
-const rupees = (n: number) => `₹${n.toLocaleString('en-IN', { maximumFractionDigits: 2 })}`
+
 
 export type StartedPayment =
   | { gateway: 'razorpay'; razorpay: { keyId: string; orderId: string; amount: number; currency: string; name: string; description: string; customer: { name: string; contact: string } } }
@@ -110,7 +111,7 @@ export async function markBookingPaid(db: any, page: BookingPage, appointment: a
   const status = waiting ? (autoApprove && free ? 'booked' : 'requested') : appointment.status
   const paid = majorUnits(payment.amount, currency)
   // The payment itself shows from payment_paid; a note only when the team must look at the time
-  const note = free ? '' : `Paid ${rupees(paid)} online after the hold ran out: please check the time`
+  const note = free ? '' : `Paid ${moneyText(paid, page.organization.currency)} online after the hold ran out: please check the time`
   const { data: marked } = await withPaymentsSchema(() => db.from('salon_appointments')
     .update({ status, payment_status: 'paid', payment_paid: paid, payment_id: payment.id, payment_gateway: payment.gateway, notes: [appointment.notes, note].filter(Boolean).join(' · '), updated_at: new Date().toISOString() })
     .eq('id', appointment.id).eq('organization_id', page.organization.id).neq('payment_status', 'paid')
@@ -119,7 +120,7 @@ export async function markBookingPaid(db: any, page: BookingPage, appointment: a
   if (!booked) return null
 
   const when = `${formatIstDay(istDate(Date.parse(booked.starts_at)), istDate())}, ${formatIstTime(new Date(booked.starts_at))}`
-  await sendPush(db, { organizationId: page.organization.id }, { kind: 'booking', title: status === 'booked' ? `New booking · paid ${rupees(paid)}` : `New booking request · paid ${rupees(paid)}`, body: `${booked.customer_name} · ${when} · booked online`, open: 'bookings' }).catch(() => null)
+  await sendPush(db, { organizationId: page.organization.id }, { kind: 'booking', title: status === 'booked' ? `New booking · paid ${moneyText(paid, page.organization.currency)}` : `New booking request · paid ${moneyText(paid, page.organization.currency)}`, body: `${booked.customer_name} · ${when} · booked online`, open: 'bookings' }).catch(() => null)
   if (status === 'booked' && booked.customer_phone) {
     const business = page.setup.settings.business_name || page.organization.name
     const staffName = booked.staff_id ? page.setup.staff.find((m) => m.id === booked.staff_id)?.name || null : null

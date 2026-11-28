@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../data/app_state.dart';
+import '../../data/format.dart' show appCurrency;
 import '../../ui/theme.dart';
 import '../../ui/widgets.dart';
 import 'shop_more.dart';
@@ -314,7 +315,7 @@ class _StoreSettingsTabState extends State<StoreSettingsTab> with AutomaticKeepA
   Widget build(BuildContext context) {
     super.build(context);
     _followSaved();
-    final currency = '${org['currency'] ?? 'INR'}';
+    final currency = appCurrency;
     final info = _catalogInfo;
     final catalogs = [
       for (final c in ((info?['catalogs'] as List?)?.isNotEmpty == true ? info!['catalogs'] as List : (_detected?['catalogs'] as List? ?? const []))) Map<String, dynamic>.from(c as Map),
@@ -353,7 +354,7 @@ class _StoreSettingsTabState extends State<StoreSettingsTab> with AutomaticKeepA
     return ListView(
       padding: const EdgeInsets.fromLTRB(12, 12, 12, 32),
       children: [
-        ...shopMoreTiles(context, currency: '${org['currency'] ?? 'INR'}', manage: true),
+        ...shopMoreTiles(context, currency: appCurrency, manage: true),
         Card(
           margin: const EdgeInsets.only(bottom: 12),
           child: ListTile(

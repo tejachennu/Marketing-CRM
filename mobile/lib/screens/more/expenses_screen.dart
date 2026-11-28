@@ -399,7 +399,7 @@ String _axisLabel(num v) {
   if (v >= 1e5) return shortRupees(v);
   if (v >= 1000) {
     final k = v / 1000;
-    return '₹${k == k.roundToDouble() ? k.toStringAsFixed(0) : k.toStringAsFixed(1)}k';
+    return '${currencySymbol()}${k == k.roundToDouble() ? k.toStringAsFixed(0) : k.toStringAsFixed(1)}k';
   }
   return formatRupees(v.round());
 }
@@ -770,7 +770,7 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
             autofocus: widget.expense == null,
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
             style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w700),
-            decoration: const InputDecoration(labelText: 'How much', prefixText: '₹ ', hintText: '0'),
+            decoration: InputDecoration(labelText: 'How much', prefixText: '${currencySymbol()} ', hintText: '0'),
             onChanged: (_) => setState(() {}),
           ),
           const SizedBox(height: 18),

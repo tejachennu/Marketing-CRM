@@ -1015,7 +1015,7 @@ export function Storefront({ store, startCategory, appUrl = '', basePath = '', p
                     {code && offer && !offer.ok && offer.reason && <p role="status" className="mt-1.5 text-[13.5px] text-[#b91c1c]">{offer.reason}</p>}
                   </div>
                 )}
-                {store.loyalty?.on && pointsCanUse === 0 && <p className="text-[13px] text-[#6B7894]">{loyaltyLine(store.loyalty)}{!shopper.session && store.accounts ? ' Sign in to use your points.' : ''}</p>}
+                {store.loyalty?.on && pointsCanUse === 0 && <p className="text-[13px] text-[#6B7894]">{loyaltyLine(store.loyalty, store.currency)}{!shopper.session && store.accounts ? ' Sign in to use your points.' : ''}</p>}
                 {pointsCanUse > 0 && (
                   <label className="flex items-center gap-3 rounded-xl border-2 border-[#d5ddeb] p-3 cursor-pointer">
                     <input type="checkbox" checked={usePointsOn} onChange={(e) => setUsePointsOn(e.target.checked)} className="h-5 w-5 accent-[var(--c)]" />

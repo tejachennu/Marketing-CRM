@@ -5,6 +5,8 @@ import { AlertCircle, BadgePercent, Copy, Loader2, Pencil, Plus, Trash2 } from '
 import { KIND_LABELS, isOpen, type Discount, type DiscountKind } from '@/lib/commerce/discounts'
 import { LoyaltyCard } from './loyalty-card'
 import { Modal, cardClass, hintClass, iconButton, inputClass, labelClass, primaryButton, secondaryButton, type ShowToast } from './ui'
+import { currencySymbol } from '@/lib/money'
+import { formatMoney } from '@/lib/commerce/commerce-utils'
 
 type Form = { id?: string; title: string; automatic: boolean; code: string; kind: DiscountKind; value: string; buy_qty: string; get_qty: string; min_order: string; max_uses: string; once_per_phone: boolean; first_order_only: boolean; starts_at: string; ends_at: string; active: boolean; for_phone: string }
 const EMPTY: Form = { title: '', automatic: false, code: '', kind: 'percent', value: '10', buy_qty: '2', get_qty: '1', min_order: '', max_uses: '', once_per_phone: true, first_order_only: false, starts_at: '', ends_at: '', active: true, for_phone: '' }
@@ -82,7 +84,7 @@ export function Offers({ orgId, canManage, showToast }: { orgId: string; canMana
           <BadgePercent size={20} className="text-[#008069] shrink-0 mt-0.5" />
           <div className="min-w-0 flex-1 basis-60">
             <h2 className="text-sm font-bold text-slate-900 dark:text-white">Offers and discount codes</h2>
-            <p className="text-xs text-slate-500 dark:text-slate-400">A code like DIWALI10 that customers type, or an offer that applies by itself (free delivery above ₹999, buy 2 get 1 free, first order). One offer per order: the best one.</p>
+            <p className="text-xs text-slate-500 dark:text-slate-400">A code like DIWALI10 that customers type, or an offer that applies by itself (free delivery above {formatMoney(999)}, buy 2 get 1 free, first order). One offer per order: the best one.</p>
           </div>
           {canManage && <button type="button" className={primaryButton} onClick={() => setForm({ ...EMPTY })}><Plus size={14} /> New offer</button>}
         </div>
@@ -154,7 +156,7 @@ export function Offers({ orgId, canManage, showToast }: { orgId: string; canMana
               </div>
             )}
             <div className="grid grid-cols-2 gap-3">
-              <div><label className={labelClass} htmlFor="offer-min">Orders of at least ₹ (optional)</label><input id="offer-min" type="number" min={0} className={inputClass} value={form.min_order} onChange={(e) => setForm({ ...form, min_order: e.target.value })} /></div>
+              <div><label className={labelClass} htmlFor="offer-min">Orders of at least {currencySymbol()} (optional)</label><input id="offer-min" type="number" min={0} className={inputClass} value={form.min_order} onChange={(e) => setForm({ ...form, min_order: e.target.value })} /></div>
               <div><label className={labelClass} htmlFor="offer-max">Total uses (optional)</label><input id="offer-max" type="number" min={1} className={inputClass} placeholder="No limit" value={form.max_uses} onChange={(e) => setForm({ ...form, max_uses: e.target.value })} /></div>
               <div><label className={labelClass} htmlFor="offer-start">Starts (optional)</label><input id="offer-start" type="datetime-local" className={inputClass} value={form.starts_at} onChange={(e) => setForm({ ...form, starts_at: e.target.value })} /></div>
               <div><label className={labelClass} htmlFor="offer-end">Ends (optional)</label><input id="offer-end" type="datetime-local" className={inputClass} value={form.ends_at} onChange={(e) => setForm({ ...form, ends_at: e.target.value })} /></div>

@@ -10,6 +10,7 @@ import { changeVariantStock } from '@/lib/commerce/variant-store'
 import { cancelInvoiceFor, issueInvoiceQuietly } from '@/lib/commerce/invoice-store'
 import { afterDelivered } from '@/lib/commerce/order-delivered'
 import { returnPointsFor } from '@/lib/commerce/loyalty-store'
+import { businessCurrency } from '@/lib/money'
 import {
   ORDER_STATUSES,
   ORDER_STATUS_LABELS,
@@ -271,9 +272,10 @@ export async function POST(request: NextRequest) {
       const parsed = parseManualOrder(body)
       if ('error' in parsed) return NextResponse.json({ error: parsed.error, field: parsed.field }, { status: 400 })
       const supabase = getSupabase()
-      const { data: org } = await supabase.from('organizations').select('id, currency, commerce_default_shipping_fee, commerce_free_shipping_threshold').eq('id', organizationId).maybeSingle()
+      // select('*'): the business's currency column may not be there yet
+      const { data: org } = await supabase.from('organizations').select('*').eq('id', organizationId).maybeSingle()
       if (!org) return NextResponse.json({ error: 'Organization not found' }, { status: 404 })
-      const made = await createManualOrder(supabase, org, parsed.order, createOrderNumber)
+      const made = await createManualOrder(supabase, { ...org, currency: businessCurrency(org) }, parsed.order, createOrderNumber)
       if ('error' in made) return NextResponse.json({ error: made.error }, { status: 400 })
       const { data: full } = await supabase.from('commerce_orders').select(ORDER_COLUMNS).eq('id', made.order.id).maybeSingle()
       return NextResponse.json({ success: true, order: full || made.order })

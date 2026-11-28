@@ -16,6 +16,7 @@ import { leftWords } from './membership-box'
 import { DateRangeFilter } from './date-range'
 import { api, Avatar, card, Chip, dangerButton, Field, input, Modal, primaryButton, secondaryButton, StatTile, Toggle } from './ui'
 import type { SalonSetup } from './types'
+import { currencySymbol } from '@/lib/money'
 
 type Flash = (tone: 'success' | 'error', text: string) => void
 type View = 'cards' | 'plans' | 'usage'
@@ -143,7 +144,7 @@ function CardList({ orgId, reload, onOpen, noPlans, canManage, onAddPlan }: { or
         <div className={`${card} p-8 text-center`}>
           <span className="mx-auto h-14 w-14 rounded-full bg-[#e7f5f0] text-[#008069] flex items-center justify-center"><IdCard size={26} /></span>
           <p className="mt-3 font-bold text-[#0E1B3D] dark:text-white">{q || state ? 'No cards match' : 'No membership cards yet'}</p>
-          <p className="mt-1 text-[14px] text-[#6B7894]">{noPlans ? 'Start by adding a plan, like Gold: ₹5,000 for ₹6,000 to spend, valid one year.' : 'Sell a membership and its card shows up here.'}</p>
+          <p className="mt-1 text-[14px] text-[#6B7894]">{noPlans ? `Start by adding a plan, like Gold: ${formatRupees(5000)} for ${formatRupees(6000)} to spend, valid one year.` : 'Sell a membership and its card shows up here.'}</p>
           {noPlans && canManage && <button type="button" onClick={onAddPlan} className={`${primaryButton} mt-4`}><Plus size={17} /> Add a plan</button>}
         </div>
       ) : (
@@ -367,7 +368,7 @@ function PlanList({ orgId, setup, plans, onChanged, flash }: { orgId: string; se
         <button type="button" onClick={() => setEditing({})} className={`${secondaryButton} shrink-0`}><Plus size={17} /> New plan</button>
       </div>
       {plans === null ? <p className="py-10 text-center text-[#6B7894]"><Loader2 size={16} className="inline animate-spin" /> Loading…</p> : plans.length === 0 ? (
-        <div className={`${card} p-6 text-center text-[14.5px] text-[#6B7894]`}>No plans yet. Add one: for example <b>Gold</b> — pay ₹5,000, get ₹6,000 to spend, valid 1 year.</div>
+        <div className={`${card} p-6 text-center text-[14.5px] text-[#6B7894]`}>No plans yet. Add one: for example <b>Gold</b> — pay {formatRupees(5000)}, get {formatRupees(6000)} to spend, valid 1 year.</div>
       ) : (
         <ul className="grid gap-3 md:grid-cols-2">
           {plans.map((p) => (
@@ -440,7 +441,7 @@ function PlanSheet({ orgId, setup, plan, onClose, onSaved }: { orgId: string; se
         {error && <div role="alert" className={errorBox}>{error}</div>}
         <div className="grid gap-3 sm:grid-cols-2">
           <Field label="Name"><input value={form.name} onChange={(e) => set({ name: e.target.value })} maxLength={60} placeholder="Gold" className={input} /></Field>
-          <Field label="Price (₹)"><input type="number" min={0} inputMode="decimal" value={form.price} onChange={(e) => set({ price: e.target.value })} placeholder="5000" className={input} /></Field>
+          <Field label={`Price (${currencySymbol()})`}><input type="number" min={0} inputMode="decimal" value={form.price} onChange={(e) => set({ price: e.target.value })} placeholder="5000" className={input} /></Field>
         </div>
         <Field label="Valid for">
           <div className="flex gap-2">
@@ -451,7 +452,7 @@ function PlanSheet({ orgId, setup, plan, onClose, onSaved }: { orgId: string; se
         <section className="space-y-3">
           <p className={sectionTitle}>What the customer gets (any mix)</p>
           <div className="grid gap-3 sm:grid-cols-2">
-            <Field label="Credit to spend (₹)" hint="Paid from the card at billing. E.g. pay ₹5,000, get ₹6,000."><input type="number" min={0} inputMode="decimal" value={form.credit} onChange={(e) => set({ credit: e.target.value })} placeholder="6000" className={input} /></Field>
+            <Field label={`Credit to spend (${currencySymbol()})`} hint={`Paid from the card at billing. E.g. pay ${formatRupees(5000)}, get ${formatRupees(6000)}.`}><input type="number" min={0} inputMode="decimal" value={form.credit} onChange={(e) => set({ credit: e.target.value })} placeholder="6000" className={input} /></Field>
             <Field label="Discount on services (%)" hint="Comes off every service on the bill."><input type="number" min={0} max={100} inputMode="decimal" value={form.discount} onChange={(e) => set({ discount: e.target.value })} placeholder="10" className={input} /></Field>
           </div>
           <div className="space-y-2">

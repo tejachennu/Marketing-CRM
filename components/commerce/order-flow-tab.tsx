@@ -12,6 +12,7 @@ import { getGoLiveChecks, isReadyToSell, type CheckState, type GoLiveCheck, type
 import { formatContactDisplayName } from '@/lib/whatsapp-bsuid'
 import { describeCommerceMessage, parseCommerceMessage } from '@/lib/chat-commerce'
 import { StatusBadge, cardClass, secondaryButton, squareButton, type ShowToast } from './ui'
+import { businessCurrency } from '@/lib/money'
 
 interface RecentOrder {
   id: string
@@ -177,7 +178,7 @@ export function OrderFlowTab({
   }
 
   // ── What the customer sees, with the store's real settings and a sample order ──
-  const currency = String(orgData.currency || 'INR').toUpperCase()
+  const currency = businessCurrency(orgData)
   const sampleTotal = formatMoney(499, currency)
   const sampleOrder = 'ORD-XXXXXX-XXXX'
   const received = CHECKOUT_TEXT.received(sampleOrder, 1, sampleTotal)
@@ -312,7 +313,7 @@ export function OrderFlowTab({
                       <div className="min-w-0">
                         <p className="text-[13px] font-bold text-slate-900 dark:text-white truncate">#{order.order_number}</p>
                         <p className="text-[11px] text-slate-500 truncate">
-                          {order.contact ? formatContactDisplayName(order.contact as any) : 'Customer'} · {formatMoney(order.total_amount, order.currency)} · {new Date(order.created_at).toLocaleString([], { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })}
+                          {order.contact ? formatContactDisplayName(order.contact as any) : 'Customer'} · {formatMoney(order.total_amount, currency)} · {new Date(order.created_at).toLocaleString([], { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })}
                         </p>
                       </div>
                       <StatusBadge status={order.status} />

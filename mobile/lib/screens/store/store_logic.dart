@@ -1,5 +1,6 @@
-import 'package:intl/intl.dart';
 import 'package:flutter/painting.dart' show Color;
+
+import '../../data/format.dart';
 
 /// The store's rules, mirrored from the web (`lib/commerce/commerce-utils.ts`,
 /// `lib/commerce/go-live-checks.ts`, `lib/commerce/catalog-items.ts`), so the app says the same
@@ -47,17 +48,9 @@ List<String> nextStatuses(Object? status) => _transitions['$status'] ?? const []
 
 bool needsRefund(Map order) => order['status'] == 'canceled' && order['payment_status'] == 'paid';
 
-/// "₹1,050", "$12.50"; the currency's own sign, Indian grouping for rupees.
-String formatMoney(Object? amount, [Object? currency]) {
-  final value = amount is num ? amount : num.tryParse('$amount') ?? 0;
-  final code = '${currency ?? 'INR'}'.toUpperCase();
-  try {
-    final format = NumberFormat.simpleCurrency(name: code, locale: code == 'INR' ? 'en_IN' : 'en_US', decimalDigits: value == value.roundToDouble() ? 0 : 2);
-    return format.format(value);
-  } catch (_) {
-    return '$code ${value.toStringAsFixed(2)}';
-  }
-}
+/// "₹1,050", "$12.50": always in the business's currency (one for the whole business, More → Currency). The
+/// currency saved on an order or product is not used: the older default made most of them USD.
+String formatMoney(Object? amount, [Object? currency]) => formatRupees(amount);
 
 String customerName(Map order) {
   final contact = (order['contact'] as Map?) ?? const {};

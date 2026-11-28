@@ -1,6 +1,7 @@
 import 'package:flutter/painting.dart' show Color;
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:wama_mobile/data/format.dart' show businessCurrencySource;
 import 'package:wama_mobile/screens/store/store_logic.dart';
 
 import 'screen_check.dart';
@@ -65,8 +66,12 @@ void main() {
   });
 
   test('Money is shown in the order currency', () {
-    expect(formatMoney(150000, 'INR'), '₹1,50,000');
-    expect(formatMoney(12.5, 'USD'), r'$12.50');
+    // One currency for the whole business: an order's own (older, often USD) currency is not used
+    expect(formatMoney(150000, 'USD'), '₹1,50,000');
+    final before = businessCurrencySource;
+    businessCurrencySource = () => 'USD';
+    expect(formatMoney(12.5, 'INR'), r'$12.50');
+    businessCurrencySource = before;
   });
 
   test('Go-live checks: a store with no catalog and no way to pay is not ready', () {

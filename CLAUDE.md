@@ -112,7 +112,10 @@ Email: `HOSTINGER_SMTP_*`, `SENDGRID_*`. Other: `NEXT_PUBLIC_APP_URL`, `CRON_SEC
 - **Dates**: the business runs on India time. Use the IST helpers in `lib/salon/spoken.ts`
   (`istDate`, `addDays`, `istDayRange`, `formatIstDay`…). Date-range filters use `lib/salon/ranges.ts`
   and `components/salon/date-range.tsx`.
-- **Money**: rupees with Indian grouping; short form lakh/crore (`formatMoney` in `lib/pipeline/rules.ts`).
+- **Money**: one currency per business (Settings → Currency; `organizations.business_currency`, empty = INR; see the
+  newest history entry). `lib/money.ts` (`moneyText`, `businessCurrency(org)`, `currencySymbol`). Rupees use Indian
+  grouping and lakh/crore in short form (`formatMoney` in `lib/pipeline/rules.ts`). **Never trust `organizations.currency`**
+  (its old default was USD). WAMA's own plan prices stay in rupees.
 - **WhatsApp templates**: Front Desk sends nothing from a template until the business sets one up
   (Front Desk → Setup → Templates); an AI writer helps draft them. There are no built-in default templates.
 - **Public API**: `apiAuth(request, scope)` checks the key, scope, a 120/min rate limit and the plan.
@@ -120,6 +123,30 @@ Email: `HOSTINGER_SMTP_*`, `SENDGRID_*`. Other: `NEXT_PUBLIC_APP_URL`, `CRON_SEC
   front_desk read/write, leads read/write.
 
 ## What has been built (recent history, newest first)
+
+- **One currency for the whole business; the old USD default fixed** (owner, 28 Nov 2026: "e-commerce and frontdesk and
+  sales currency configuration add in the settings"; chose one for the whole business and a short list).
+  - `lib/money.ts` (pure, browser-safe): `CURRENCIES` INR, USD, AED, SAR, QAR, GBP, EUR, SGD, AUD, CAD; `moneyText`
+    ("₹1,50,000", "AED 1,250.50"), `moneyFixed` (invoices), `currencySymbol`, `currencyWords`, `businessCurrency(org)` =
+    `organizations.business_currency` or INR. **The older `organizations.currency` column defaulted to 'USD'** (10 of 13
+    workspaces had USD without choosing it): the shop dashboard, store orders, Razorpay / Stripe booking payments and the
+    app's Telugu / Hindi check all read it. Now nothing trusts it on its own; saving the currency writes both columns.
+  - Saving: `lib/business-currency.ts` (lock **724519043**, migration `20261216_business_currency.sql`,
+    `saveBusinessCurrency` adds the column on first save), `GET/PUT /api/settings/currency` (everyone reads, admins
+    change). Web Settings → General → **Currency**; app More → **Currency** (`more/currency_screen.dart`).
+  - Screens: the dashboard sets a "screen currency" when the workspace loads (`setScreenCurrency`, remembered in
+    localStorage `wama-currency`, pages redrawn on change through `CURRENCY_EVENT`); `formatRupees`, the pipeline and
+    commerce `formatMoney` use it when no currency is given (INR on the server: server code passes it). Shop screens show
+    every order / product in the business currency (an order's own `currency` is ignored). Labels say "Price ($)" etc.
+  - Server: bills keep the currency in `invoice.business.currency` (Front Desk) and the shop invoice snapshot; WhatsApp
+    bill / card messages, the booking flow, services form, WhatsApp assistant, shopping assistant, store and booking pages,
+    website (`view.currency`), website chat facts + amount check (`amountsIn` knows $, £, €, AED, SAR, dirhams…), offers'
+    titles (`parseDiscount(raw, currency)`), loyalty line, policy page samples, membership card page, monthly AI review,
+    and new store orders (`currency` = business currency) follow it. `/api/mobile/me` `organization.currency` too.
+  - App: `format.dart` `businessCurrencySource` (set by `AppState` from the profile), `formatRupees` / `shortRupees` /
+    store `formatMoney` in it, `formatInr` for WAMA's plans and wallet (billing, plan cards). Demo answers the PUT.
+  - Tests `tests/business-currency.test.cjs`, `mobile/test/release_currency_test.dart`. Next free lock: **724519044**.
+  - Owner to check: nothing converts amounts; switching only changes the sign (say so before a business switches).
 
 - **New plans and prices; the website and dashboard green again** (owner, 28 Nov 2026, from the pricing sheet:
   "Update the pricing page and app with these prices and change colour to previous green"; kept ₹300 and Pro).
@@ -158,7 +185,7 @@ Email: `HOSTINGER_SMTP_*`, `SENDGRID_*`. Other: `NEXT_PUBLIC_APP_URL`, `CRON_SEC
     and a third switch "Time"; subtitle counts them); app Setup → Services (editor switch, minutes hidden, "Billing only"
     pill). Bill pickers show no minutes for these, and **no minutes at all when the shop takes no appointments**
     (`showTime`). Demo mode: fixed editing a service (`Map<String, dynamic>.from`). Tests `tests/service-time.test.cjs`,
-    `mobile/test/service_time_test.dart`. Next free lock: **724519043**.
+    `mobile/test/service_time_test.dart`. (724519043 is now the business currency.)
 
 - **A count for each service on a new bill; New bill's Save button lined up; GST-inclusive bills add up exactly**
   (owner, 28 Nov 2026, app New bill screenshot: "Alignment sariga ledu and count vundali ga prati product ki").

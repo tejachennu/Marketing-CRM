@@ -360,7 +360,7 @@ export function AccountPanel({ slug, shopper, money, storeName, initialView, onC
                 <div className="min-w-0 flex-1">
                   <p className="font-bold truncate">{account?.shopper.name || 'Signed in'}</p>
                   <p className="text-[13px] text-[#6B7894] truncate">{account?.shopper.email || shopper.session?.user.email}</p>
-                  {Number(account?.points) > 0 && <p className="text-[13px] font-semibold text-[var(--c)]">{account!.points} points to use (₹{account!.points} off)</p>}
+                  {Number(account?.points) > 0 && <p className="text-[13px] font-semibold text-[var(--c)]">{account!.points} points to use ({money(Number(account!.points))} off)</p>}
                 </div>
                 <button type="button" onClick={shopper.signOut} className="h-9 px-3 rounded-full border border-[#d5ddeb] text-[13px] font-semibold inline-flex items-center gap-1.5 shrink-0 cursor-pointer"><LogOut size={14} /> Sign out</button>
               </div>

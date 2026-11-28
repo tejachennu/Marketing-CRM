@@ -963,7 +963,7 @@ class _ShopReviewsScreenState extends State<ShopReviewsScreen> {
 
 // ── Offers, codes for one customer, loyalty points ───────────────────────────
 
-const _offerKinds = {'percent': '% off', 'flat': '₹ off', 'free_delivery': 'Free delivery', 'buy_get': 'Buy X get Y free'};
+const _offerKinds = {'percent': '% off', 'flat': 'Amount off', 'free_delivery': 'Free delivery', 'buy_get': 'Buy X get Y free'};
 
 class ShopOffersScreen extends StatefulWidget {
   const ShopOffersScreen({super.key});

@@ -26,6 +26,7 @@ import { MAX_SERVICES, parseBookingFlow, SAY_STEPS, type BookingFlowSettings, ty
 import { withSalonSchema } from './schema'
 import { buildFormMessage, ensureServicesForm, servicesFormData, sessionFromToken, tickedServices } from './services-form'
 import { phoneKey } from './spoken'
+import { businessCurrency } from '../money'
 
 export { DAYS_AHEAD_CHOICES, DEFAULT_FLOW, MAX_SERVICES, DEFAULT_TRIGGERS, isBookingRequest, parseBookingFlow, type BookingFlowSettings } from './booking-flow-settings'
 
@@ -214,7 +215,7 @@ export function parseFlowButton(id: unknown): FlowStep | null {
 /** Categories that have services, in the business's order (the index rides in the button id). */
 const categoriesOf = (setup: ChatSetup) => groupByCategory(setup.settings.service_categories, setup.services).filter(([, list]) => list.length > 0)
 
-const serviceRow = (picked: string[]) => (s: ChatService) => ({ id: `bf:s:${packIds([...picked, s.id])}`, title: s.name, description: `${formatRupees(Number(s.price) || 0)} · ${s.duration_minutes} min` })
+const serviceRow = (picked: string[], currency?: string) => (s: ChatService) => ({ id: `bf:s:${packIds([...picked, s.id])}`, title: s.name, description: `${formatRupees(Number(s.price) || 0, currency)} · ${s.duration_minutes} min` })
 const minutesOf = (services: ChatService[]) => services.reduce((sum, s) => sum + (Number(s.duration_minutes) || 30), 0)
 const namesOf = (services: ChatService[]) => services.map((s) => s.name).join(', ')
 
@@ -246,7 +247,7 @@ const sendList = (input: SalonChatInput, body: string, button: string, rows: { i
 async function sendServices(input: SalonChatInput, setup: ChatSetup, flow: BookingFlowSettings, picked: string[], body: string): Promise<'services' | 'categories'> {
   const left = setup.services.filter((s) => !picked.includes(s.id))
   if (left.length <= 10) {
-    await sendList(input, body, say('service', flow.language), left.map(serviceRow(picked)))
+    await sendList(input, body, say('service', flow.language), left.map(serviceRow(picked, businessCurrency(input.organization))))
     return 'services'
   }
   const rows = categoriesOf(setup)
@@ -347,7 +348,7 @@ export async function handleBookingFlowButton(input: SalonChatInput & { buttonId
     // One at a time, like a cart: "Add another" or go on to the day
     if (flow.multi_select && picked.length < MAX_SERVICES && left.length) {
       const last = picked[picked.length - 1]
-      const total = formatRupees(picked.reduce((sum, s) => sum + (Number(s.price) || 0), 0))
+      const total = formatRupees(picked.reduce((sum, s) => sum + (Number(s.price) || 0), 0), businessCurrency(input.organization))
       const body = say('added', flow.language, { service: last.name, list: listOf(), total, minutes: String(minutesOf(picked)) })
       const ids = packIds(step.picked)
       await sendPayload(input, buildButtons(input.customerPhone, body, [
@@ -497,7 +498,7 @@ async function runStep(run: Run, intro?: string): Promise<FlowResult> {
     const body = picked.length ? withIntro(say('whichMore', lang, { list: namesOf(pickedServices(run)) })) : intro?.trim().endsWith('?') ? intro : withIntro(step.text ? own(step.text) : say('pickService', lang))
     if (!picked.length && flow.services_style === 'form' && flow.multi_select && !run.listOnly && (await sendServicesForm(run, body))) return { handled: true, step: 'form' }
     if (left.length <= 10) {
-      await sendList(input, body, say('service', lang), left.map((sv) => ({ id: tapId(run, 's', packId(sv.id)), title: sv.name, description: `${formatRupees(Number(sv.price) || 0)} · ${sv.duration_minutes} min` })))
+      await sendList(input, body, say('service', lang), left.map((sv) => ({ id: tapId(run, 's', packId(sv.id)), title: sv.name, description: `${formatRupees(Number(sv.price) || 0, businessCurrency(input.organization))} · ${sv.duration_minutes} min` })))
       return { handled: true, step: 'services' }
     }
     const rows = categoriesOf(setup)
@@ -548,7 +549,7 @@ async function runStep(run: Run, intro?: string): Promise<FlowResult> {
 async function sendServicesForm(run: Run, body: string): Promise<boolean> {
   const { input, setup, flow } = run
   const lang = flow.language
-  const data = servicesFormData(setup.services, setup.settings.service_categories, { intro: say('formIntro', lang), button: say('continue', lang) })
+  const data = servicesFormData(setup.services, setup.settings.service_categories, { intro: say('formIntro', lang), button: say('continue', lang) }, businessCurrency(input.organization))
   if (!data) return false
   const form = await ensureServicesForm(input.supabase, input.organization, { now: input.now }).catch(() => null)
   if (!form || !('id' in form)) return false
@@ -580,7 +581,7 @@ export async function handleServicesForm(input: SalonChatInput & { token: string
   const ids = ticked.slice(0, MAX_SERVICES)
   await saveSession(run, { service_ids: ids, waiting: null, step: session.step + 1 })
   const picked = pickedServices(run)
-  const total = formatRupees(picked.reduce((sum, sv) => sum + (Number(sv.price) || 0), 0))
+  const total = formatRupees(picked.reduce((sum, sv) => sum + (Number(sv.price) || 0), 0), businessCurrency(input.organization))
   const intro = say('formPicked', lang, { list: namesOf(picked), total, minutes: String(minutesOf(picked)) }) + (ticked.length > MAX_SERVICES ? `\n${say('formTooMany', lang, { max: String(MAX_SERVICES) })}` : '')
   return runStep(run, intro)
 }
@@ -658,7 +659,7 @@ export async function handleBookingStepButton(input: SalonChatInput & { buttonId
     if (flow.multi_select && ids.length < MAX_SERVICES && left.length) {
       const picked = pickedServices(run)
       const last = picked[picked.length - 1]
-      const total = formatRupees(picked.reduce((sum, sv) => sum + (Number(sv.price) || 0), 0))
+      const total = formatRupees(picked.reduce((sum, sv) => sum + (Number(sv.price) || 0), 0), businessCurrency(input.organization))
       const body = say('added', flow.language, { service: last.name, list: namesOf(picked), total, minutes: String(minutesOf(picked)) })
       await sendPayload(input, buildButtons(input.customerPhone, body, [
         { id: tapId(run, 'm'), title: say('addAnother', flow.language) },
@@ -673,7 +674,7 @@ export async function handleBookingStepButton(input: SalonChatInput & { buttonId
     const left = group?.[1].filter((sv) => !session.service_ids.includes(sv.id)) || []
     if (!left.length) return runStep(run, say('oldList', flow.language))
     const body = session.service_ids.length ? say('whichMore', flow.language, { list: namesOf(pickedServices(run)) }) : say('whichService', flow.language, { category: group![0] })
-    await sendList(input, body, say('service', flow.language), left.map((sv) => ({ id: tapId(run, 's', packId(sv.id)), title: sv.name, description: `${formatRupees(Number(sv.price) || 0)} · ${sv.duration_minutes} min` })))
+    await sendList(input, body, say('service', flow.language), left.map((sv) => ({ id: tapId(run, 's', packId(sv.id)), title: sv.name, description: `${formatRupees(Number(sv.price) || 0, businessCurrency(input.organization))} · ${sv.duration_minutes} min` })))
     return { handled: true, step: 'services' }
   }
   if (step?.type === 'services' && tap.kind === 'm') return runStep(run)

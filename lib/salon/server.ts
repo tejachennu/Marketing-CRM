@@ -26,7 +26,8 @@ export async function salonAccess(request: NextRequest, organizationId: string |
   if (!access.authorized) return { ok: false, response: NextResponse.json({ error: access.error }, { status: access.status }) }
   const db = getSupabaseAdminClient()
   const { data: organization, error } = await withSalonSchema(() =>
-    db.from('organizations').select('id, name, slug, whatsapp_provider, twilio_account_sid, twilio_auth_token, enabled_connectors').eq('id', organizationId).maybeSingle()
+    // select('*'): the business's currency column may not be there yet
+    db.from('organizations').select('*').eq('id', organizationId).maybeSingle()
   )
   if (error || !organization) return { ok: false, response: NextResponse.json({ error: error?.message || 'Workspace not found' }, { status: error ? 500 : 404 }) }
   if (isConsularHelpdesk(organization) || !(organization.enabled_connectors || []).includes('salon')) {

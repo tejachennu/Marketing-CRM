@@ -5,8 +5,9 @@
 
 import type { KnowledgeHit } from '../ai/knowledge-rules'
 import { discountPercent, searchProducts, shownPrice, type BrowseProduct } from './store-browse'
+import { moneyText } from '../money'
 
-const rupees = (n: number, currency: string) => (currency === 'INR' ? `₹${Math.round(n).toLocaleString('en-IN')}` : `${currency} ${n}`)
+const rupees = (n: number, currency: string) => moneyText(n, currency)
 
 export interface ChatProduct extends BrowseProduct {
   image?: string

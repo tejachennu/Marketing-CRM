@@ -4,6 +4,8 @@
  * cleaning, and starting texts a business can edit (filled with its own name, phone and delivery rules).
  */
 
+import { currencyWords, moneyText, readCurrency, screenCurrency } from '../money'
+
 export const STORE_PAGES = ['about', 'shipping', 'returns', 'terms', 'privacy', 'contact'] as const
 export type StorePageKey = (typeof STORE_PAGES)[number]
 
@@ -43,12 +45,15 @@ export interface PageFacts {
   deliveryFee?: number | null
   freeFrom?: number | null
   payOnline?: boolean
+  /** The business's currency (the screens' one when not given) */
+  currency?: string
 }
 
-const rupees = (n: number) => `₹${Math.round(n).toLocaleString('en-IN')}`
 
 /** A plain starting text for a page, with the business's own facts. The business should read and edit it. */
 export function starterPage(key: StorePageKey, f: PageFacts): string {
+  const currency = readCurrency(f.currency || screenCurrency())
+  const rupees = (n: number) => moneyText(Math.round(n), currency)
   const contact = [f.phone && `Call ${f.phone}`, f.whatsapp && `WhatsApp ${f.whatsapp}`].filter(Boolean).join(' or ')
   switch (key) {
     case 'about':
@@ -70,10 +75,10 @@ export function starterPage(key: StorePageKey, f: PageFacts): string {
     case 'terms':
       return [
         `These terms apply to orders placed on the ${f.name} website.`,
-        'Prices are in Indian rupees and include taxes unless said otherwise. We may change prices and offers at any time; your order keeps the price shown when you placed it.',
+        `Prices are in ${currencyWords(currency)} and include taxes unless said otherwise.` + ' We may change prices and offers at any time; your order keeps the price shown when you placed it.',
         'An order is confirmed when we accept it and, for online payments, when the payment is received. We may cancel an order if an item is out of stock or an address cannot be served; any payment is refunded in full.',
         'Delivery times are estimates. Returns and refunds follow our Returns and refunds page.',
-        'These terms follow Indian law.',
+        currency === 'INR' ? 'These terms follow Indian law.' : 'These terms follow the law of the country where we are based.',
       ].join('\n\n')
     case 'privacy':
       return [

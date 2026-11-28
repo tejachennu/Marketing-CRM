@@ -10,6 +10,8 @@ import { TeamManager } from '@/components/team/team-manager'
 import { ApiKeysPanel } from '@/components/settings/api-keys'
 import { InstagramSettings } from '@/components/instagram/instagram-parts'
 import { isConsularHelpdesk } from '@/lib/workspace-modules'
+import { businessCurrency, CURRENCIES, CURRENCY_EVENT } from '@/lib/money'
+import { api } from '@/components/salon/ui'
 import { WhatsAppEmbeddedSignup } from '@/components/whatsapp-embedded-signup'
 
 import { useEffect, useState, useRef } from 'react'
@@ -175,7 +177,9 @@ export default function SettingsPage() {
   const [showSgKey, setShowSgKey] = useState(false)
   const [showSmtpPassword, setShowSmtpPassword] = useState(false)
   const [showWhatsappApiToken, setShowWhatsappApiToken] = useState(false)
-  const [currency, setCurrency] = useState('USD')
+  // The business's currency (lib/money.ts): saved on its own as soon as it is picked
+  const [currency, setCurrency] = useState('INR')
+  const [savingCurrency, setSavingCurrency] = useState(false)
   const [ticketEmailEnabled, setTicketEmailEnabled] = useState(false)
   const [ticketEmailRecipients, setTicketEmailRecipients] = useState<string[]>([])
 
@@ -667,7 +671,7 @@ export default function SettingsPage() {
         setWhatsappGraphApiVersion(orgData.whatsapp_graph_api_version || 'v25.0')
         setWhatsappPhoneNumberId(orgData.whatsapp_phone_number_id || '')
         setWhatsappBusinessAccountId(orgData.whatsapp_business_account_id || '')
-        setCurrency(orgData.currency || 'USD')
+        setCurrency(businessCurrency(orgData))
         setTicketEmailEnabled(orgData.ticket_email_enabled === true)
         setTicketEmailRecipients(orgData.ticket_email_recipients || [])
       }
@@ -716,7 +720,6 @@ export default function SettingsPage() {
           whatsapp_graph_api_version: whatsappGraphApiVersion.trim() || null,
           whatsapp_phone_number_id: whatsappPhoneNumberId.trim() || null,
           whatsapp_business_account_id: whatsappBusinessAccountId.trim() || null,
-          currency: currency,
           ticket_email_enabled: ticketEmailEnabled,
           ticket_email_recipients: ticketEmailRecipients,
         })
@@ -740,7 +743,6 @@ export default function SettingsPage() {
         whatsapp_graph_api_version: whatsappGraphApiVersion.trim() || null,
         whatsapp_phone_number_id: whatsappPhoneNumberId.trim() || null,
         whatsapp_business_account_id: whatsappBusinessAccountId.trim() || null,
-        currency: currency,
         ticket_email_enabled: ticketEmailEnabled,
         ticket_email_recipients: ticketEmailRecipients,
       })
@@ -752,6 +754,25 @@ export default function SettingsPage() {
       showNotification('error', err.message || 'Failed to save credentials.', 'Save Failed')
     } finally {
       setSavingCredentials(false)
+    }
+  }
+
+  /** Pick the business's currency: saved at once; every screen shows money in it from now on. */
+  const saveCurrency = async (code: string) => {
+    if (!organization || code === currency) return
+    const before = currency
+    setCurrency(code)
+    setSavingCurrency(true)
+    try {
+      const data = await api('/api/settings/currency', { method: 'PUT', body: JSON.stringify({ organizationId: organization.id, currency: code }) })
+      window.dispatchEvent(new CustomEvent(CURRENCY_EVENT, { detail: data.currency }))
+      const info = CURRENCIES.find((c) => c.code === data.currency)
+      showNotification('success', `Bills, products, your website and deals now show money in ${info ? `${info.name} (${info.symbol.trim()})` : data.currency}.`, 'Currency saved')
+    } catch (err: any) {
+      setCurrency(before)
+      showNotification('error', err.message || 'The currency could not be saved.', 'Not saved')
+    } finally {
+      setSavingCurrency(false)
     }
   }
 
@@ -1073,34 +1094,30 @@ export default function SettingsPage() {
             </div>
           </section>
 
-          {/* Regional Preferences */}
-          <section className={cardClass}>
+          {/* The business's currency: one for Front Desk, E-commerce and the Sales Pipeline */}
+          <section id="currency" className={`${cardClass} scroll-mt-4`}>
             <SectionHeader
               icon={Globe}
-              title="Regional Preferences"
-              description="Used for formatting values in the Sales Pipeline and Analytics."
-              action={
-                <button type="button" onClick={handleSaveCredentials} disabled={savingCredentials} className={primaryButtonClass}>
-                  {savingCredentials ? <Loader2 size={13} className="animate-spin" /> : null}
-                  <span>Save Preferences</span>
-                </button>
-              }
+              title="Currency"
+              description="Front Desk bills and invoices, your products and website, and Sales Pipeline deals all show money in this currency."
             />
-            <div className="max-w-xs">
+            <div className="max-w-sm">
               <label htmlFor="settings-currency" className={labelClass}>
-                Currency
+                Your business currency
               </label>
-              <select
-                id="settings-currency"
-                value={currency}
-                onChange={e => setCurrency(e.target.value)}
-                className={`${inputClass} cursor-pointer`}
-              >
-                <option value="USD">USD ($)</option>
-                <option value="INR">INR (₹)</option>
-                <option value="EUR">EUR (€)</option>
-                <option value="GBP">GBP (£)</option>
-              </select>
+              <div className="relative">
+                <select
+                  id="settings-currency"
+                  value={currency}
+                  disabled={savingCurrency || !isAdmin(user || undefined)}
+                  onChange={e => saveCurrency(e.target.value)}
+                  className={`${inputClass} cursor-pointer disabled:opacity-60`}
+                >
+                  {CURRENCIES.map((c) => <option key={c.code} value={c.code}>{c.symbol.trim()} · {c.name} ({c.code})</option>)}
+                </select>
+                {savingCurrency && <Loader2 size={15} className="absolute right-9 top-1/2 -translate-y-1/2 animate-spin text-[#6B7894]" />}
+              </div>
+              <p className="mt-2 text-[12.5px] text-[#6B7894]">Saved as soon as you pick one. Prices you typed stay the same numbers; only the money sign changes.{!isAdmin(user || undefined) ? ' Only an admin can change it.' : ''}</p>
             </div>
           </section>
 

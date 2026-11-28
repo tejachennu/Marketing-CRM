@@ -4,7 +4,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
 import '../../data/app_state.dart';
-import '../../data/format.dart' show showPhone;
+import '../../data/format.dart' show appCurrency, showPhone;
 import '../../ui/theme.dart';
 import '../../ui/widgets.dart';
 import '../campaigns/audience.dart' show phoneDigits;
@@ -157,7 +157,7 @@ class _ProductsTabState extends State<ProductsTab> with AutomaticKeepAliveClient
     final saved = await Navigator.push<Map<String, dynamic>>(
       context,
       MaterialPageRoute(
-        builder: (_) => ProductFormScreen(product: product, currency: '${widget.store.org?['currency'] ?? 'INR'}', catalogLinked: _catalogLinked),
+        builder: (_) => ProductFormScreen(product: product, currency: appCurrency, catalogLinked: _catalogLinked),
       ),
     );
     if (saved == null || !mounted) return;

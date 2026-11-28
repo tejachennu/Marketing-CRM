@@ -72,14 +72,14 @@ export function servicesFormJson() {
  * (a category with more than 20 is split: "Hair", "Hair (2)"). Null when they do not fit
  * (more than 10 groups), so the flow sends the list instead.
  */
-export function servicesFormData(services: Service[], categoryOrder: unknown, words: { intro: string; button: string }): Record<string, unknown> | null {
+export function servicesFormData(services: Service[], categoryOrder: unknown, words: { intro: string; button: string }, currency?: string): Record<string, unknown> | null {
   const groups: { label: string; items: Item[] }[] = []
   for (const [category, list] of groupByCategory<Service>(categoryOrder as string[] | undefined, services)) {
     for (let start = 0, part = 1; start < list.length; start += GROUP_SIZE, part++) {
       const label = part === 1 ? category : `${category} (${part})`
       groups.push({
         label: clip(label, 30),
-        items: list.slice(start, start + GROUP_SIZE).map((s: Service) => ({ id: s.id, title: clip(s.name, 30), description: `${formatRupees(Number(s.price) || 0)} · ${s.duration_minutes} min` })),
+        items: list.slice(start, start + GROUP_SIZE).map((s: Service) => ({ id: s.id, title: clip(s.name, 30), description: `${formatRupees(Number(s.price) || 0, currency)} · ${s.duration_minutes} min` })),
       })
     }
   }

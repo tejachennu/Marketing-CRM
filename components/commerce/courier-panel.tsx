@@ -7,6 +7,7 @@ import {
   type ShipmentStatus, type ShippingProvider,
 } from '@/lib/commerce/shipping-rules'
 import { primaryButton, secondaryButton, type ShowToast } from './ui'
+import { formatMoney } from '@/lib/commerce/commerce-utils'
 
 interface Shipment {
   id: string
@@ -39,7 +40,7 @@ interface Rate {
   fastest?: boolean
 }
 
-const money = (n: number) => `₹${Number(n || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`
+const money = (n: number) => formatMoney(Number(n || 0))
 
 async function call(url: string, init?: RequestInit) {
   const res = await fetch(url, init)

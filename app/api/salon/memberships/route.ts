@@ -6,6 +6,7 @@ import { adjustCard, cardsForCustomer, loadCard, loadPlans, savePlan } from '@/l
 import { cardState, membershipReport, withMembershipSchema } from '@/lib/salon/memberships'
 import { cardLink, cardMessage, sendCustomerText } from '@/lib/salon/whatsapp'
 import { isUuid } from '@/lib/record-visibility'
+import { businessCurrency } from '@/lib/money'
 
 export const runtime = 'nodejs'
 
@@ -109,7 +110,7 @@ export async function POST(request: NextRequest) {
         if (!card) return badRequest('That card was not found.')
         if (!card.customer_phone) return badRequest('This customer has no phone number.')
         const settings = await loadSalonSettings(db, organizationId)
-        const whatsapp = await sendCustomerText(db, organizationId, card.customer_phone, cardMessage(card, settings.business_name, cardLink(appOrigin(request), card.public_token)))
+        const whatsapp = await sendCustomerText(db, organizationId, card.customer_phone, cardMessage(card, settings.business_name, cardLink(appOrigin(request), card.public_token), businessCurrency(access.ctx.organization)))
         return NextResponse.json({ whatsapp })
       }
       default:

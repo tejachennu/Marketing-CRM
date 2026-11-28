@@ -14,8 +14,8 @@ import { PhoneField } from '@/components/phone-field'
 import type { BookingPageView } from '@/lib/salon/booking-page'
 import { bookingPayOptions } from '@/lib/salon/booking-pay'
 import { formatIstDay, istDate } from '@/lib/salon/spoken'
+import { moneyText } from '@/lib/money'
 
-const rupees = (value: number) => `₹${value.toLocaleString('en-IN', { maximumFractionDigits: 2 })}`
 const MAX_SERVICES = 5
 /** The website's Book buttons send this (components/salon-site/book-button.tsx). */
 const BOOK_EVENT = 'wama-book'
@@ -99,6 +99,8 @@ export function NoBookings({ page, colour }: { page: BookingPageView; colour?: s
 }
 
 function Wizard({ page, days, startService, startPerson, embedded = false, colour }: WizardProps) {
+  // Prices in the business's currency (Settings → Currency)
+  const rupees = (value: number) => moneyText(value, page.currency)
   const [picked, setPicked] = useState<string[]>(startService ? [startService] : [])
   const [person, setPerson] = useState<string | null>(startPerson)
   const [day, setDay] = useState<string>(days[0] || '')

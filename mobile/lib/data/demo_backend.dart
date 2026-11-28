@@ -657,6 +657,8 @@ class DemoBackend implements Backend {
 
   /// One connector at a time (Front Desk in the demo until switched)
   String? _connectorOn = 'salon';
+  /// The business's currency (More → Currency)
+  String _currency = 'INR';
   Map<String, dynamic> _connectorsAnswer() => {
     'connectors': [for (final k in ['salon', 'ecommerce', 'pipeline']) {'key': k, 'enabled': _connectorOn == k, 'active': _connectorOn == k}],
     'plan': {'connectors': 1, 'only': <String>[]},
@@ -699,7 +701,7 @@ class DemoBackend implements Backend {
       case '/api/mobile/me':
         return {
           'user': {'id': 'u1', 'name': 'Teja', 'email': 'owner@glowsalon.in', 'role': 'Admin'},
-          'organization': {'id': 'org-demo', 'name': 'Glow Salon', 'currency': 'INR'},
+          'organization': {'id': 'org-demo', 'name': 'Glow Salon', 'currency': _currency},
           'can': {'write': true, 'manage': !staff, 'campaigns': !staff, 'seeAll': !staff, 'billing': !staff, 'settings': !staff},
           'connectors': {'frontDesk': _connectorOn == 'salon', 'ecommerce': _connectorOn == 'ecommerce', 'pipeline': _connectorOn == 'pipeline'},
           'frontDesk': {'appointments': (_setup['settings'] as Map)['takes_appointments'] != false},
@@ -815,6 +817,13 @@ class DemoBackend implements Backend {
     _refuseWhenPaused(method, path);
     // Paying in the demo opens the workspace again
     if (path.startsWith('/api/billing/subscribe')) billing = 'paid';
+    if (path == '/api/settings/currency') {
+      if (staff) throw ApiException(403, 'Only the owner or an admin can change the currency.');
+      final code = '${body['currency'] ?? ''}'.toUpperCase();
+      if (!currencies.any((c) => c.code == code)) throw ApiException(400, 'Choose a currency from the list.');
+      _currency = code;
+      return {'success': true, 'currency': code};
+    }
     if (path == '/api/connectors') {
       final key = '${body['key']}';
       final off = body['enabled'] == true && _connectorOn != null && _connectorOn != key ? [_connectorOn] : const [];

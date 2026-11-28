@@ -12,6 +12,7 @@ import { computeInvoice, formatInvoiceNumber, formatRupees, type Discount } from
 import { formatIstDay, formatIstTime, istDate, parsePhoneNumber, phoneKey } from './spoken'
 import { isUuid } from './validate'
 import { takesTime } from './service-time'
+import { businessCurrency, readCurrency } from '../money'
 import { withSalonSchema } from './schema'
 import type { SalonContext } from './server'
 import { applyCard, cardFromPlan, creditToUse, usableCard, withMembershipSchema } from './memberships'
@@ -270,7 +271,7 @@ function makeToken(): string {
 }
 
 /** Issue a GST invoice with the next number. Retries if two counters bill at the same moment. */
-export async function issueInvoice(db: any, ctx: { organizationId: string; userId?: string | null; settings: any }, input: {
+export async function issueInvoice(db: any, ctx: { organizationId: string; userId?: string | null; settings: any; currency?: string }, input: {
   customer: { contact_id: string | null; name: string; phone: string | null }
   lines: { service_id: string | null; name: string; quantity?: number; price: number; tax_rate: number; sac_code: string | null }[]
   discount?: Discount | null
@@ -286,7 +287,8 @@ export async function issueInvoice(db: any, ctx: { organizationId: string; userI
   // Without a GSTIN a business cannot charge GST: the bill carries no tax
   const registered = Boolean(settings.gstin)
   const totals = computeInvoice(input.lines.map((line) => ({ ...line, tax_rate: registered ? line.tax_rate : 0 })), { pricesIncludeTax: Boolean(settings.prices_include_tax), discount: input.discount })
-  const business = { name: settings.business_name, address: settings.address, phone: settings.phone, email: settings.email, gstin: settings.gstin, note: settings.invoice_note, logo_url: settings.logo_url || null }
+  // The bill keeps the business's currency as it was when it was made (lib/money.ts)
+  const business = { name: settings.business_name, address: settings.address, phone: settings.phone, email: settings.email, gstin: settings.gstin, note: settings.invoice_note, logo_url: settings.logo_url || null, currency: readCurrency(ctx.currency) }
   const now = new Date().toISOString()
   const askFeedback = settings.feedback_enabled !== false && Boolean(input.customer.phone)
   const feedbackDueAt = askFeedback ? new Date(Date.now() + (Number(settings.feedback_delay_minutes) || 120) * 60_000).toISOString() : null
@@ -326,7 +328,7 @@ async function cardForBill(db: any, organizationId: string, membershipId: string
   return card
 }
 
-const cardNote = (card: any, invoice: any) => (card ? ` · card ${card.card_number} used${Number(invoice.membership_paid) > 0 ? ` (${formatRupees(Number(invoice.membership_paid))} from credit)` : ''}` : '')
+const cardNote = (card: any, invoice: any) => (card ? ` · card ${card.card_number} used${Number(invoice.membership_paid) > 0 ? ` (${formatRupees(Number(invoice.membership_paid), invoice.business?.currency)} from credit)` : ''}` : '')
 
 function servicesText(services: { name: string }[]): string {
   return services.map((service) => service.name).join(', ')
@@ -400,7 +402,7 @@ export async function executeCounterAction(
       const team = staffSummary(services)
       const card = await cardForBill(db, organizationId, action.membership_id, { contact_id: appointment.contact_id, phone: appointment.customer_phone })
       const use = card ? applyCard(card, services as any) : null
-      const invoice = await issueInvoice(db, { organizationId, userId, settings: ctx.settings }, {
+      const invoice = await issueInvoice(db, { organizationId, userId, settings: ctx.settings, currency: businessCurrency(ctx.organization) }, {
         customer: { contact_id: appointment.contact_id, name: appointment.customer_name, phone: appointment.customer_phone },
         lines: use ? use.lines : services, discount: action.discount, payment_method: action.payment_method,
         appointment_id: appointment.id, staff_name: team.staff_name,
@@ -410,7 +412,7 @@ export async function executeCounterAction(
       if (card && use) await recordCardUse(db, organizationId, card.id, { sessions: use.sessions, credit: Number(invoice.membership_paid) || 0, discountSaved: use.discountSaved }, invoice.id, userId)
       const updated = await checked(db.from('salon_appointments').update({ status: 'completed', invoice_id: invoice.id, services, staff_id: team.staff_id || appointment.staff_id || null, updated_at: now }).eq('id', appointment.id).eq('organization_id', organizationId).select('*').single())
       const whatsapp = action.send_whatsapp && invoice.customer_phone && send ? await send.invoice(invoice) : null
-      return { appointment: updated, invoice, whatsapp, message: `${invoice.number} · ${formatRupees(Number(invoice.total))}${invoice.status === 'paid' ? ` paid by ${PAYMENT_LABELS[invoice.payment_method as PaymentMethod]}` : ' (not paid yet)'}${cardNote(card, invoice)}` }
+      return { appointment: updated, invoice, whatsapp, message: `${invoice.number} · ${formatRupees(Number(invoice.total), invoice.business?.currency)}${invoice.status === 'paid' ? ` paid by ${PAYMENT_LABELS[invoice.payment_method as PaymentMethod]}` : ' (not paid yet)'}${cardNote(card, invoice)}` }
     }
 
     case 'walk_in_bill': {
@@ -431,14 +433,14 @@ export async function executeCounterAction(
       }).select('*').single())
       const card = await cardForBill(db, organizationId, action.membership_id, { contact_id: customer.contact_id, phone: customer.phone })
       const use = card ? applyCard(card, services as any) : null
-      const invoice = await issueInvoice(db, { organizationId, userId, settings: ctx.settings }, {
+      const invoice = await issueInvoice(db, { organizationId, userId, settings: ctx.settings, currency: businessCurrency(ctx.organization) }, {
         customer, lines: use ? use.lines : services, discount: action.discount, payment_method: action.payment_method, appointment_id: appointment.id, staff_name: team.staff_name,
         membership: card ? { id: card.id, credit: Number(card.credit_balance) || 0 } : null,
       })
       if (card && use) await recordCardUse(db, organizationId, card.id, { sessions: use.sessions, credit: Number(invoice.membership_paid) || 0, discountSaved: use.discountSaved }, invoice.id, userId)
       const updated = await checked(db.from('salon_appointments').update({ invoice_id: invoice.id }).eq('id', appointment.id).eq('organization_id', organizationId).select('*').single())
       const whatsapp = action.send_whatsapp && invoice.customer_phone && send ? await send.invoice(invoice) : null
-      return { appointment: updated, invoice, whatsapp, message: `${invoice.number} · ${formatRupees(Number(invoice.total))} · ${customer.name}${cardNote(card, invoice)}` }
+      return { appointment: updated, invoice, whatsapp, message: `${invoice.number} · ${formatRupees(Number(invoice.total), invoice.business?.currency)} · ${customer.name}${cardNote(card, invoice)}` }
     }
 
     case 'approve_request':
@@ -515,7 +517,7 @@ export async function executeCounterAction(
       const plan = await loadPlan(db, organizationId, action.plan_id)
       if (!plan || !plan.active) throw new Error('That membership plan is not on sale.')
       const customer = await resolveCustomer(db, organizationId, action.customer)
-      const invoice = await issueInvoice(db, { organizationId, userId, settings: ctx.settings }, {
+      const invoice = await issueInvoice(db, { organizationId, userId, settings: ctx.settings, currency: businessCurrency(ctx.organization) }, {
         customer,
         lines: [{ service_id: null, name: `Membership: ${plan.name}`, price: Number(plan.price) || 0, tax_rate: Number(plan.tax_rate) || 0, sac_code: null }],
         payment_method: action.payment_method,

@@ -6,14 +6,15 @@ import { useMemo, useState } from 'react'
 import { Clock, Search } from 'lucide-react'
 import { duration } from '@/lib/salon/website'
 import { BookButton } from './book-button'
+import { moneyText } from '@/lib/money'
 
 interface Item { id: string; name: string; category: string; price: number; minutes: number }
 
-export function ServicesMenu({ services, showPrices, money, bookable = true }: { services: Item[]; showPrices: boolean; money: 'INR'; bookable?: boolean }) {
+export function ServicesMenu({ services, showPrices, money, bookable = true }: { services: Item[]; showPrices: boolean; money?: string; bookable?: boolean }) {
   const categories = useMemo(() => [...new Set(services.map((s) => s.category))], [services])
   const [tab, setTab] = useState<string | null>(null)
   const [q, setQ] = useState('')
-  const rupees = (n: number) => `₹${Math.round(n).toLocaleString('en-IN')}`
+  const rupees = (n: number) => moneyText(Math.round(n), money || 'INR')
   const shown = services.filter((s) => (!tab || s.category === tab) && (!q.trim() || `${s.name} ${s.category}`.toLowerCase().includes(q.trim().toLowerCase())))
   const groups = tab || q.trim() ? [{ name: tab || 'Results', items: shown }] : categories.map((c) => ({ name: c, items: shown.filter((s) => s.category === c) }))
   void money

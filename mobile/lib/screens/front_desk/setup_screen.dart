@@ -604,7 +604,7 @@ Future<void> _editService(BuildContext context, Map<String, dynamic>? service, L
         final priceValue = num.tryParse(price.text.replaceAll(',', ''));
         final minuteValue = int.tryParse(minutes.text);
         final nameErr = tried ? textError(name.text, what: 'the service name', min: 2, max: 80) : null;
-        final priceErr = tried && (priceValue == null || priceValue < 0 || priceValue > 1000000) ? 'Enter a price from ₹0 to ₹10,00,000.' : null;
+        final priceErr = tried && (priceValue == null || priceValue < 0 || priceValue > 1000000) ? 'Enter a price from 0 to 10,00,000.' : null;
         final minutesBad = minuteValue == null || minuteValue < 5 || minuteValue > 600;
         final minutesErr = tried && timed && minutesBad ? 'Between 5 minutes and 10 hours.' : null;
         final sacErr = tried && sac.text.trim().isNotEmpty && !RegExp(r'^\d{4,8}$').hasMatch(sac.text.trim()) ? 'A SAC code is 4 to 8 digits.' : null;

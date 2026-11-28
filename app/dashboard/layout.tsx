@@ -7,7 +7,7 @@ import { can, canSeeAll, canAccessPage, isSuperAdmin } from '@/lib/rbac'
 import Link from 'next/link'
 import { MessageCircle, Users, TrendingUp, Settings, LogOut, Megaphone, Phone, X, ChevronUp, Key, Sun, Moon, Shield, Sparkles, Ticket, Menu, User, Briefcase, ChevronLeft, ChevronRight, PanelLeftClose, PanelLeftOpen, Workflow, ShoppingBag, LayoutTemplate, CreditCard, AlertTriangle, UserCog, Blocks, ReceiptText, Star, IdCard, CalendarDays, KanbanSquare, List, AlarmClock, BarChart3, Package, Rocket, Lock, Camera, Wallet } from 'lucide-react'
 import { FrontDeskIcon } from '@/components/salon/front-desk-icon'
-import { useEffect, useState, Suspense } from 'react'
+import { useCallback, useEffect, useState, Suspense } from 'react'
 import { AssistantDrawer } from '@/components/assistant-drawer'
 import { TicketsDrawer } from '@/components/tickets-drawer'
 import { DialogProvider } from '@/lib/dialog-context'
@@ -16,6 +16,10 @@ import { CONSULAR_HIDDEN_PAGES, isConsularHelpdesk } from '@/lib/workspace-modul
 import { activeConnectors, FEATURE_NAMES, type PlanFeature, type PlanLimits } from '@/lib/plans'
 import type { ConnectorKey } from '@/lib/connectors'
 import { SUPERADMIN_TAB_EVENT, superAdminTab } from '@/lib/superadmin-nav'
+import { businessCurrency, CURRENCY_EVENT, readCurrency, setScreenCurrency } from '@/lib/money'
+
+/** The business's currency, remembered on this device so amounts show in it before the workspace loads */
+const CURRENCY_CACHE_KEY = 'wama-currency'
 
 /** Where the last menu is kept, so the side menu shows at once on the next visit instead of loading empty */
 const MENU_CACHE_KEY = 'wama-menu'
@@ -45,6 +49,21 @@ export default function DashboardLayout({
     } catch {}
   }, [])
   const [userRole, setUserRole] = useState<string>('')
+  // Every amount on the screens is in the business's currency (lib/money.ts). Pages are drawn again when it changes.
+  const [currencyCode, setCurrencyCode] = useState('INR')
+  const applyCurrency = useCallback((code: unknown) => {
+    const next = readCurrency(code)
+    setScreenCurrency(next)
+    try { localStorage.setItem(CURRENCY_CACHE_KEY, next) } catch {}
+    setCurrencyCode(next)
+  }, [])
+  useEffect(() => {
+    // The one this device saw last, until the workspace answers
+    try { applyCurrency(localStorage.getItem(CURRENCY_CACHE_KEY)) } catch {}
+    const changed = (event: Event) => applyCurrency((event as CustomEvent).detail)
+    window.addEventListener(CURRENCY_EVENT, changed)
+    return () => window.removeEventListener(CURRENCY_EVENT, changed)
+  }, [applyCurrency])
   const [features, setFeatures] = useState({
     enable_ai: true,
     enable_email: true,
@@ -421,6 +440,7 @@ export default function DashboardLayout({
         const org = res.ok ? (await res.json()).organization : null
         setWorkspaceModules({ loaded: true, consular: isConsularHelpdesk(org) })
         if (org) {
+          applyCurrency(businessCurrency(org))
           setOrgName(org.name || '')
           setOrgSlug(org.slug || '')
           setFeatures({
@@ -926,7 +946,7 @@ export default function DashboardLayout({
     return (
       <DialogProvider>
         <div className="flex flex-col h-[100dvh] bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 antialiased overflow-hidden font-sans">
-          <main className="flex-1 overflow-hidden h-full">
+          <main key={currencyCode} className="flex-1 overflow-hidden h-full">
             {children}
           </main>
         </div>
@@ -1523,11 +1543,11 @@ export default function DashboardLayout({
               </div>
             )}
             {pageAccess === 'allowed' ? (
-              <div className="flex-1 min-h-0 flex flex-col overflow-hidden">{children}</div>
+              <div key={currencyCode} className="flex-1 min-h-0 flex flex-col overflow-hidden">{children}</div>
             ) : pageAccess === 'billing' ? (
               <div className="flex items-center justify-center h-full p-4">
                 <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-800 p-8 max-w-md w-full text-center shadow-xl">
-                  <div className="mx-auto w-12 h-12 rounded-full bg-blue-50 dark:bg-emerald-950/40 flex items-center justify-center text-[#008069] mb-4"><CreditCard size={22} /></div>
+                  <div className="mx-auto w-12 h-12 rounded-full bg-[#e7f5f0] dark:bg-emerald-950/40 flex items-center justify-center text-[#008069] mb-4"><CreditCard size={22} /></div>
                   <h2 className="text-lg font-bold text-slate-900 dark:text-white mb-2">{billing?.onTrial ? 'Your free trial has ended' : billing?.status === 'past_due' ? 'Your payment did not go through' : 'Your WAMA CRM plan has ended'}</h2>
                   <p className="text-sm text-slate-500 dark:text-slate-400 mb-6 leading-relaxed">
                     {canManageBilling

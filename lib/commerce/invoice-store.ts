@@ -11,6 +11,7 @@ import {
   GST_STATES, computeShopInvoice, creditNoteLines, creditNoteNumber, financialYear, readInvoiceSettings, readRate, shopInvoiceNumber, stateCodeOf, stateOfGstin,
   type InvoiceSettings,
 } from './invoice'
+import { businessCurrency } from '../money'
 
 /** supabase/migrations/20261129_shop_invoices.sql word for word. */
 export const INVOICE_SQL = `-- Shop GST invoices. Safe to run more than once. The app runs it on its own when first needed.
@@ -169,6 +170,7 @@ export async function issueInvoice(db: any, organizationId: string, orderId: str
     state: shopState ? `${GST_STATES[shopState]} (${shopState})` : null,
     phone: String(org.contact_phone || org.whatsapp_default_phone || ''),
     logo_url: /^https:\/\//.test(storefront.logo) ? storefront.logo : null,
+    currency: businessCurrency(org),
   }
   const customer = {
     name: String(ship.full_name || [order.contact?.first_name, order.contact?.last_name].filter(Boolean).join(' ') || 'Customer'),

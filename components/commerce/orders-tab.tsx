@@ -216,7 +216,7 @@ export function OrdersTab({ orgId, canEdit, collectsAddress, currency, onSummary
   }
 
   async function changeStatus(order: CommerceOrder, status: OrderStatus) {
-    const total = formatMoney(order.total_amount, order.currency)
+    const total = formatMoney(order.total_amount, currency)
     if (status === 'canceled') {
       const confirmed = await confirm({
         title: `Cancel order #${order.order_number}?`,
@@ -262,7 +262,7 @@ export function OrdersTab({ orgId, canEdit, collectsAddress, currency, onSummary
   async function markRefunded(order: CommerceOrder) {
     const confirmed = await confirm({
       title: 'Mark as refunded?',
-      message: `Confirm that ${formatMoney(order.total_amount, order.currency)} has gone back to the customer through your payment provider. This only records it here; it does not move any money.`,
+      message: `Confirm that ${formatMoney(order.total_amount, currency)} has gone back to the customer through your payment provider. This only records it here; it does not move any money.`,
       confirmLabel: 'Yes, it is refunded',
     })
     if (!confirmed) return
@@ -422,7 +422,7 @@ export function OrdersTab({ orgId, canEdit, collectsAddress, currency, onSummary
                         {channelLabel(order) && <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300">{channelLabel(order)}</span>}
                       </div>
                     </td>
-                    <td className="py-3 px-4 text-right font-bold text-slate-900 dark:text-white tabular-nums whitespace-nowrap">{formatMoney(order.total_amount, order.currency)}</td>
+                    <td className="py-3 px-4 text-right font-bold text-slate-900 dark:text-white tabular-nums whitespace-nowrap">{formatMoney(order.total_amount, currency)}</td>
                     <td className="py-3 px-4 text-slate-600 dark:text-slate-400 max-w-[180px]">
                       {order.shipping_address?.address_line_1 ? (
                         <span className="flex items-center gap-1">
@@ -456,7 +456,7 @@ export function OrdersTab({ orgId, canEdit, collectsAddress, currency, onSummary
                 </div>
                 <div className="mt-2 flex items-center justify-between text-xs">
                   <span className="text-slate-500 truncate pr-3">{itemSummary(order)}</span>
-                  <span className="font-bold text-slate-900 dark:text-white tabular-nums shrink-0">{formatMoney(order.total_amount, order.currency)}</span>
+                  <span className="font-bold text-slate-900 dark:text-white tabular-nums shrink-0">{formatMoney(order.total_amount, currency)}</span>
                 </div>
               </button>
             ))}
@@ -508,7 +508,7 @@ export function OrdersTab({ orgId, canEdit, collectsAddress, currency, onSummary
                   <p className="flex items-start gap-2">
                     <AlertCircle size={15} className="shrink-0 mt-px" />
                     <span>
-                      <strong className="font-semibold">Refund {formatMoney(selected.total_amount, selected.currency)}.</strong> The customer paid for this order and it was canceled. Return the money through your payment provider.
+                      <strong className="font-semibold">Refund {formatMoney(selected.total_amount, currency)}.</strong> The customer paid for this order and it was canceled. Return the money through your payment provider.
                     </span>
                   </p>
                   {canEdit && (
@@ -554,27 +554,27 @@ export function OrdersTab({ orgId, canEdit, collectsAddress, currency, onSummary
                       <div className="min-w-0 flex-1">
                         <p className="font-medium text-slate-900 dark:text-white truncate">{item.title}</p>
                         <p className="text-xs text-slate-500 truncate">
-                          {item.quantity} × {formatMoney(item.unit_price, selected.currency)} · SKU {item.retailer_id}
+                          {item.quantity} × {formatMoney(item.unit_price, currency)} · SKU {item.retailer_id}
                         </p>
                       </div>
-                      <span className="font-semibold text-slate-900 dark:text-white tabular-nums shrink-0">{formatMoney(item.total_price, selected.currency)}</span>
+                      <span className="font-semibold text-slate-900 dark:text-white tabular-nums shrink-0">{formatMoney(item.total_price, currency)}</span>
                     </li>
                   ))}
                   {(selected.items || []).length === 0 && <li className="py-2 text-xs text-slate-500">No item details were recorded for this order.</li>}
                 </ul>
                 <dl className="mt-2 pt-2 border-t border-slate-100 dark:border-slate-800 text-xs space-y-1">
-                  <div className="flex justify-between text-slate-600 dark:text-slate-400"><dt>Subtotal</dt><dd className="tabular-nums">{formatMoney(selected.subtotal, selected.currency)}</dd></div>
+                  <div className="flex justify-between text-slate-600 dark:text-slate-400"><dt>Subtotal</dt><dd className="tabular-nums">{formatMoney(selected.subtotal, currency)}</dd></div>
                   {Number((selected as any).discount_amount) > 0 && (
-                    <div className="flex justify-between text-slate-600 dark:text-slate-400"><dt>Offer{(selected as any).discount_code ? ` (${(selected as any).discount_code})` : ''}</dt><dd className="tabular-nums">− {formatMoney((selected as any).discount_amount, selected.currency)}</dd></div>
+                    <div className="flex justify-between text-slate-600 dark:text-slate-400"><dt>Offer{(selected as any).discount_code ? ` (${(selected as any).discount_code})` : ''}</dt><dd className="tabular-nums">− {formatMoney((selected as any).discount_amount, currency)}</dd></div>
                   )}
                   <div className="flex justify-between text-slate-600 dark:text-slate-400">
                     <dt>Shipping{selected.shipping_address?.delivery_speed === 'express' ? ' (express)' : ''}</dt>
-                    <dd className="tabular-nums">{Number(selected.shipping_fee) ? formatMoney(selected.shipping_fee, selected.currency) : 'Free'}</dd>
+                    <dd className="tabular-nums">{Number(selected.shipping_fee) ? formatMoney(selected.shipping_fee, currency) : 'Free'}</dd>
                   </div>
                   {Number(selected.tax_amount) > 0 && (
-                    <div className="flex justify-between text-slate-600 dark:text-slate-400"><dt>Tax</dt><dd className="tabular-nums">{formatMoney(selected.tax_amount, selected.currency)}</dd></div>
+                    <div className="flex justify-between text-slate-600 dark:text-slate-400"><dt>Tax</dt><dd className="tabular-nums">{formatMoney(selected.tax_amount, currency)}</dd></div>
                   )}
-                  <div className="flex justify-between pt-1 text-sm font-bold text-slate-900 dark:text-white"><dt>Total</dt><dd className="tabular-nums">{formatMoney(selected.total_amount, selected.currency)}</dd></div>
+                  <div className="flex justify-between pt-1 text-sm font-bold text-slate-900 dark:text-white"><dt>Total</dt><dd className="tabular-nums">{formatMoney(selected.total_amount, currency)}</dd></div>
                 </dl>
               </section>
 
@@ -593,7 +593,7 @@ export function OrdersTab({ orgId, canEdit, collectsAddress, currency, onSummary
                 )}
               </section>
 
-              <OrderReturns key={`returns:${selected.id}:${selected.status}:${selected.payment_status}`} orgId={orgId} orderId={selected.id} currency={selected.currency} canEdit={canEdit} onChanged={() => { void refresh() }} showToast={showToast} />
+              <OrderReturns key={`returns:${selected.id}:${selected.status}:${selected.payment_status}`} orgId={orgId} orderId={selected.id} currency={currency} canEdit={canEdit} onChanged={() => { void refresh() }} showToast={showToast} />
               <OrderInvoice key={`${selected.id}:${selected.status}`} orgId={orgId} orderId={selected.id} canEdit={canEdit} showToast={showToast} />
 
               {/* Delivery */}

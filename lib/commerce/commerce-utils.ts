@@ -3,6 +3,8 @@
  * Keep this file free of server-only imports: the dashboard page uses it too.
  */
 
+import { knownCurrency, moneyText, screenCurrency } from '../money'
+
 export type OrderStatus =
   | 'cart_submitted'
   | 'awaiting_address'
@@ -88,10 +90,14 @@ export function getPaymentGateway(organization: Record<string, any> | null | und
   return { type: type as PaymentGateway, configName }
 }
 
-/** "₹1,050.00", "$12.50"; falls back to "XYZ 12.50" for a currency code Intl does not know. */
+/**
+ * "₹1,050", "$12.50", "AED 99": in the given currency (a product's own), else the business's (lib/money.ts); falls
+ * back to "XYZ 12.50" for a currency code Intl does not know.
+ */
 export function formatMoney(amount: number | string | null | undefined, currency?: string | null): string {
   const value = Number(amount) || 0
-  const code = String(currency || 'INR').toUpperCase()
+  const code = String(currency || screenCurrency()).toUpperCase()
+  if (knownCurrency(code)) return moneyText(value, code)
   try {
     return new Intl.NumberFormat(code === 'INR' ? 'en-IN' : 'en-US', {
       style: 'currency',

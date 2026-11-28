@@ -36,7 +36,7 @@ export function parseService(body: any, partial = false): Parsed<Partial<Service
   if (!partial || body?.category !== undefined) value.category = text(body?.category, 40) || 'General'
   if (!partial || body?.price !== undefined) {
     const price = Number(body?.price)
-    if (!Number.isFinite(price) || price < 0 || price > 1_000_000) return { error: 'Enter a price between ₹0 and ₹10,00,000.' }
+    if (!Number.isFinite(price) || price < 0 || price > 1_000_000) return { error: 'Enter a price between 0 and 10,00,000.' }
     value.price = Math.round(price * 100) / 100
   }
   if (!partial || body?.duration_minutes !== undefined) {

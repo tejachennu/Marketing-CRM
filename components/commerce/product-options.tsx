@@ -4,6 +4,8 @@ import { useEffect, useMemo, useState } from 'react'
 import { Loader2, Plus, Trash2 } from 'lucide-react'
 import { MAX_OPTIONS, buildVariants, cleanOptions, type ProductOption, type Variant } from '@/lib/commerce/variants'
 import { hintClass, inputClass, labelClass, primaryButton, secondaryButton, squareButton, type ShowToast } from './ui'
+import { currencySymbol } from '@/lib/money'
+import { formatMoney } from '@/lib/commerce/commerce-utils'
 
 type OptionRow = { name: string; values: string }
 type Edit = { price: string; stock: string; sku: string; active: boolean }
@@ -69,7 +71,7 @@ export function ProductOptions({ orgId, productId, productPrice, canEdit, showTo
     <div className="space-y-3">
       <div>
         <p className="text-sm font-bold text-slate-900 dark:text-white">Options (size, colour…)</p>
-        <p className={hintClass}>Customers pick one of each on your store page. Each combination can have its own price and stock. Leave the price blank to use ₹{productPrice}.</p>
+        <p className={hintClass}>Customers pick one of each on your store page. Each combination can have its own price and stock. Leave the price blank to use {formatMoney(productPrice)}.</p>
       </div>
       {rows.map((row, i) => (
         <div key={i} className="grid grid-cols-[minmax(0,8rem)_minmax(0,1fr)_auto] gap-2 items-end">
@@ -92,7 +94,7 @@ export function ProductOptions({ orgId, productId, productPrice, canEdit, showTo
       {combos.length > 0 && (
         <div className="rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden">
           <div className="grid grid-cols-[repeat(3,minmax(0,1fr))_2.5rem] gap-2 px-3 py-2 bg-slate-50 dark:bg-slate-900 text-[11px] font-bold uppercase tracking-wide text-slate-500">
-            <span>Price ₹</span><span>Stock</span><span>SKU</span><span className="text-center">Sell</span>
+            <span>Price {currencySymbol()}</span><span>Stock</span><span>SKU</span><span className="text-center">Sell</span>
           </div>
           <ul className="divide-y divide-slate-100 dark:divide-slate-800 max-h-80 overflow-y-auto">
             {combos.map((v) => {

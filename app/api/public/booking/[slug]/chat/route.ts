@@ -29,7 +29,7 @@ function factsFor(data: SiteData): string {
     services: data.view.services, staff: data.view.staff, approval: data.view.approval, pay: data.view.pay,
     plans: data.site.show.memberships ? data.plans.map((p: any) => ({ name: p.name, price: Number(p.price) || 0, validity_days: Number(p.validity_days) || 0, discount_percent: Number(p.discount_percent) || 0, credit: Number(p.credit) || 0, sessions: Array.isArray(p.sessions) ? p.sessions : [] })) : [],
     about: data.site.about, rating: data.count ? { average: data.average, count: data.count } : undefined, showPrices: data.site.show.prices,
-    bookings: data.view.bookings !== false, bookOnSite: data.site.buttons.book !== false,
+    bookings: data.view.bookings !== false, bookOnSite: data.site.buttons.book !== false, currency: data.view.currency,
   })
 }
 
@@ -88,7 +88,7 @@ export async function POST(request: NextRequest, context: { params: Promise<{ sl
         services: (a.services || []).map((s: any) => s.name),
         staff: a.staff_id ? staff.get(a.staff_id) || null : null,
         status: STATUS_WORDS[a.status],
-        paid: paymentNote(a),
+        paid: paymentNote(a, data.page.organization.currency),
       }))
       const lines = bookings.map((b) => `• ${b.when}: ${b.services.join(', ')}${b.staff ? ` with ${b.staff}` : ''} (*${b.status}*)${b.paid ? ` · ${b.paid}` : ''}`)
       return reply({ reply: `${bookings.length === 1 ? 'Your booking' : 'Your bookings'}:\n${lines.join('\n')}${data.view.phone ? `\nTo change or cancel, call ${data.view.phone}.` : ''}`, bookings })
@@ -109,7 +109,7 @@ export async function POST(request: NextRequest, context: { params: Promise<{ sl
   const answer = await answerFromKnowledge({
     db, ai, org: { ...org, name: data.view.business }, message, history, channel: 'website', feature: 'website_chat',
     where: 'website chat', facts: factsFor(data), strictAmounts: true,
-    products: (search) => serviceHits(data.view.services, search, 4, showPrices, bookableOnSite(data)),
+    products: (search) => serviceHits(data.view.services, search, 4, showPrices, bookableOnSite(data), data.view.currency),
   })
   if (!answer) return NextResponse.json({ error: 'The chat could not answer just now. Please try again, or message us on WhatsApp.' }, { status: 502 })
   if (answer.handoff && answer.reason === 'not_answered') await recordKnowledgeGap(db, org.id, message, null)
