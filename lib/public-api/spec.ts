@@ -26,7 +26,7 @@ export interface EndpointDoc {
 export interface GroupDoc { id: string; title: string; description: string; endpoints: EndpointDoc[] }
 
 const contact = { id: '0b6d3c1e-5f0a-4c3e-9a8e-2d6f1b7c9a10', name: 'Priya Sharma', first_name: 'Priya', last_name: 'Sharma', phone: '+919876543210', whatsapp: '+919876543210', email: 'priya@example.com', company: null, tags: ['Website'], created_at: '2026-11-08T10:15:00.000Z', updated_at: '2026-11-08T10:15:00.000Z' }
-const service = { id: '6f1e2d3c-4b5a-4968-8776-655443322110', name: 'Facial', category: 'Skin', price: 1200, duration_minutes: 60, tax_rate: 18, active: true }
+const service = { id: '6f1e2d3c-4b5a-4968-8776-655443322110', name: 'Facial', category: 'Skin', price: 1200, duration_minutes: 60, tax_rate: 18, active: true, bookable: true }
 const appointment = {
   id: '9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d', status: 'booked', starts_at: '2026-11-08T11:30:00.000Z', ends_at: '2026-11-08T12:30:00.000Z',
   customer: { name: 'Priya Sharma', phone: '+919876543210', contact_id: contact.id },
@@ -102,7 +102,7 @@ export const API_GROUPS: GroupDoc[] = [
   {
     id: 'front-desk', title: 'Front Desk', description: 'Bookings and bills, for workspaces with Front Desk switched on. Use it to take bookings from your website or app, or to bill from your own till. Bookings and bills made here show on the counter at once, and the customer gets the same WhatsApp messages.',
     endpoints: [
-      { id: 'list-services', method: 'GET', path: '/services', scope: 'front_desk:read', title: 'List services', description: 'Services on offer, with prices (in rupees) and how long each takes.', query: [{ name: 'include_inactive', type: 'boolean', description: 'Also those switched off.' }], status: 200, responseExample: { data: [service] } },
+      { id: 'list-services', method: 'GET', path: '/services', scope: 'front_desk:read', title: 'List services', description: 'Services on offer, with prices (in rupees) and how long each takes. "bookable": false = billing only (no time), cannot be booked.', query: [{ name: 'include_inactive', type: 'boolean', description: 'Also those switched off.' }], status: 200, responseExample: { data: [service] } },
       { id: 'list-staff', method: 'GET', path: '/staff', scope: 'front_desk:read', title: 'List staff', description: 'The team. service_ids lists what each person does; empty means everything.', status: 200, responseExample: { data: [{ id: '1c2d3e4f-5a6b-4c7d-8e9f-0a1b2c3d4e5f', name: 'Anitha', active: true, service_ids: [service.id] }] } },
       { id: 'availability', method: 'GET', path: '/availability', scope: 'front_desk:read', exampleQuery: `?date=2026-11-08&service_ids=${service.id}`, title: 'Free times', description: 'Free start times on a day for the services asked for, using your opening hours, closed days, shop holidays, existing bookings and staff attendance (people on leave are not offered). A holiday has no times. Times start at least 30 minutes from now.',
         query: [{ name: 'service_ids', type: 'string', required: true, description: 'Service ids, separated by commas.' }, { name: 'date', type: 'string (YYYY-MM-DD)', description: 'India time. Default today.' }, { name: 'staff_id', type: 'string', description: 'Only times this person is free.' }],

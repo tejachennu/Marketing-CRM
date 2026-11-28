@@ -75,7 +75,8 @@ export async function loadChatSetup(db: any, organizationId: string): Promise<Ch
   ])
   return {
     settings: settings.data || {},
-    services: (services.data || []).filter((s: any) => s.active),
+    // Only services that take time can be booked: "billing only" ones (takes_time off) stay at the counter
+    services: (services.data || []).filter((s: any) => s.active && s.takes_time !== false),
     staff: (staff.data || []).filter((s: any) => s.active).map((s: any) => ({ ...s, service_ids: Array.isArray(s.service_ids) ? s.service_ids : [] })),
   }
 }

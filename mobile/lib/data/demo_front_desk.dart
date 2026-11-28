@@ -360,13 +360,14 @@ class DemoFrontDesk {
         }
         final s = list('services').firstWhere((s) => s['id'] == body['id']) as Map;
         final changes = <String, dynamic>{
-          for (final k in ['name', 'category', 'price', 'duration_minutes', 'tax_rate', 'active', 'billable'])
-            if (body.containsKey(k) && '${s[k] ?? (k == 'billable' ? true : null)}' != '${body[k]}') k: {'from': s[k] ?? (k == 'billable' ? true : null), 'to': body[k]},
+          for (final k in ['name', 'category', 'price', 'duration_minutes', 'tax_rate', 'active', 'billable', 'takes_time'])
+            if (body.containsKey(k) && '${s[k] ?? (k == 'billable' || k == 'takes_time' ? true : null)}' != '${body[k]}') k: {'from': s[k] ?? (k == 'billable' || k == 'takes_time' ? true : null), 'to': body[k]},
         };
-        s.addAll(Map.from(body)..remove('organizationId'));
+        s.addAll(Map<String, dynamic>.from(body)..remove('organizationId'));
         if (changes.isNotEmpty) {
           final onlyBills = changes.length == 1 && changes.containsKey('billable');
-          log('service', onlyBills ? (body['billable'] == true ? 'billing on' : 'billing off') : 'changed', '${s['name']}', changes);
+          final onlyTime = changes.length == 1 && changes.containsKey('takes_time');
+          log('service', onlyBills ? (body['billable'] == true ? 'billing on' : 'billing off') : onlyTime ? (body['takes_time'] == false ? 'time off' : 'time on') : 'changed', '${s['name']}', changes);
         }
         return {'success': true, 'service': s};
       case '/api/salon/staff':

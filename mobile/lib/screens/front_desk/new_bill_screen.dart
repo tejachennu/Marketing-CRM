@@ -145,6 +145,8 @@ class _NewBillScreenState extends State<NewBillScreen> {
                     desk: desk,
                     selected: _services,
                     counts: _qty,
+                    // A shop that takes no appointments has no use for minutes on a bill
+                    showTime: app.takesAppointments,
                     onChanged: (v) => setState(() {
                       _services = v;
                       _qty = {for (final e in _qty.entries) if (v.contains(e.key)) e.key: e.value};

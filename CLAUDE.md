@@ -118,6 +118,22 @@ Email: `HOSTINGER_SMTP_*`, `SENDGRID_*`. Other: `NEXT_PUBLIC_APP_URL`, `CRON_SEC
 
 ## What has been built (recent history, newest first)
 
+- **"Takes time" switch on each Front Desk service: off = billing only** (owner, 28 Nov 2026: "Prati service ki time
+  vundadu just billing vuntadi time enable disable option evu").
+  - `salon_services.takes_time` (default true; lock **724519042**, migration `20261215_front_desk_service_time.sql`,
+    `lib/salon/service-time.ts`: `takesTime`, `saveWithServiceTime` adds the column on the first save and, if it cannot,
+    saves "on" without it). `parseService` saves it only when sent (older apps change nothing); a billing-only service needs
+    no minutes (a blank keeps 30 / what it had). History logs "time on / time off".
+  - Off: never booked: left out of `loadChatSetup` (WhatsApp assistant, booking flow, booking page, website and its chat),
+    refused by `create_appointment` and `/api/v1` availability / appointments (`toApiService` gives `bookable`, in
+    `spec.ts`); counter New booking pickers leave it out (web `ServicePicker` without `forBill`, app `bookServices`). Still
+    billed; adds 0 minutes to a walk-in visit.
+  - Screens: web Setup → Services (form: "Takes time" under the minutes, minutes hidden when off; list: "Billing only" tag
+    and a third switch "Time"; subtitle counts them); app Setup → Services (editor switch, minutes hidden, "Billing only"
+    pill). Bill pickers show no minutes for these, and **no minutes at all when the shop takes no appointments**
+    (`showTime`). Demo mode: fixed editing a service (`Map<String, dynamic>.from`). Tests `tests/service-time.test.cjs`,
+    `mobile/test/service_time_test.dart`. Next free lock: **724519043**.
+
 - **A count for each service on a new bill; New bill's Save button lined up; GST-inclusive bills add up exactly**
   (owner, 28 Nov 2026, app New bill screenshot: "Alignment sariga ledu and count vundali ga prati product ki").
   - Server: `walk_in_bill` takes `quantities` (same order as `service_ids`; `serviceQuantities` in `lib/salon/actions.ts`,

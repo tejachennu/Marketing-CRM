@@ -7,6 +7,8 @@ import { fromIst, istDate, istDayRange } from '../salon/spoken'
 export const toApiService = (row: any) => ({
   id: row.id, name: row.name, category: row.category || 'General', price: Number(row.price) || 0,
   duration_minutes: Number(row.duration_minutes) || 30, tax_rate: Number(row.tax_rate) || 0, active: row.active !== false,
+  // false: billing only (no time), cannot be booked
+  bookable: row.takes_time !== false,
 })
 
 export const toApiStaff = (row: any) => ({
@@ -67,12 +69,15 @@ export async function availableTimes(db: any, organizationId: string, input: { d
   const [{ data: settings }, { data: services }, { data: staff }, { data: booked }] = await Promise.all([
     // select('*'): the holidays column may not exist yet
     db.from('salon_settings').select('*').eq('organization_id', organizationId).maybeSingle(),
-    db.from('salon_services').select('id, duration_minutes, active').eq('organization_id', organizationId).in('id', input.serviceIds),
+    // select('*'): the takes_time column may not exist yet
+    db.from('salon_services').select('*').eq('organization_id', organizationId).in('id', input.serviceIds),
     db.from('salon_staff').select('id, service_ids, active').eq('organization_id', organizationId),
     db.from('salon_appointments').select('*').eq('organization_id', organizationId).gte('starts_at', istDayRange(input.date).start).lt('starts_at', istDayRange(input.date).end),
   ])
   const found = (services || []).filter((s: any) => s.active !== false)
   if (found.length !== new Set(input.serviceIds).size) return { error: 'One of those services is not on the list (or is switched off). GET /api/v1/services shows them.' }
+  const billingOnly = found.find((s: any) => s.takes_time === false)
+  if (billingOnly) return { error: `${billingOnly.name} is for billing only (no time), so it cannot be booked. GET /api/v1/services shows "bookable".` }
   const minutes = found.reduce((sum: number, s: any) => sum + (Number(s.duration_minutes) || 30), 0)
   const team = (staff || []).filter((m: any) => m.active !== false)
   if (input.staffId && !team.some((m: any) => m.id === input.staffId)) return { error: 'That staff member is not on the list. GET /api/v1/staff shows them.' }

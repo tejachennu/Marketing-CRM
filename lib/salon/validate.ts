@@ -23,6 +23,8 @@ export interface ServiceInput {
   sac_code: string | null
   active: boolean
   billable: boolean
+  /** Off = billing only: no minutes, cannot be booked (service-time.ts). Only sent when the switch is there. */
+  takes_time?: boolean
 }
 
 export function parseService(body: any, partial = false): Parsed<Partial<ServiceInput>> {
@@ -39,8 +41,10 @@ export function parseService(body: any, partial = false): Parsed<Partial<Service
   }
   if (!partial || body?.duration_minutes !== undefined) {
     const minutes = Math.round(Number(body?.duration_minutes ?? 30))
-    if (!(minutes >= 5 && minutes <= 600)) return { error: 'A service takes between 5 minutes and 10 hours.' }
-    value.duration_minutes = minutes
+    if (minutes >= 5 && minutes <= 600) value.duration_minutes = minutes
+    // Billing only (no time): the minutes are not used, so a blank keeps what it was (30 for a new service)
+    else if (body?.takes_time === false) { if (!partial) value.duration_minutes = 30 }
+    else return { error: 'A service takes between 5 minutes and 10 hours.' }
   }
   if (!partial || body?.tax_rate !== undefined) {
     const rate = Number(body?.tax_rate ?? 18)
@@ -55,6 +59,8 @@ export function parseService(body: any, partial = false): Parsed<Partial<Service
   if (!partial || body?.active !== undefined) value.active = body?.active !== false
   // Can it go on bills (a free consultation, or a product kept off bills, can be switched off)
   if (!partial || body?.billable !== undefined) value.billable = body?.billable !== false
+  // Does it take time (off: billing only, never booked). Saved only when sent, so older apps change nothing
+  if (body?.takes_time !== undefined) value.takes_time = body.takes_time !== false
   return { value }
 }
 

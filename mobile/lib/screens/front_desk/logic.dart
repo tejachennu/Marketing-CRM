@@ -44,6 +44,9 @@ class FrontDesk {
 
   /// Services that can go on a bill (the business can keep some for bookings only).
   List<Map<String, dynamic>> get billServices => services.where((s) => s['billable'] != false).toList();
+
+  /// Services a customer can book: those that take time ("Takes time" off = billing only, never booked).
+  List<Map<String, dynamic>> get bookServices => services.where(takesTime).toList();
   List<Map<String, dynamic>> get staff => [for (final s in (_setup['staff'] as List? ?? const [])) Map<String, dynamic>.from(s)].where((s) => s['active'] != false).toList();
 
   /// Categories in the business's order (Setup → Categories), then any others a service uses.
@@ -310,6 +313,9 @@ const statusLabels = {
 };
 
 const paymentLabels = {'cash': 'Cash', 'upi': 'UPI', 'card': 'Card', 'online': 'Online', 'membership': 'Membership'};
+
+/// Does a service take time (can it be booked)? Off = billing only (Setup → Services → Takes time). Missing = yes.
+bool takesTime(Map service) => service['takes_time'] != false;
 
 /// The most of one service on a bill (the server's MAX_QUANTITY).
 const maxQuantity = 99;

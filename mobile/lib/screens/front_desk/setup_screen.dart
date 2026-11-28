@@ -541,8 +541,8 @@ class ServicesSetup extends StatelessWidget {
                       subtitle: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text('${formatRupees(s['price'])} · ${s['duration_minutes']} min · GST ${s['tax_rate'] ?? 0}%'),
-                          if (s['billable'] == false || s['source'] == 'catalog')
+                          Text('${formatRupees(s['price'])}${takesTime(s) ? ' · ${s['duration_minutes']} min' : ''} · GST ${s['tax_rate'] ?? 0}%'),
+                          if (s['billable'] == false || s['source'] == 'catalog' || !takesTime(s))
                             Padding(
                               padding: const EdgeInsets.only(top: 4),
                               child: Wrap(
@@ -550,6 +550,7 @@ class ServicesSetup extends StatelessWidget {
                                 runSpacing: 4,
                                 children: [
                                   if (s['billable'] == false) const Pill('Not on bills', tone: PillTone.red, icon: Icons.receipt_long_outlined),
+                                  if (!takesTime(s)) const Pill('Billing only', icon: Icons.timer_off_outlined),
                                   if (s['source'] == 'catalog') const Pill('Catalog', tone: PillTone.blue, icon: Icons.inventory_2_outlined),
                                 ],
                               ),
@@ -589,6 +590,8 @@ Future<void> _editService(BuildContext context, Map<String, dynamic>? service, L
   var tax = (num.tryParse('${service?['tax_rate'] ?? 18}') ?? 18).toInt();
   var active = service?['active'] != false;
   var billable = service?['billable'] != false;
+  // Off = billing only: no minutes, customers cannot book it
+  var timed = service == null || takesTime(service);
   var tried = false;
   var saving = false;
   String? error;
@@ -602,7 +605,8 @@ Future<void> _editService(BuildContext context, Map<String, dynamic>? service, L
         final minuteValue = int.tryParse(minutes.text);
         final nameErr = tried ? textError(name.text, what: 'the service name', min: 2, max: 80) : null;
         final priceErr = tried && (priceValue == null || priceValue < 0 || priceValue > 1000000) ? 'Enter a price from ₹0 to ₹10,00,000.' : null;
-        final minutesErr = tried && (minuteValue == null || minuteValue < 5 || minuteValue > 600) ? 'Between 5 minutes and 10 hours.' : null;
+        final minutesBad = minuteValue == null || minuteValue < 5 || minuteValue > 600;
+        final minutesErr = tried && timed && minutesBad ? 'Between 5 minutes and 10 hours.' : null;
         final sacErr = tried && sac.text.trim().isNotEmpty && !RegExp(r'^\d{4,8}$').hasMatch(sac.text.trim()) ? 'A SAC code is 4 to 8 digits.' : null;
         // One save at a time (a second tap would add the service twice); the sheet closes only when it worked
         Future<void> run(Future<Object?> Function(AppState app) task, String done) async {
@@ -659,23 +663,36 @@ Future<void> _editService(BuildContext context, Map<String, dynamic>? service, L
                         decoration: InputDecoration(labelText: 'Price (₹)', errorText: priceErr, errorMaxLines: 2),
                       ),
                     ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: TextField(
-                        controller: minutes,
-                        keyboardType: TextInputType.number,
-                        onChanged: (_) => set(() {}),
-                        decoration: InputDecoration(labelText: 'Minutes', errorText: minutesErr, errorMaxLines: 2),
+                    if (timed) ...[
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: TextField(
+                          controller: minutes,
+                          keyboardType: TextInputType.number,
+                          onChanged: (_) => set(() {}),
+                          decoration: InputDecoration(labelText: 'Minutes', errorText: minutesErr, errorMaxLines: 2),
+                        ),
                       ),
-                    ),
+                    ],
                   ],
                 ),
-                const SizedBox(height: 8),
-                Wrap(
-                  spacing: 6,
-                  children: [
-                    for (final m in [15, 30, 45, 60, 90, 120]) ChoiceChip(label: Text('$m min'), selected: minutes.text == '$m', onSelected: (_) => set(() => minutes.text = '$m')),
-                  ],
+                if (timed) ...[
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 6,
+                    children: [
+                      for (final m in [15, 30, 45, 60, 90, 120]) ChoiceChip(label: Text('$m min'), selected: minutes.text == '$m', onSelected: (_) => set(() => minutes.text = '$m')),
+                    ],
+                  ),
+                ],
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  value: timed,
+                  activeThumbColor: Colors.white,
+                  activeTrackColor: Brand.blue,
+                  onChanged: (v) => set(() => timed = v),
+                  title: const Text('Takes time', style: TextStyle(fontWeight: FontWeight.w700)),
+                  subtitle: const Text('Off: billing only. No minutes, and customers cannot book it'),
                 ),
                 const SizedBox(height: 12),
                 const Text('GST', style: TextStyle(fontWeight: FontWeight.w700)),
@@ -752,9 +769,7 @@ Future<void> _editService(BuildContext context, Map<String, dynamic>? service, L
                                     priceValue == null ||
                                     priceValue < 0 ||
                                     priceValue > 1000000 ||
-                                    minuteValue == null ||
-                                    minuteValue < 5 ||
-                                    minuteValue > 600) {
+                                    (timed && minutesBad)) {
                                   return;
                                 }
                                 if (sac.text.trim().isNotEmpty && !RegExp(r'^\d{4,8}$').hasMatch(sac.text.trim())) return;
@@ -763,11 +778,14 @@ Future<void> _editService(BuildContext context, Map<String, dynamic>? service, L
                                   'name': name.text.trim(),
                                   'category': category,
                                   'price': priceValue,
-                                  'duration_minutes': minuteValue,
+                                  // Billing only: the minutes are not used; a blank keeps the usual 30
+                                  'duration_minutes': minutesBad ? 30 : minuteValue,
                                   'tax_rate': tax,
                                   'sac_code': sac.text.trim().isEmpty ? null : sac.text.trim(),
                                   'active': active,
                                   'billable': billable,
+                                  // Sent only when it is off or was off, so a server without the switch changes nothing
+                                  if (!timed || service?['takes_time'] != null) 'takes_time': timed,
                                 };
                                 await run((app) => app.ask('/api/salon/services', body, method: editing ? 'PATCH' : 'POST'), '${name.text.trim()} saved.');
                               },

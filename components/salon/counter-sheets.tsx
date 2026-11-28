@@ -192,10 +192,11 @@ function QtyStepper({ value, onChange, label }: { value: number; onChange: (next
  * Services by category, tap to add or remove. With `onCount` (a bill), a picked service also gets a − / + count:
  * 2 × Threading.
  */
-export function ServicePicker({ services, selected, onChange, order, forBill, counts, onCount }: { services: Service[]; selected: string[]; onChange: (ids: string[]) => void; order?: string[]; forBill?: boolean; counts?: Record<string, number>; onCount?: (id: string, count: number) => void }) {
+export function ServicePicker({ services, selected, onChange, order, forBill, counts, onCount, showTime = true }: { services: Service[]; selected: string[]; onChange: (ids: string[]) => void; order?: string[]; forBill?: boolean; counts?: Record<string, number>; onCount?: (id: string, count: number) => void; showTime?: boolean }) {
   const [query, setQuery] = useState('')
   const [category, setCategory] = useState('All')
-  const active = useMemo(() => services.filter((s) => s.active && (!forBill || s.billable !== false)), [services, forBill])
+  // A bill: services that go on bills. A booking: services that take time (billing-only ones cannot be booked)
+  const active = useMemo(() => services.filter((s) => s.active && (forBill ? s.billable !== false : s.takes_time !== false)), [services, forBill])
   const categories = useMemo(() => ['All', ...groupByCategory(order, active).filter(([, list]) => list.length > 0).map(([name]) => name)], [active, order])
   const words = query.trim().toLowerCase()
   const shown = active.filter((s) => (category === 'All' || (s.category || 'General').toLowerCase() === category.toLowerCase()) && (!words || s.name.toLowerCase().includes(words) || (s.category || '').toLowerCase().includes(words)))
@@ -230,7 +231,11 @@ export function ServicePicker({ services, selected, onChange, order, forBill, co
                 <span className={`h-6 w-6 shrink-0 rounded-md border-2 flex items-center justify-center ${on ? 'bg-[#1D5BEA] border-[#1D5BEA] text-white' : 'border-[#c0c8d8] dark:border-slate-600'}`}>{on && <Check size={14} strokeWidth={3} />}</span>
                 <span className="min-w-0 flex-1">
                   <span className={`block text-[14.5px] font-semibold leading-snug break-words ${on ? 'text-[#1D5BEA] dark:text-blue-200' : 'text-[#0E1B3D] dark:text-white'}`}>{service.name}</span>
-                  <span className="block text-[12.5px] text-[#6B7894] dark:text-slate-400">{service.duration_minutes} min{category === 'All' && categories.length > 2 ? ` · ${service.category || 'General'}` : ''}</span>
+                  {(() => {
+                    // Minutes only for a service that takes time (and not on a walk-in shop's bills)
+                    const line = [showTime && service.takes_time !== false ? `${service.duration_minutes} min` : '', category === 'All' && categories.length > 2 ? service.category || 'General' : ''].filter(Boolean).join(' · ')
+                    return line ? <span className="block text-[12.5px] text-[#6B7894] dark:text-slate-400">{line}</span> : null
+                  })()}
                 </span>
                 <span className="shrink-0 text-[14.5px] font-bold text-[#0E1B3D] dark:text-white">{formatRupees(Number(service.price) * count)}</span>
               </button>
@@ -615,7 +620,7 @@ export function BillSheet({ orgId, setup, target, onClose, onBilled }: {
           )}
           <section className="space-y-2">
             <p className={sectionTitle}>Services</p>
-            {walkIn ? <ServicePicker forBill services={setup.services} order={setup.settings.service_categories} selected={serviceIds} onChange={(ids) => { setServiceIds(ids); setCounts((now) => Object.fromEntries(Object.entries(now).filter(([id]) => ids.includes(id)))) }} counts={counts} onCount={(id, count) => setCounts((now) => ({ ...now, [id]: count }))} /> : (
+            {walkIn ? <ServicePicker forBill showTime={setup.settings.takes_appointments !== false} services={setup.services} order={setup.settings.service_categories} selected={serviceIds} onChange={(ids) => { setServiceIds(ids); setCounts((now) => Object.fromEntries(Object.entries(now).filter(([id]) => ids.includes(id)))) }} counts={counts} onCount={(id, count) => setCounts((now) => ({ ...now, [id]: count }))} /> : (
               <>
                 <div className="flex flex-wrap gap-1.5">
                   {target.appointment.services.map((s, i) => <span key={i} className="inline-flex items-center h-8 px-3 rounded-lg bg-[#f4f6fa] dark:bg-slate-800 text-[13.5px] font-semibold text-[#0E1B3D] dark:text-slate-200">{s.name}</span>)}

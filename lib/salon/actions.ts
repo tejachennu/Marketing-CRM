@@ -11,6 +11,7 @@ import { randomBytes } from 'crypto'
 import { computeInvoice, formatInvoiceNumber, formatRupees, type Discount } from './invoice'
 import { formatIstDay, formatIstTime, istDate, parsePhoneNumber, phoneKey } from './spoken'
 import { isUuid } from './validate'
+import { takesTime } from './service-time'
 import { withSalonSchema } from './schema'
 import type { SalonContext } from './server'
 import { applyCard, cardFromPlan, creditToUse, usableCard, withMembershipSchema } from './memberships'
@@ -223,9 +224,13 @@ async function loadServices(db: any, organizationId: string, ids: string[], forB
   // A service switched off for billing cannot go on a new bill
   const offBills = forBill ? ids.map((id) => byId.get(id) as any).find((row) => row.billable === false) : null
   if (offBills) throw new Error(`${offBills.name} is set not to go on bills. Switch on "Use in bills" for it in Setup → Services.`)
+  // A billing-only service (no time) cannot be booked
+  const noTime = forBill ? null : ids.map((id) => byId.get(id) as any).find((row) => !takesTime(row))
+  if (noTime) throw new Error(`${noTime.name} is for billing only (no time), so it cannot be booked. Switch on "Takes time" for it in Setup → Services.`)
   return ids.map((id) => {
     const row: any = byId.get(id)
-    return { service_id: row.id, name: row.name, price: Number(row.price) || 0, duration_minutes: Number(row.duration_minutes) || 30, tax_rate: Number(row.tax_rate) || 0, sac_code: row.sac_code || null }
+    // Billing only: adds no time to the visit
+    return { service_id: row.id, name: row.name, price: Number(row.price) || 0, duration_minutes: takesTime(row) ? Number(row.duration_minutes) || 30 : 0, tax_rate: Number(row.tax_rate) || 0, sac_code: row.sac_code || null }
   })
 }
 

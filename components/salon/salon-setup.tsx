@@ -327,7 +327,7 @@ export function SalonSetupTab({ orgId, setup, onChange, flash, initialSection = 
     setServiceForm(null)
   })
 
-  const toggleService = (service: Service, change: { active?: boolean; billable?: boolean }) => run(`act-${service.id}`, async () => {
+  const toggleService = (service: Service, change: { active?: boolean; billable?: boolean; takes_time?: boolean }) => run(`act-${service.id}`, async () => {
     const data = await api('/api/salon/services', { method: 'PATCH', body: JSON.stringify({ organizationId: orgId, id: service.id, ...change }) })
     onChange({ ...setup, services: setup.services.map((s) => (s.id === service.id ? data.service : s)) })
   })
@@ -407,7 +407,7 @@ export function SalonSetupTab({ orgId, setup, onChange, flash, initialSection = 
       {section === 'services' && setup.services.length > 0 && (
         <section className={card}>
           <SectionHead icon={<Scissors size={21} />} tone="bg-[#f4f6fa] text-[#0E1B3D] dark:bg-slate-800 dark:text-slate-100" title="Services"
-            subtitle={`${setup.services.filter((s) => s.active).length} of ${setup.services.length} on offer${setup.services.some((s) => s.billable === false) ? ` · ${setup.services.filter((s) => s.billable === false).length} not on bills` : ''} · prices ${settings.prices_include_tax ? 'include' : 'exclude'} GST`}
+            subtitle={`${setup.services.filter((s) => s.active).length} of ${setup.services.length} on offer${setup.services.some((s) => s.billable === false) ? ` · ${setup.services.filter((s) => s.billable === false).length} not on bills` : ''}${setup.services.some((s) => s.takes_time === false) ? ` · ${setup.services.filter((s) => s.takes_time === false).length} billing only` : ''} · prices ${settings.prices_include_tax ? 'include' : 'exclude'} GST`}
             action={<div className="flex shrink-0 gap-2">
               <button type="button" onClick={() => setCategoriesOpen(true)} className={secondaryButton} aria-label="Categories"><Tags size={18} /> <span className="hidden @xl:inline">Categories</span></button>
               <button type="button" onClick={() => setCatalogOpen(true)} className={secondaryButton} aria-label="From catalog"><Package size={18} /> <span className="hidden @xl:inline">From catalog</span></button>
@@ -427,7 +427,9 @@ export function SalonSetupTab({ orgId, setup, onChange, flash, initialSection = 
                       <button type="button" onClick={() => setServiceForm(service)} className="flex-1 min-w-0 text-left cursor-pointer group">
                         <span className={`block text-[15.5px] font-semibold truncate group-hover:text-[#1D5BEA] ${service.active ? 'text-[#0E1B3D] dark:text-white' : 'text-[#8a94a8] line-through'}`}>{service.name}</span>
                         <span className="mt-1 flex flex-wrap gap-1.5">
-                          <span className="inline-flex items-center gap-1 h-6 px-2 rounded-md bg-[#f4f6fa] dark:bg-slate-800 text-[12px] font-semibold text-[#4a5672] dark:text-slate-300"><Clock3 size={12} /> {service.duration_minutes} min</span>
+                          {service.takes_time === false
+                            ? <span className="inline-flex items-center gap-1 h-6 px-2 rounded-md bg-[#f4f6fa] dark:bg-slate-800 text-[12px] font-semibold text-[#4a5672] dark:text-slate-300"><ReceiptText size={12} /> Billing only</span>
+                            : <span className="inline-flex items-center gap-1 h-6 px-2 rounded-md bg-[#f4f6fa] dark:bg-slate-800 text-[12px] font-semibold text-[#4a5672] dark:text-slate-300"><Clock3 size={12} /> {service.duration_minutes} min</span>}
                           <span className="inline-flex items-center h-6 px-2 rounded-md bg-[#f4f6fa] dark:bg-slate-800 text-[12px] font-semibold text-[#4a5672] dark:text-slate-300">GST {Number(service.tax_rate)}%</span>
                           {service.billable === false && <span className="inline-flex items-center gap-1 h-6 px-2 rounded-md bg-[#fdf0f0] dark:bg-red-950/30 text-[12px] font-semibold text-[#b91c1c] dark:text-red-300">Not on bills</span>}
                           {service.source === 'catalog' && <span className="inline-flex items-center gap-1 h-6 px-2 rounded-md bg-[#eef3fe] dark:bg-blue-950/40 text-[12px] font-semibold text-[#1D5BEA] dark:text-blue-300"><Package size={12} /> Catalog</span>}
@@ -438,6 +440,7 @@ export function SalonSetupTab({ orgId, setup, onChange, flash, initialSection = 
                         <span className={`text-[16.5px] font-extrabold ${service.active ? 'text-[#0E1B3D] dark:text-white' : 'text-[#8a94a8]'}`}>{formatRupees(Number(service.price))}</span>
                         <span className="flex flex-col items-center gap-0.5"><Toggle checked={service.active} disabled={busy !== null} onChange={(value) => toggleService(service, { active: value })} label={`${service.name} on offer`} /><span className="text-[11px] font-semibold text-[#8a94a8]">Offer</span></span>
                         <span className="flex flex-col items-center gap-0.5"><Toggle checked={service.billable !== false} disabled={busy !== null} onChange={(value) => toggleService(service, { billable: value })} label={`${service.name} in bills`} /><span className="text-[11px] font-semibold text-[#8a94a8]">Bills</span></span>
+                        <span className="flex flex-col items-center gap-0.5"><Toggle checked={service.takes_time !== false} disabled={busy !== null} onChange={(value) => toggleService(service, { takes_time: value })} label={`${service.name} takes time`} /><span className="text-[11px] font-semibold text-[#8a94a8]">Time</span></span>
                       </span>
                     </li>
                   ))}
@@ -562,11 +565,12 @@ export function SalonSetupTab({ orgId, setup, onChange, flash, initialSection = 
               <div className="flex flex-wrap gap-2 mb-2">{[...new Set([...categories.map(([c]) => c), ...BUSINESS_TYPES[type].categories])].map((category) => <Chip key={category} selected={serviceForm.category === category} onClick={() => setServiceForm({ ...serviceForm, category })}>{category}</Chip>)}</div>
               <input className={input} value={serviceForm.category || ''} onChange={(e) => setServiceForm({ ...serviceForm, category: e.target.value })} placeholder="Or type a new one" aria-label="Category" />
             </Field>
-            <div className="grid grid-cols-2 gap-4">
+            <div className={`grid gap-4 ${serviceForm.takes_time === false ? 'grid-cols-1' : 'grid-cols-2'}`}>
               <Field label="Price (₹)"><input className={input} type="number" min={0} inputMode="decimal" value={serviceForm.price ?? ''} onChange={(e) => setServiceForm({ ...serviceForm, price: e.target.value as any })} placeholder="600" /></Field>
-              <Field label="Minutes"><input className={input} type="number" min={5} inputMode="numeric" value={serviceForm.duration_minutes ?? ''} onChange={(e) => setServiceForm({ ...serviceForm, duration_minutes: e.target.value as any })} /></Field>
+              {serviceForm.takes_time !== false && <Field label="Minutes"><input className={input} type="number" min={5} inputMode="numeric" value={serviceForm.duration_minutes ?? ''} onChange={(e) => setServiceForm({ ...serviceForm, duration_minutes: e.target.value as any })} /></Field>}
             </div>
-            <div className="flex flex-wrap gap-2">{DURATIONS.map((m) => <Chip key={m} selected={Number(serviceForm.duration_minutes) === m} onClick={() => setServiceForm({ ...serviceForm, duration_minutes: m })}>{m} min</Chip>)}</div>
+            {serviceForm.takes_time !== false && <div className="flex flex-wrap gap-2">{DURATIONS.map((m) => <Chip key={m} selected={Number(serviceForm.duration_minutes) === m} onClick={() => setServiceForm({ ...serviceForm, duration_minutes: m })}>{m} min</Chip>)}</div>}
+            <label className="flex items-center justify-between gap-4 rounded-2xl border border-[#e3e8f2] dark:border-slate-800 px-4 py-3 text-[15px] text-[#0E1B3D] dark:text-white"><span className="flex items-start gap-2"><Clock3 size={18} className="mt-0.5 shrink-0 text-[#6B7894]" /><span><strong>Takes time</strong><span className="block text-[13px] text-[#6B7894]">Off: billing only. No minutes, and customers cannot book it.</span></span></span><Toggle checked={serviceForm.takes_time !== false} onChange={(value) => setServiceForm({ ...serviceForm, takes_time: value })} label="Takes time" /></label>
             <Field group label="GST"><div className="flex flex-wrap gap-2">{GST_RATES.map((rate) => <Chip key={rate} selected={Number(serviceForm.tax_rate) === rate} onClick={() => setServiceForm({ ...serviceForm, tax_rate: rate })}>{rate}%</Chip>)}</div></Field>
             <Field label="SAC code (optional)" hint="The GST service code printed on invoices, if your accountant gives you one."><input className={input} value={serviceForm.sac_code || ''} onChange={(e) => setServiceForm({ ...serviceForm, sac_code: e.target.value })} inputMode="numeric" placeholder="999721" /></Field>
             <div className="rounded-2xl border border-[#e3e8f2] dark:border-slate-800 divide-y divide-[#eef1f6] dark:divide-slate-800">

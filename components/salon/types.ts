@@ -41,6 +41,8 @@ export interface Service {
   active: boolean
   /** false: the service can be booked but never goes on a bill */
   billable?: boolean
+  /** false: billing only, no time; it cannot be booked (missing = takes time) */
+  takes_time?: boolean
   /** 'catalog' when it came from the WhatsApp product catalog */
   source?: 'own' | 'catalog'
   catalog_product_id?: string | null

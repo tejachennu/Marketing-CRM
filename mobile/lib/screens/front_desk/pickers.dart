@@ -194,7 +194,7 @@ class _CustomerPickerState extends State<CustomerPicker> {
 /// Services by category, tap to add or remove. With [onCount], a picked service also gets a − / + count (a bill:
 /// 2 × Threading).
 class ServicePicker extends StatefulWidget {
-  const ServicePicker({super.key, required this.desk, required this.selected, required this.onChanged, this.forBill = false, this.counts = const {}, this.onCount});
+  const ServicePicker({super.key, required this.desk, required this.selected, required this.onChanged, this.forBill = false, this.counts = const {}, this.onCount, this.showTime = true});
   final FrontDesk desk;
   final List<String> selected;
   final ValueChanged<List<String>> onChanged;
@@ -207,6 +207,9 @@ class ServicePicker extends StatefulWidget {
 
   /// Shows the count on picked services and says when it changes.
   final void Function(String serviceId, int count)? onCount;
+
+  /// Show each service's minutes (a shop that takes no appointments does not need them on bills).
+  final bool showTime;
   @override
   State<ServicePicker> createState() => _ServicePickerState();
 }
@@ -216,7 +219,8 @@ class _ServicePickerState extends State<ServicePicker> {
 
   @override
   Widget build(BuildContext context) {
-    final list = widget.forBill ? widget.desk.billServices : widget.desk.services;
+    // A bill: services that go on bills. A booking: services that take time (billing-only ones cannot be booked)
+    final list = widget.forBill ? widget.desk.billServices : widget.desk.bookServices;
     String cat(Map s) => '${s['category'] ?? 'General'}'.toLowerCase();
     final categories = ['All', ...widget.desk.categories.where((c) => list.any((s) => cat(s) == c.toLowerCase()))];
     final shown = list.where((s) => _category == 'All' || cat(s) == _category.toLowerCase()).toList();
@@ -276,6 +280,15 @@ class _ServicePickerState extends State<ServicePicker> {
     );
   }
 
+  /// Under the name: the minutes (for a service that takes time) and the category when all are shown.
+  String? _subline(Map<String, dynamic> s) {
+    final parts = [
+      if (widget.showTime && takesTime(s)) '${s['duration_minutes']} min',
+      if (_category == 'All') '${s['category'] ?? 'General'}',
+    ];
+    return parts.isEmpty ? null : parts.join(' · ');
+  }
+
   Widget _row(Map<String, dynamic> s) {
     final id = '${s['id']}';
     final on = widget.selected.contains(id);
@@ -308,7 +321,7 @@ class _ServicePickerState extends State<ServicePicker> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text('${s['name']}', style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
-                      Text('${s['duration_minutes']} min${_category == 'All' ? ' · ${s['category'] ?? 'General'}' : ''}', style: const TextStyle(fontSize: 12.5, color: Brand.muted)),
+                      if (_subline(s) case final line?) Text(line, style: const TextStyle(fontSize: 12.5, color: Brand.muted)),
                     ],
                   ),
                 ),
