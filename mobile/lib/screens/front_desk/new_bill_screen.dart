@@ -20,17 +20,27 @@ class NewBillScreen extends StatefulWidget {
 class _NewBillScreenState extends State<NewBillScreen> {
   Map<String, dynamic> _customer = const {};
   List<String> _services = [];
+
+  /// How many of each picked service (missing = 1): 2 × Threading.
+  Map<String, int> _qty = {};
   Map<String, String?> _who = {};
   Map<String, num>? _discount;
 
   /// The customer's membership card used on this bill (the server takes its sessions, discount and credit).
   Map<String, dynamic>? _card;
 
-  /// The lines as billed: the card's free sessions and discount taken off first, as the server does.
+  /// The lines as billed, each with its count and who did it: the card's free sessions and discount taken off first,
+  /// as the server does (a card can split 3 × Facial into 1 free and 2 paid, so who did it travels on the line).
   ({List<Map<String, dynamic>> lines, int free, num discount}) _billed(FrontDesk desk) {
-    final lines = _services.map(desk.service).whereType<Map<String, dynamic>>().toList();
+    final lines = [
+      for (final id in _services)
+        if (desk.service(id) case final s?) {...s, 'quantity': _qty[id] ?? 1, 'staff_id': _who[id]},
+    ];
     return _card == null ? (lines: lines, free: 0, discount: 0) : applyMemberCard(_card!, lines);
   }
+
+  /// Services on the bill, counting each one as many times as it is done.
+  int get _units => _services.fold(0, (sum, id) => sum + (_qty[id] ?? 1));
 
   num _total(FrontDesk desk) =>
       desk.estimateLines(_billed(desk).lines, discountPercent: _discount?['type'] == 0 ? _discount!['value']! : 0, discountAmount: _discount?['type'] == 1 ? _discount!['value']! : 0);
@@ -53,10 +63,8 @@ class _NewBillScreenState extends State<NewBillScreen> {
     final total = _total(desk);
     final fromCard = _fromCard(total);
     final covered = fromCard > 0 && total - fromCard <= 0;
-    final known = [for (final id in _services) if (desk.service(id) != null) id];
-    final billed = _billed(desk).lines;
     final items = [
-      for (var i = 0; i < billed.length; i++) {...billed[i], 'staff_name': desk.staffName(_who[known[i]])},
+      for (final line in _billed(desk).lines) {...line, 'staff_name': desk.staffName(line['staff_id'] as String?)},
     ];
     final staffIds = [for (final id in _services) _who[id]];
     final oneStaff = staffIds.toSet().length == 1 ? staffIds.first : null;
@@ -71,6 +79,7 @@ class _NewBillScreenState extends State<NewBillScreen> {
         // The server needs a name or a phone: an empty walk-in goes as "Walk-in customer", as on the web
         'customer': {'contact_id': _customer['contact_id'], 'name': name.isEmpty ? 'Walk-in customer' : name, 'phone': phone.isEmpty ? null : phone},
         'service_ids': _services,
+        'quantities': [for (final id in _services) _qty[id] ?? 1],
         'staff_id': oneStaff,
         'staff_ids': staffIds,
         'discount': ?discountBody(_discount),
@@ -122,6 +131,7 @@ class _NewBillScreenState extends State<NewBillScreen> {
                     onChanged: (c) => setState(() => _customer = c),
                     onRepeat: (ids, staff) => setState(() {
                       _services = ids.where((id) => desk.service(id) != null && desk.service(id)!['billable'] != false).toList();
+                      _qty = {};
                       _who = {for (var i = 0; i < ids.length; i++) ids[i]: i < staff.length && desk.staff.any((m) => m['id'] == staff[i]) ? staff[i] : null};
                     }),
                   ),
@@ -130,14 +140,24 @@ class _NewBillScreenState extends State<NewBillScreen> {
                   number: 2,
                   title: 'Services',
                   trailing: _services.isEmpty ? null : Pill('${_services.length} picked', tone: PillTone.blue),
-                  child: ServicePicker(forBill: true, desk: desk, selected: _services, onChanged: (v) => setState(() => _services = v)),
+                  child: ServicePicker(
+                    forBill: true,
+                    desk: desk,
+                    selected: _services,
+                    counts: _qty,
+                    onChanged: (v) => setState(() {
+                      _services = v;
+                      _qty = {for (final e in _qty.entries) if (v.contains(e.key)) e.key: e.value};
+                    }),
+                    onCount: (id, n) => setState(() => _qty = {..._qty, id: n}),
+                  ),
                 ),
                 if (_services.isNotEmpty && desk.staff.isNotEmpty)
                   BillStep(
                     number: 3,
                     title: 'Who did it',
                     hint: 'It counts for their commission.',
-                    child: WhoDidIt(desk: desk, serviceIds: _services, value: _who, onChanged: (v) => setState(() => _who = v)),
+                    child: WhoDidIt(desk: desk, serviceIds: _services, counts: _qty, value: _who, onChanged: (v) => setState(() => _who = v)),
                   ),
                 MembershipCards(
                   contactId: _customer['contact_id'] == null ? null : '${_customer['contact_id']}',
@@ -167,7 +187,7 @@ class _NewBillScreenState extends State<NewBillScreen> {
                 BillSummary(
                   desk: desk,
                   lines: billed.lines,
-                  who: [for (final id in _services) if (desk.service(id) != null) _who[id]],
+                  who: [for (final line in billed.lines) line['staff_id'] as String?],
                   discount: _discount,
                   total: total,
                   paid: [('Paid from membership', fromCard)],
@@ -178,9 +198,9 @@ class _NewBillScreenState extends State<NewBillScreen> {
         ],
       ),
       bottomNavigationBar: BillBar(
-        count: _services.length,
+        count: _units,
         total: toCollect,
-        caption: fromCard <= 0 ? null : (toCollect <= 0 ? 'Paid by the membership card' : '${_services.length} service${_services.length == 1 ? '' : 's'} · to collect'),
+        caption: fromCard <= 0 ? null : (toCollect <= 0 ? 'Paid by the membership card' : '$_units service${_units == 1 ? '' : 's'} · to collect'),
         label: 'Save bill',
         icon: Icons.check,
         onPressed: _saving || _services.isEmpty ? null : () => _save(desk),

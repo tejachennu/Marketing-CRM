@@ -30,7 +30,7 @@ export type CounterAction =
   | { type: 'create_appointment'; customer: CustomerRef; service_ids: string[]; staff_id?: string | null; staff_ids?: (string | null)[]; starts_at: string; notes?: string | null; send_whatsapp?: boolean }
   | { type: 'set_status'; appointment_id: string; status: 'booked' | 'arrived' | 'in_service' | 'cancelled' | 'no_show' }
   | { type: 'complete_and_bill'; appointment_id: string; extra_service_ids?: string[]; staff_ids?: (string | null)[]; discount?: Discount | null; payment_method?: PaymentMethod | null; send_whatsapp?: boolean; membership_id?: string | null }
-  | { type: 'walk_in_bill'; customer: CustomerRef; service_ids: string[]; staff_id?: string | null; staff_ids?: (string | null)[]; discount?: Discount | null; payment_method?: PaymentMethod | null; send_whatsapp?: boolean; membership_id?: string | null }
+  | { type: 'walk_in_bill'; customer: CustomerRef; service_ids: string[]; quantities?: number[]; staff_id?: string | null; staff_ids?: (string | null)[]; discount?: Discount | null; payment_method?: PaymentMethod | null; send_whatsapp?: boolean; membership_id?: string | null }
   | { type: 'reschedule'; appointment_id: string; starts_at: string; staff_id?: string | null; send_whatsapp?: boolean }
   | { type: 'sell_membership'; customer: CustomerRef; plan_id: string; payment_method?: PaymentMethod | null; starts_at?: string | null; send_whatsapp?: boolean }
   | { type: 'approve_request'; appointment_id: string; starts_at?: string | null; send_whatsapp?: boolean }
@@ -73,6 +73,23 @@ function serviceIds(value: any): string[] {
   return [...new Set((Array.isArray(value) ? value : []).map(String).filter(isUuid))].slice(0, 20)
 }
 
+/** The most of one service on a bill (2 × Threading, 3 × Hair wash…). */
+export const MAX_QUANTITY = 99
+
+/**
+ * How many of each service, in the order of `ids` (the services after repeats are taken out). Read from the count
+ * sent at the same place as the service; missing or wrong = 1. Nothing sent (older apps) = undefined, all 1.
+ */
+export function serviceQuantities(rawIds: any, rawQuantities: any, ids: string[]): number[] | undefined {
+  if (!Array.isArray(rawQuantities) || !Array.isArray(rawIds)) return undefined
+  const sent = rawIds.map(String)
+  return ids.map((id) => {
+    const at = sent.indexOf(id)
+    const count = Math.round(Number(at >= 0 ? rawQuantities[at] : 1))
+    return Number.isFinite(count) ? Math.min(MAX_QUANTITY, Math.max(1, count)) : 1
+  })
+}
+
 /** Check an action sent by the counter. Returns the action, or what is wrong in words. */
 export function parseCounterAction(body: any): { action: CounterAction } | { error: string } {
   switch (body?.type) {
@@ -98,7 +115,7 @@ export function parseCounterAction(body: any): { action: CounterAction } | { err
       if ('error' in customer) return customer
       const ids = serviceIds(body.service_ids)
       if (!ids.length) return { error: 'Choose at least one service.' }
-      return { action: { type: 'walk_in_bill', customer, service_ids: ids, staff_id: isUuid(body.staff_id) ? body.staff_id : null, staff_ids: staffIds(body.staff_ids), discount: parseDiscount(body.discount), payment_method: parsePayment(body.payment_method), send_whatsapp: body.send_whatsapp !== false, membership_id: isUuid(body.membership_id) ? body.membership_id : null } }
+      return { action: { type: 'walk_in_bill', customer, service_ids: ids, quantities: serviceQuantities(body.service_ids, body.quantities, ids), staff_id: isUuid(body.staff_id) ? body.staff_id : null, staff_ids: staffIds(body.staff_ids), discount: parseDiscount(body.discount), payment_method: parsePayment(body.payment_method), send_whatsapp: body.send_whatsapp !== false, membership_id: isUuid(body.membership_id) ? body.membership_id : null } }
     }
     case 'reschedule': {
       if (!isUuid(body.appointment_id)) return { error: 'Choose an appointment.' }
@@ -250,7 +267,7 @@ function makeToken(): string {
 /** Issue a GST invoice with the next number. Retries if two counters bill at the same moment. */
 export async function issueInvoice(db: any, ctx: { organizationId: string; userId?: string | null; settings: any }, input: {
   customer: { contact_id: string | null; name: string; phone: string | null }
-  lines: { service_id: string | null; name: string; price: number; tax_rate: number; sac_code: string | null }[]
+  lines: { service_id: string | null; name: string; quantity?: number; price: number; tax_rate: number; sac_code: string | null }[]
   discount?: Discount | null
   payment_method?: PaymentMethod | null
   appointment_id?: string | null
@@ -397,9 +414,11 @@ export async function executeCounterAction(
         loadStaffMembers(db, organizationId, [action.staff_id, ...(action.staff_ids || [])]),
         resolveCustomer(db, organizationId, action.customer),
       ])
-      const services = assignStaff(loaded, action.staff_ids, action.staff_id, members)
+      // How many of each (2 × Threading): one line with its count, so the bill reads "2 × Threading ₹120"
+      const counted = loaded.map((service, index) => ({ ...service, quantity: action.quantities?.[index] || 1 }))
+      const services = assignStaff(counted, action.staff_ids, action.staff_id, members)
       const team = staffSummary(services)
-      const minutes = services.reduce((sum, service) => sum + service.duration_minutes, 0)
+      const minutes = services.reduce((sum, service) => sum + service.duration_minutes * service.quantity, 0)
       const startsAt = new Date(Date.now() - minutes * 60 * 1000).toISOString()
       const appointment = await checked(db.from('salon_appointments').insert({
         organization_id: organizationId, contact_id: customer.contact_id, customer_name: customer.name, customer_phone: customer.phone,

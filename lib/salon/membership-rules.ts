@@ -143,7 +143,7 @@ export function usableCard(card: Pick<Membership, 'status' | 'starts_at' | 'expi
 
 export const sessionsLeft = (card: Pick<Membership, 'sessions'>) => (card.sessions || []).reduce((sum, s) => sum + Math.max(0, s.total - s.used), 0)
 
-export interface BillLine { service_id: string | null; name: string; price: number; tax_rate: number; sac_code: string | null; [key: string]: any }
+export interface BillLine { service_id: string | null; name: string; price: number; tax_rate: number; sac_code: string | null; quantity?: number; [key: string]: any }
 
 export interface CardUse {
   lines: BillLine[]
@@ -162,22 +162,32 @@ export function applyCard(card: Pick<Membership, 'sessions' | 'plan'>, lines: Bi
   const used = new Map<string, { service_id: string; name: string; count: number }>()
   let discountSaved = 0
   let sessionsSaved = 0
-  const out = lines.map((line) => {
-    const free = line.service_id ? left.get(line.service_id) || 0 : 0
-    if (line.service_id && free > 0 && line.price > 0) {
-      left.set(line.service_id, free - 1)
-      const entry = used.get(line.service_id) || { service_id: line.service_id, name: line.name, count: 0 }
-      entry.count++
-      used.set(line.service_id, entry)
-      sessionsSaved += line.price
-      return { ...line, name: `${line.name} (membership)`, price: 0 }
+  // A line can be more than one (2 × Facial): as many as the card has sessions left are free, the rest are charged
+  const out = lines.flatMap((line) => {
+    const count = Math.max(1, Math.round(Number(line.quantity) || 1))
+    const remaining = line.service_id ? left.get(line.service_id) || 0 : 0
+    const free = line.service_id && line.price > 0 ? Math.min(count, remaining) : 0
+    const parts: BillLine[] = []
+    if (free > 0) {
+      left.set(line.service_id as string, remaining - free)
+      const entry = used.get(line.service_id as string) || { service_id: line.service_id as string, name: line.name, count: 0 }
+      entry.count += free
+      used.set(line.service_id as string, entry)
+      sessionsSaved += line.price * free
+      parts.push({ ...line, name: `${line.name} (membership)`, price: 0, ...(line.quantity !== undefined || free > 1 ? { quantity: free } : {}) })
     }
-    if (pct > 0 && line.service_id && line.price > 0) {
-      const price = Math.round(line.price * (1 - pct / 100) * 100) / 100
-      discountSaved += line.price - price
-      return { ...line, price }
+    const rest = count - free
+    if (rest > 0) {
+      const counted = free > 0 ? { ...line, quantity: rest } : line
+      if (pct > 0 && line.service_id && line.price > 0) {
+        const price = Math.round(line.price * (1 - pct / 100) * 100) / 100
+        discountSaved += (line.price - price) * rest
+        parts.push({ ...counted, price })
+      } else {
+        parts.push(counted)
+      }
     }
-    return line
+    return parts
   })
   return { lines: out, sessions: [...used.values()], discountSaved: Math.round(discountSaved * 100) / 100, sessionsSaved: Math.round(sessionsSaved * 100) / 100 }
 }

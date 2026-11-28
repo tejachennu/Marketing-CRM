@@ -88,7 +88,11 @@ export function computeInvoice(
   const lines: InvoiceLine[] = prepared.map(({ line, quantity, price, taxRate, base }) => {
     const share = subtotal > 0 ? discount * (base / subtotal) : 0
     const taxable = round2(base - share)
-    const tax = round2(taxable * taxRate / 100)
+    // Prices with GST in them: the line's total is the price itself (after any discount), and GST is what is left
+    // over the taxable amount. Rounding taxable and GST apart billed ₹600 as ₹599.99.
+    const tax = options.pricesIncludeTax
+      ? round2(Math.max(0, round2((base - share) * (1 + taxRate / 100)) - taxable))
+      : round2(taxable * taxRate / 100)
     return {
       service_id: line.service_id || null,
       name: String(line.name).trim(),

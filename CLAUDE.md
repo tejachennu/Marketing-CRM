@@ -118,6 +118,26 @@ Email: `HOSTINGER_SMTP_*`, `SENDGRID_*`. Other: `NEXT_PUBLIC_APP_URL`, `CRON_SEC
 
 ## What has been built (recent history, newest first)
 
+- **A count for each service on a new bill; New bill's Save button lined up; GST-inclusive bills add up exactly**
+  (owner, 28 Nov 2026, app New bill screenshot: "Alignment sariga ledu and count vundali ga prati product ki").
+  - Server: `walk_in_bill` takes `quantities` (same order as `service_ids`; `serviceQuantities` in `lib/salon/actions.ts`,
+    1–`MAX_QUANTITY` 99, wrong / missing = 1, older apps send none). One line per service with `quantity` (the invoice maths,
+    bill page, public API and expense reports already read it); the visit's length is minutes × count. Membership cards
+    (`applyCard`): as many free as the card has sessions left, the rest charged (a line can split into "(membership)" + paid;
+    sessions used and given back by the count). Team page (`computePerformance`): 3 × Threading = 3 services.
+  - **Prices with GST in them**: a line's total is now the price itself (after its discount share) and GST is what is left over
+    the taxable amount (`computeInvoice`); before, ₹600 at 18% billed as ₹599.99. Discounts unchanged (₹100 off ₹1,180 = ₹1,062).
+  - App: `ServicePicker` `counts` / `onCount` → a picked service shows "How many?" / "₹80 each" with a − / + `QtyStepper`
+    (40 px buttons) under the name, its price × count on the right; `lineCount` / `lineAmount` in `logic.dart` used by
+    `estimateLines`, `discountRoom`, the GST-inclusive estimate (same rounding as the server) and `applyMemberCard` (same
+    split); `BillSummary` and Who did it say "3 × Threading"; who did it rides on each line. **`BillBar`**: the button fills
+    the right half, against the right edge (≤260 wide; `Align(heightFactor: 1)`, else the bar takes the whole screen); it was
+    `Flexible` and left a gap on its right. Demo backend bills counts. Tests `test/bill_quantity_test.dart`.
+  - Web Quick bill: same − / + on picked services (`QtyStepper` in `counter-sheets.tsx`), receipt and Who did it show the
+    count, sends `quantities`. Booking checkout (bill after a visit) has no counts yet.
+  - Tests `tests/bill-quantity.test.cjs`. `mobile/test/attendance_test.dart` "Save 1 day" fails when tomorrow is the demo
+    shop's closed Sunday (not caused by this; it passes on weekdays).
+
 - **Fixes after the owner's own test of the websites; new customer bookings stand out; Google reviews** (owner, 26 Nov
   2026: "login ... something error page ... back kodithe login ayyi chupinchesindi", "front desk website nunchi booking
   chesthe ikkada raaledu", "UI improvements", "5 star review ... Google ki connect cheyagalama").

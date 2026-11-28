@@ -982,7 +982,7 @@ class DemoBackend implements Backend {
     List<Map<String, dynamic>> lines(List ids) => [for (final id in ids) Map<String, dynamic>.from(services.firstWhere((s) => s['id'] == id))];
     Map<String, dynamic> apptById(String id) => [..._appointments, ..._requests].firstWhere((a) => a['id'] == id, orElse: () => throw ApiException(404, 'That appointment is not there any more.'));
     Map<String, dynamic> bill(String name, String? phone, List<Map<String, dynamic>> items, String? method) {
-      final subtotal = items.fold<num>(0, (s, i) => s + (i['price'] as num));
+      final subtotal = items.fold<num>(0, (s, i) => s + (i['price'] as num) * ((i['quantity'] as num?) ?? 1));
       final d = action['discount'] as Map?;
       final off = d == null ? 0 : (d['type'] == 'amount' ? (d['value'] as num).clamp(0, subtotal) : subtotal * (d['value'] as num) / 100);
       final total = subtotal - off;
@@ -1004,7 +1004,12 @@ class DemoBackend implements Backend {
     switch (action['type']) {
       case 'walk_in_bill':
         final c = Map<String, dynamic>.from(action['customer'] ?? {});
-        final invoice = bill(c['name'] ?? 'Walk-in customer', c['phone'], lines(action['service_ids']), action['payment_method']);
+        // How many of each, as the server bills it (2 × Threading)
+        final counts = (action['quantities'] as List?) ?? const [];
+        final items = [
+          for (final (i, line) in lines(action['service_ids']).indexed) {...line, 'quantity': i < counts.length ? ((counts[i] as num).round().clamp(1, 99)) : 1},
+        ];
+        final invoice = bill(c['name'] ?? 'Walk-in customer', c['phone'], items, action['payment_method']);
         return {'success': true, 'invoice': invoice, 'message': 'Billed ${invoice['customer_name']}: ${formatRupees(invoice['total'])}'};
       case 'create_appointment':
         final c = Map<String, dynamic>.from(action['customer'] ?? {});

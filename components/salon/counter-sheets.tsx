@@ -7,7 +7,7 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Banknote, CalendarPlus, Check, Clock, Copy, CreditCard, ExternalLink, Loader2, MessageCircle, Plus, Receipt, RotateCcw, Search, Smartphone, UserRound, X } from 'lucide-react'
+import { Banknote, CalendarPlus, Check, Clock, Copy, CreditCard, ExternalLink, Loader2, MessageCircle, Minus, Plus, Receipt, RotateCcw, Search, Smartphone, UserRound, X } from 'lucide-react'
 import { awayBusy, busyFrom, counterSlots, describeHours, isClosedOn, type Busy } from '@/lib/salon/availability'
 import { holidayOn } from '@/lib/salon/holidays'
 import { isAwayStatus } from '@/lib/salon/attendance'
@@ -173,7 +173,26 @@ export function CustomerFields({ orgId, value, onChange, onRepeat, optional }: {
 // ── Services ─────────────────────────────────────────────────────────────────
 
 /** The service list as tappable rows, with a search box and categories once the list is long. */
-export function ServicePicker({ services, selected, onChange, order, forBill }: { services: Service[]; selected: string[]; onChange: (ids: string[]) => void; order?: string[]; forBill?: boolean }) {
+/** The most of one service on a bill (the server's MAX_QUANTITY). */
+const MAX_QUANTITY = 99
+
+/** A − count + control, 1 to 99. */
+function QtyStepper({ value, onChange, label }: { value: number; onChange: (next: number) => void; label: string }) {
+  const step = 'h-9 w-9 rounded-full flex items-center justify-center text-[#1D5BEA] dark:text-blue-300 hover:bg-[#eef3fe] dark:hover:bg-blue-950/40 cursor-pointer disabled:text-[#c0c8d8] disabled:hover:bg-transparent disabled:cursor-not-allowed'
+  return (
+    <span className="inline-flex items-center rounded-full border border-[#d5ddeb] dark:border-slate-600 bg-white dark:bg-slate-900">
+      <button type="button" aria-label={`One less ${label}`} disabled={value <= 1} onClick={() => onChange(value - 1)} className={step}><Minus size={17} strokeWidth={2.5} /></button>
+      <span aria-live="polite" aria-label={`${value} × ${label}`} className="w-7 text-center text-[15px] font-bold text-[#0E1B3D] dark:text-white tabular-nums">{value}</span>
+      <button type="button" aria-label={`One more ${label}`} disabled={value >= MAX_QUANTITY} onClick={() => onChange(value + 1)} className={step}><Plus size={17} strokeWidth={2.5} /></button>
+    </span>
+  )
+}
+
+/**
+ * Services by category, tap to add or remove. With `onCount` (a bill), a picked service also gets a − / + count:
+ * 2 × Threading.
+ */
+export function ServicePicker({ services, selected, onChange, order, forBill, counts, onCount }: { services: Service[]; selected: string[]; onChange: (ids: string[]) => void; order?: string[]; forBill?: boolean; counts?: Record<string, number>; onCount?: (id: string, count: number) => void }) {
   const [query, setQuery] = useState('')
   const [category, setCategory] = useState('All')
   const active = useMemo(() => services.filter((s) => s.active && (!forBill || s.billable !== false)), [services, forBill])
@@ -202,16 +221,26 @@ export function ServicePicker({ services, selected, onChange, order, forBill }: 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
         {shown.map((service) => {
           const on = selected.includes(service.id)
+          const counting = on && Boolean(onCount)
+          const count = counting ? Math.min(MAX_QUANTITY, Math.max(1, counts?.[service.id] || 1)) : 1
           return (
-            <button key={service.id} type="button" aria-pressed={on} onClick={() => onChange(on ? selected.filter((id) => id !== service.id) : [...selected, service.id])}
-              className={`min-h-[56px] rounded-xl border px-3 py-2 flex items-center gap-3 text-left cursor-pointer transition-colors ${on ? 'border-[#1D5BEA] bg-[#eef3fe] dark:bg-blue-950/40' : 'border-[#e3e8f2] dark:border-slate-700 hover:border-[#9db5ef] hover:bg-[#f8fafc] dark:hover:bg-slate-800/60'}`}>
-              <span className={`h-6 w-6 shrink-0 rounded-md border-2 flex items-center justify-center ${on ? 'bg-[#1D5BEA] border-[#1D5BEA] text-white' : 'border-[#c0c8d8] dark:border-slate-600'}`}>{on && <Check size={14} strokeWidth={3} />}</span>
-              <span className="min-w-0 flex-1">
-                <span className={`block text-[14.5px] font-semibold leading-snug break-words ${on ? 'text-[#1D5BEA] dark:text-blue-200' : 'text-[#0E1B3D] dark:text-white'}`}>{service.name}</span>
-                <span className="block text-[12.5px] text-[#6B7894] dark:text-slate-400">{service.duration_minutes} min{category === 'All' && categories.length > 2 ? ` · ${service.category || 'General'}` : ''}</span>
-              </span>
-              <span className="shrink-0 text-[14.5px] font-bold text-[#0E1B3D] dark:text-white">{formatRupees(Number(service.price))}</span>
-            </button>
+            <div key={service.id} className={`rounded-xl border transition-colors ${on ? 'border-[#1D5BEA] bg-[#eef3fe] dark:bg-blue-950/40' : 'border-[#e3e8f2] dark:border-slate-700 hover:border-[#9db5ef] hover:bg-[#f8fafc] dark:hover:bg-slate-800/60'}`}>
+              <button type="button" aria-pressed={on} onClick={() => onChange(on ? selected.filter((id) => id !== service.id) : [...selected, service.id])}
+                className="w-full min-h-[56px] px-3 py-2 flex items-center gap-3 text-left cursor-pointer">
+                <span className={`h-6 w-6 shrink-0 rounded-md border-2 flex items-center justify-center ${on ? 'bg-[#1D5BEA] border-[#1D5BEA] text-white' : 'border-[#c0c8d8] dark:border-slate-600'}`}>{on && <Check size={14} strokeWidth={3} />}</span>
+                <span className="min-w-0 flex-1">
+                  <span className={`block text-[14.5px] font-semibold leading-snug break-words ${on ? 'text-[#1D5BEA] dark:text-blue-200' : 'text-[#0E1B3D] dark:text-white'}`}>{service.name}</span>
+                  <span className="block text-[12.5px] text-[#6B7894] dark:text-slate-400">{service.duration_minutes} min{category === 'All' && categories.length > 2 ? ` · ${service.category || 'General'}` : ''}</span>
+                </span>
+                <span className="shrink-0 text-[14.5px] font-bold text-[#0E1B3D] dark:text-white">{formatRupees(Number(service.price) * count)}</span>
+              </button>
+              {counting && (
+                <div className="flex items-center justify-between gap-3 pl-12 pr-2 pb-2">
+                  <span className="text-[12.5px] text-[#6B7894] dark:text-slate-400">{count > 1 ? `${formatRupees(Number(service.price))} each` : 'How many?'}</span>
+                  <QtyStepper value={count} label={service.name} onChange={(next) => onCount?.(service.id, next)} />
+                </div>
+              )}
+            </div>
           )
         })}
       </div>
@@ -453,7 +482,7 @@ export function BookingSheet({ orgId, setup, draft, onClose, onBooked }: {
 
 // ── Bill ─────────────────────────────────────────────────────────────────────
 
-type Line = { key: string; service_id: string | null; name: string; price: number; tax_rate: number; sac_code: string | null; staff_id?: string | null }
+type Line = { key: string; service_id: string | null; name: string; quantity?: number; price: number; tax_rate: number; sac_code: string | null; staff_id?: string | null }
 
 export function BillSheet({ orgId, setup, target, onClose, onBilled }: {
   orgId: string
@@ -465,6 +494,8 @@ export function BillSheet({ orgId, setup, target, onClose, onBilled }: {
   const walkIn = target.kind === 'walkin'
   const [customer, setCustomer] = useState<CustomerValue>(walkIn ? target.customer || { contact_id: null, name: '', phone: '' } : { contact_id: target.appointment.contact_id, name: target.appointment.customer_name, phone: target.appointment.customer_phone || '' })
   const [serviceIds, setServiceIds] = useState<string[]>(walkIn ? target.service_ids || [] : [])
+  // How many of each walk-in service (missing = 1): 2 × Threading
+  const [counts, setCounts] = useState<Record<string, number>>({})
   const [extra, setExtra] = useState<string[]>([])
   const [addMore, setAddMore] = useState(false)
   const [discount, setDiscount] = useState<Discount | null>(null)
@@ -474,13 +505,13 @@ export function BillSheet({ orgId, setup, target, onClose, onBilled }: {
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
 
-  const fromList = (id: string, key: string): Line | null => {
+  const fromList = (id: string, key: string, quantity?: number): Line | null => {
     const s = setup.services.find((service) => service.id === id)
-    return s ? { key, service_id: s.id, name: s.name, price: Number(s.price), tax_rate: Number(s.tax_rate), sac_code: s.sac_code } : null
+    return s ? { key, service_id: s.id, name: s.name, ...(quantity ? { quantity } : {}), price: Number(s.price), tax_rate: Number(s.tax_rate), sac_code: s.sac_code } : null
   }
   // The lines in the order the server bills them, each with a key for "who did it"
   const lines: Line[] = walkIn
-    ? serviceIds.map((id) => fromList(id, `s:${id}`)).filter(Boolean) as Line[]
+    ? serviceIds.map((id) => fromList(id, `s:${id}`, counts[id] || 1)).filter(Boolean) as Line[]
     : [...target.appointment.services.map((s, index) => ({ ...s, key: `b${index}`, price: Number(s.price), tax_rate: Number(s.tax_rate), staff_id: s.staff_id || target.appointment.staff_id })), ...extra.map((id) => fromList(id, `e:${id}`)).filter(Boolean) as Line[]]
   const [lineStaff, setLineStaff] = useState<Record<string, string | null>>(() => Object.fromEntries(lines.map((line) => [line.key, line.staff_id || null])))
   const staffName = (id: string | null | undefined) => (id ? setup.staff.find((member) => member.id === id)?.name : undefined)
@@ -516,7 +547,7 @@ export function BillSheet({ orgId, setup, target, onClose, onBilled }: {
     try {
       const staff_ids = lines.map((line) => lineStaff[line.key] || null)
       const action = walkIn
-        ? { type: 'walk_in_bill', customer: { contact_id: customer.contact_id, name: customer.name.trim() || 'Walk-in customer', phone: phone || null }, service_ids: serviceIds, staff_ids, discount: appliedDiscount, payment_method: payment, send_whatsapp: sendWhatsApp, membership_id: cardId }
+        ? { type: 'walk_in_bill', customer: { contact_id: customer.contact_id, name: customer.name.trim() || 'Walk-in customer', phone: phone || null }, service_ids: serviceIds, quantities: serviceIds.map((id) => counts[id] || 1), staff_ids, discount: appliedDiscount, payment_method: payment, send_whatsapp: sendWhatsApp, membership_id: cardId }
         : { type: 'complete_and_bill', appointment_id: target.appointment.id, extra_service_ids: extra, staff_ids, discount: appliedDiscount, payment_method: payment, send_whatsapp: sendWhatsApp, membership_id: cardId }
       onBilled(await api('/api/salon/act', { method: 'POST', body: JSON.stringify({ organizationId: orgId, action }) }))
     } catch (err: any) {
@@ -533,7 +564,7 @@ export function BillSheet({ orgId, setup, target, onClose, onBilled }: {
         <ul className="space-y-2">
           {bill.lines.map((line, index) => (
             <li key={index} className="flex items-start justify-between gap-3 text-[14.5px]">
-              <span className="min-w-0"><span className="block text-[#0E1B3D] dark:text-white font-semibold break-words">{line.name}</span>{staffName(lineStaff[lines[index]?.key]) && <span className="block text-[12.5px] text-[#6B7894]">by {staffName(lineStaff[lines[index]?.key])}</span>}</span>
+              <span className="min-w-0"><span className="block text-[#0E1B3D] dark:text-white font-semibold break-words">{line.quantity > 1 ? `${line.quantity} × ` : ''}{line.name}</span>{staffName(lineStaff[billLines[index]?.key]) && <span className="block text-[12.5px] text-[#6B7894]">by {staffName(lineStaff[billLines[index]?.key])}</span>}</span>
               <span className="shrink-0 font-bold text-[#0E1B3D] dark:text-white">{formatRupees(line.price * line.quantity)}</span>
             </li>
           ))}
@@ -579,12 +610,12 @@ export function BillSheet({ orgId, setup, target, onClose, onBilled }: {
             <section className="space-y-2">
               <p className={sectionTitle}>Customer</p>
               <CustomerFields optional orgId={orgId} value={customer} onChange={setCustomer}
-                onRepeat={(ids, staff) => { const known = ids.filter((id) => setup.services.some((s) => s.id === id && s.active && s.billable !== false)); setServiceIds(known); setLineStaff(Object.fromEntries(known.map((id, i) => [`s:${id}`, staff[i] || null]))) }} />
+                onRepeat={(ids, staff) => { const known = ids.filter((id) => setup.services.some((s) => s.id === id && s.active && s.billable !== false)); setServiceIds(known); setCounts({}); setLineStaff(Object.fromEntries(known.map((id, i) => [`s:${id}`, staff[i] || null]))) }} />
             </section>
           )}
           <section className="space-y-2">
             <p className={sectionTitle}>Services</p>
-            {walkIn ? <ServicePicker forBill services={setup.services} order={setup.settings.service_categories} selected={serviceIds} onChange={setServiceIds} /> : (
+            {walkIn ? <ServicePicker forBill services={setup.services} order={setup.settings.service_categories} selected={serviceIds} onChange={(ids) => { setServiceIds(ids); setCounts((now) => Object.fromEntries(Object.entries(now).filter(([id]) => ids.includes(id)))) }} counts={counts} onCount={(id, count) => setCounts((now) => ({ ...now, [id]: count }))} /> : (
               <>
                 <div className="flex flex-wrap gap-1.5">
                   {target.appointment.services.map((s, i) => <span key={i} className="inline-flex items-center h-8 px-3 rounded-lg bg-[#f4f6fa] dark:bg-slate-800 text-[13.5px] font-semibold text-[#0E1B3D] dark:text-slate-200">{s.name}</span>)}
@@ -595,7 +626,7 @@ export function BillSheet({ orgId, setup, target, onClose, onBilled }: {
               </>
             )}
           </section>
-          <WhoDidIt setup={setup} lines={lines} value={lineStaff} onChange={setLineStaff} />
+          <WhoDidIt setup={setup} lines={lines.map((line) => ({ ...line, name: (line.quantity || 1) > 1 ? `${line.quantity} × ${line.name}` : line.name }))} value={lineStaff} onChange={setLineStaff} />
           <MembershipBox cards={cards} chosen={cardId} onChoose={setCardId} preview={cardUse ? { sessions: cardUse.sessions.reduce((n, s) => n + s.count, 0), discount: cardUse.discountSaved, credit: fromCard } : null} />
           <section className="space-y-2">
             <p className={sectionTitle}>Discount</p>

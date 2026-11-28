@@ -191,15 +191,22 @@ class _CustomerPickerState extends State<CustomerPicker> {
   }
 }
 
-/// Services by category, tap to add or remove.
+/// Services by category, tap to add or remove. With [onCount], a picked service also gets a − / + count (a bill:
+/// 2 × Threading).
 class ServicePicker extends StatefulWidget {
-  const ServicePicker({super.key, required this.desk, required this.selected, required this.onChanged, this.forBill = false});
+  const ServicePicker({super.key, required this.desk, required this.selected, required this.onChanged, this.forBill = false, this.counts = const {}, this.onCount});
   final FrontDesk desk;
   final List<String> selected;
   final ValueChanged<List<String>> onChanged;
 
   /// Leave out services set not to go on bills.
   final bool forBill;
+
+  /// How many of each picked service (missing = 1).
+  final Map<String, int> counts;
+
+  /// Shows the count on picked services and says when it changes.
+  final void Function(String serviceId, int count)? onCount;
   @override
   State<ServicePicker> createState() => _ServicePickerState();
 }
@@ -270,37 +277,97 @@ class _ServicePickerState extends State<ServicePicker> {
   }
 
   Widget _row(Map<String, dynamic> s) {
-    final on = widget.selected.contains(s['id']);
+    final id = '${s['id']}';
+    final on = widget.selected.contains(id);
+    final counting = on && widget.onCount != null;
+    final count = counting ? (widget.counts[id] ?? 1).clamp(1, maxQuantity).toInt() : 1;
+    final price = num.tryParse('${s['price']}') ?? 0;
     return InkWell(
-      onTap: () => widget.onChanged(on ? (widget.selected.toList()..remove(s['id'])) : [...widget.selected, '${s['id']}']),
+      onTap: () => widget.onChanged(on ? (widget.selected.toList()..remove(id)) : [...widget.selected, id]),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-        child: Row(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            AnimatedContainer(
-              duration: const Duration(milliseconds: 150),
-              width: 24,
-              height: 24,
-              decoration: BoxDecoration(
-                color: on ? Brand.blue : Colors.white,
-                borderRadius: BorderRadius.circular(7),
-                border: Border.all(color: on ? Brand.blue : Brand.border, width: 1.5),
-              ),
-              child: on ? const Icon(Icons.check, size: 16, color: Colors.white) : null,
+            Row(
+              children: [
+                AnimatedContainer(
+                  duration: const Duration(milliseconds: 150),
+                  width: 24,
+                  height: 24,
+                  decoration: BoxDecoration(
+                    color: on ? Brand.blue : Colors.white,
+                    borderRadius: BorderRadius.circular(7),
+                    border: Border.all(color: on ? Brand.blue : Brand.border, width: 1.5),
+                  ),
+                  child: on ? const Icon(Icons.check, size: 16, color: Colors.white) : null,
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('${s['name']}', style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
+                      Text('${s['duration_minutes']} min${_category == 'All' ? ' · ${s['category'] ?? 'General'}' : ''}', style: const TextStyle(fontSize: 12.5, color: Brand.muted)),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Text(formatRupees(price * count), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
+              ],
             ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('${s['name']}', style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
-                  Text('${s['duration_minutes']} min${_category == 'All' ? ' · ${s['category'] ?? 'General'}' : ''}', style: const TextStyle(fontSize: 12.5, color: Brand.muted)),
-                ],
+            // Picked on a bill: how many, under the name and lined up with the price
+            if (counting)
+              Padding(
+                padding: const EdgeInsets.only(left: 36, top: 8),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(count > 1 ? '${formatRupees(price)} each' : 'How many?', style: const TextStyle(fontSize: 12.5, color: Brand.muted)),
+                    ),
+                    QtyStepper(value: count, label: '${s['name']}', onChanged: (n) => widget.onCount!(id, n)),
+                  ],
+                ),
               ),
-            ),
-            Text(formatRupees(s['price']), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// A − count + control (1 to [maxQuantity]). [label] names the thing for screen readers.
+class QtyStepper extends StatelessWidget {
+  const QtyStepper({super.key, required this.value, required this.onChanged, this.label = ''});
+  final int value;
+  final String label;
+  final ValueChanged<int> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    Widget button(IconData icon, String tip, int next, bool enabled) => Semantics(
+      button: true,
+      enabled: enabled,
+      label: '$tip${label.isEmpty ? '' : ' $label'}',
+      child: InkWell(
+        customBorder: const CircleBorder(),
+        onTap: enabled ? () => onChanged(next) : null,
+        child: SizedBox(width: 40, height: 40, child: Icon(icon, size: 20, color: enabled ? Brand.blue : Brand.border)),
+      ),
+    );
+    return Container(
+      height: 40,
+      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20), border: Border.all(color: Brand.border)),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          button(Icons.remove, 'One less', value - 1, value > 1),
+          SizedBox(
+            width: 30,
+            child: Text('$value', textAlign: TextAlign.center, semanticsLabel: '$value${label.isEmpty ? '' : ' × $label'}', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+          ),
+          button(Icons.add, 'One more', value + 1, value < maxQuantity),
+        ],
       ),
     );
   }
@@ -351,11 +418,14 @@ class FormSection extends StatelessWidget {
 /// Who did each service. One service: one row of names. More: a row per service, with only the
 /// people who do that service. Tapping a name for one service fills it for the others they do.
 class WhoDidIt extends StatelessWidget {
-  const WhoDidIt({super.key, required this.desk, required this.serviceIds, required this.value, required this.onChanged});
+  const WhoDidIt({super.key, required this.desk, required this.serviceIds, required this.value, required this.onChanged, this.counts = const {}});
   final FrontDesk desk;
   final List<String> serviceIds;
   final Map<String, String?> value;
   final ValueChanged<Map<String, String?>> onChanged;
+
+  /// How many of each service (shown as "2 × Threading").
+  final Map<String, int> counts;
 
   bool _does(Map<String, dynamic> member, String serviceId) {
     final ids = (member['service_ids'] as List? ?? const []);
@@ -385,7 +455,12 @@ class WhoDidIt extends StatelessWidget {
           if (i > 0) const Divider(height: 16),
           Row(
             children: [
-              Expanded(child: Text('${desk.service(serviceIds[i])?['name'] ?? 'Service'}', style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w600))),
+              Expanded(
+                child: Text(
+                  '${(counts[serviceIds[i]] ?? 1) > 1 ? '${counts[serviceIds[i]]} × ' : ''}${desk.service(serviceIds[i])?['name'] ?? 'Service'}',
+                  style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w600),
+                ),
+              ),
               const SizedBox(width: 8),
               PersonPill(
                 desk: desk,

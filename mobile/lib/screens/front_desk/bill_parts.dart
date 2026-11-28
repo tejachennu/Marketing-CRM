@@ -114,7 +114,7 @@ class BillSummary extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final subtotal = lines.fold<num>(0, (t, s) => t + (num.tryParse('${s['price'] ?? 0}') ?? 0));
+    final subtotal = lines.fold<num>(0, (t, s) => t + lineAmount(s));
     final included = desk.hasGst && desk.pricesIncludeTax;
     final asked = discount == null ? 0 : (discount!['type'] == 1 ? discount!['value']! : subtotal * discount!['value']! / 100);
     // Prices with GST in them: the discount comes off before GST, so the bill drops by the discount and its GST
@@ -157,12 +157,12 @@ class BillSummary extends StatelessWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text('${lines[i]['name'] ?? 'Service'}', style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w600)),
+                        Text('${lineCount(lines[i]) > 1 ? '${lineCount(lines[i])} × ' : ''}${lines[i]['name'] ?? 'Service'}', style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w600)),
                         if (i < who.length && who[i] != null) Text('by ${desk.staffName(who[i])}', style: const TextStyle(fontSize: 12.5, color: Brand.muted)),
                       ],
                     ),
                   ),
-                  Text(formatRupees(lines[i]['price']), style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w600)),
+                  Text(formatRupees(lineAmount(lines[i])), style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w600)),
                 ],
               ),
             ),
@@ -232,14 +232,26 @@ class BillBar extends StatelessWidget {
               ],
             ),
           ),
-          const SizedBox(width: 10),
-          // Shrinks its words on small phones or with large text, never pushing past the edge
-          Flexible(
-            child: FilledButton.icon(
-              style: FilledButton.styleFrom(minimumSize: const Size(0, 52), padding: const EdgeInsets.symmetric(horizontal: 18), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14))),
-              onPressed: onPressed,
-              icon: Icon(icon),
-              label: FittedBox(fit: BoxFit.scaleDown, child: Text(label, style: const TextStyle(fontSize: 16))),
+          const SizedBox(width: 12),
+          // The right half, the button against the right edge (up to 260 wide on big screens). Its words shrink on
+          // small phones or with large text, never pushing past the edge.
+          Expanded(
+            child: Align(
+              alignment: Alignment.centerRight,
+              // As tall as the button (without it the bar would take the whole screen's height)
+              heightFactor: 1,
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 260),
+                child: SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.icon(
+                    style: FilledButton.styleFrom(minimumSize: const Size(0, 52), padding: const EdgeInsets.symmetric(horizontal: 16), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14))),
+                    onPressed: onPressed,
+                    icon: Icon(icon),
+                    label: FittedBox(fit: BoxFit.scaleDown, child: Text(label, style: const TextStyle(fontSize: 16))),
+                  ),
+                ),
+              ),
             ),
           ),
         ],

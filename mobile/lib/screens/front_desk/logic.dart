@@ -72,18 +72,18 @@ class FrontDesk {
 
   /// The same, for lines already on a visit (each with its own price and GST rate).
   num estimateLines(List<Map<String, dynamic>> items, {num discountPercent = 0, num discountAmount = 0}) {
-    final subtotal = items.fold<num>(0, (sum, s) => sum + (num.tryParse('${s['price']}') ?? 0));
+    final subtotal = items.fold<num>(0, (sum, s) => sum + lineAmount(s));
     if (hasGst && pricesIncludeTax) return _includedGstTotal(items, discountPercent: discountPercent, discountAmount: discountAmount);
     final discount = discountPercent > 0 ? subtotal * discountPercent / 100 : discountAmount.clamp(0, subtotal);
     final taxable = subtotal - discount;
     if (!hasGst || subtotal == 0) return taxable;
-    final tax = items.fold<num>(0, (sum, s) => sum + (num.tryParse('${s['price']}') ?? 0) * (taxable / subtotal) * (num.tryParse('${s['tax_rate']}') ?? 0) / 100);
+    final tax = items.fold<num>(0, (sum, s) => sum + lineAmount(s) * (taxable / subtotal) * (num.tryParse('${s['tax_rate']}') ?? 0) / 100);
     return ((taxable + tax) * 100).round() / 100;
   }
 
   /// The most a rupee discount can take off these lines: their prices before GST (the server never takes off more).
   num discountRoom(List<Map<String, dynamic>> items) => items.fold<num>(0, (sum, s) {
-    final price = num.tryParse('${s['price']}') ?? 0;
+    final price = lineAmount(s);
     final rate = (num.tryParse('${s['tax_rate']}') ?? 0).clamp(0, 28);
     return sum + (hasGst && pricesIncludeTax ? ((price / (1 + rate / 100)) * 100).floor() / 100 : price);
   });
@@ -94,14 +94,14 @@ class FrontDesk {
   num _includedGstTotal(List<Map<String, dynamic>> items, {num discountPercent = 0, num discountAmount = 0}) {
     num round2(num v) => (v * 100).round() / 100;
     num rate(Map s) => (num.tryParse('${s['tax_rate']}') ?? 0).clamp(0, 28);
-    final bases = [for (final s in items) (num.tryParse('${s['price']}') ?? 0) / (1 + rate(s) / 100)];
+    final bases = [for (final s in items) lineAmount(s) / (1 + rate(s) / 100)];
     final base = bases.fold<num>(0, (sum, b) => sum + b);
     final discount = discountPercent > 0 ? base * discountPercent.clamp(0, 100) / 100 : discountAmount.clamp(0, base);
     num total = 0;
+    // Each line's total is its price (less its share of the discount) with GST in it, as the server rounds it
     for (var i = 0; i < items.length; i++) {
       final share = base > 0 ? discount * bases[i] / base : 0;
-      final taxable = round2(bases[i] - share);
-      total += taxable + round2(taxable * rate(items[i]) / 100);
+      total += round2((bases[i] - share) * (1 + rate(items[i]) / 100));
     }
     return round2(total);
   }
@@ -311,6 +311,18 @@ const statusLabels = {
 
 const paymentLabels = {'cash': 'Cash', 'upi': 'UPI', 'card': 'Card', 'online': 'Online', 'membership': 'Membership'};
 
+/// The most of one service on a bill (the server's MAX_QUANTITY).
+const maxQuantity = 99;
+
+/// How many of a service a bill line is (2 × Threading); 1 when not said.
+int lineCount(Map line) {
+  final n = num.tryParse('${line['quantity'] ?? ''}');
+  return n == null ? 1 : n.round().clamp(1, maxQuantity).toInt();
+}
+
+/// A line's price for all of them: price × how many.
+num lineAmount(Map line) => (num.tryParse('${line['price'] ?? ''}') ?? 0) * lineCount(line);
+
 /// What a membership card does to a bill's lines, as the server does it (applyCard): a service it has free sessions
 /// left for costs nothing, then the card's discount comes off the rest. Its credit is used later, on the total.
 ({List<Map<String, dynamic>> lines, int free, num discount}) applyMemberCard(Map card, List<Map<String, dynamic>> lines) {
@@ -322,19 +334,26 @@ const paymentLabels = {'cash': 'Cash', 'upi': 'UPI', 'card': 'Card', 'online': '
   var free = 0;
   num discount = 0;
   final out = <Map<String, dynamic>>[];
+  // A line can be more than one (2 × Facial): as many as the card has sessions left are free, the rest are charged
   for (final line in lines) {
     final id = '${line['service_id'] ?? line['id'] ?? ''}';
     final price = n(line['price']);
-    if (id.isNotEmpty && (left[id] ?? 0) > 0 && price > 0) {
-      left[id] = left[id]! - 1;
-      free++;
-      out.add({...line, 'name': '${line['name']} (membership)', 'price': 0});
-    } else if (pct > 0 && id.isNotEmpty && price > 0) {
+    final count = lineCount(line);
+    final take = id.isNotEmpty && price > 0 ? count.clamp(0, (left[id] ?? 0).toInt()).toInt() : 0;
+    if (take > 0) {
+      left[id] = left[id]! - take;
+      free += take;
+      out.add({...line, 'name': '${line['name']} (membership)', 'price': 0, if (line.containsKey('quantity') || take > 1) 'quantity': take});
+    }
+    final rest = count - take;
+    if (rest <= 0) continue;
+    final counted = take > 0 ? {...line, 'quantity': rest} : line;
+    if (pct > 0 && id.isNotEmpty && price > 0) {
       final cut = (price * (1 - pct / 100) * 100).round() / 100;
-      discount += price - cut;
-      out.add({...line, 'price': cut});
+      discount += (price - cut) * rest;
+      out.add({...counted, 'price': cut});
     } else {
-      out.add(line);
+      out.add(counted);
     }
   }
   return (lines: out, free: free, discount: (discount * 100).round() / 100);

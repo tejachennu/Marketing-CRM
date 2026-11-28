@@ -5,7 +5,7 @@
  */
 
 export interface PerformanceStaff { id: string; name: string; commission_percent?: number | string | null; active?: boolean }
-export interface PerformanceInvoice { id: string; status: string; issued_at: string; staff_name?: string | null; items: { name: string; taxable?: number | string; staff_id?: string | null; staff_name?: string | null }[] }
+export interface PerformanceInvoice { id: string; status: string; issued_at: string; staff_name?: string | null; items: { name: string; quantity?: number | string; taxable?: number | string; staff_id?: string | null; staff_name?: string | null }[] }
 /** staff_ratings: the form's rating for each person, by staff id (or "name:<name>"). Without it, the visit's rating counts for everyone on it. */
 export interface PerformanceFeedback { rating: number; staff_ids?: string[] | null; staff_names?: string[] | null; staff_ratings?: Record<string, number> | null; created_at: string }
 
@@ -69,10 +69,12 @@ export function computePerformance(invoices: PerformanceInvoice[], feedback: Per
     for (const line of invoice.items || []) {
       const member = (line.staff_id && byId.get(line.staff_id)) || (line.staff_name && byName.get(line.staff_name.trim().toLowerCase())) || (!line.staff_name && !line.staff_id && visitNames.length === 1 ? byName.get(visitNames[0].toLowerCase()) : undefined) || null
       const row = rowFor(member, line.staff_name || (visitNames.length === 1 ? visitNames[0] : ''))
-      row.services += 1
+      // 3 × Threading is three services done (its taxable amount is already for all three)
+      const count = Math.max(1, Math.round(Number(line.quantity) || 1))
+      row.services += count
       row.revenue += Number(line.taxable) || 0
       row._visits.add(invoice.id)
-      row._services.set(line.name, (row._services.get(line.name) || 0) + 1)
+      row._services.set(line.name, (row._services.get(line.name) || 0) + count)
     }
   }
   for (const entry of feedback) {
