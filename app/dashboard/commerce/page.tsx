@@ -122,7 +122,7 @@ export default function CommercePage() {
     return (
       <div className="h-full flex items-center justify-center bg-slate-50 dark:bg-[#0b141a]">
         <div className="flex items-center gap-2.5 text-sm font-medium text-slate-600 dark:text-slate-300">
-          <Loader2 className="w-5 h-5 animate-spin text-[#1D5BEA]" />
+          <Loader2 className="w-5 h-5 animate-spin text-[#008069]" />
           Loading your store…
         </div>
       </div>
@@ -130,7 +130,7 @@ export default function CommercePage() {
   }
 
   const setupSteps = [
-    { done: setup.whatsappConnected, label: 'Connect WhatsApp', detail: 'Needed to receive orders and message customers.', action: <Link href="/dashboard/settings" className="font-semibold text-[#174bc4] dark:text-[#5f86ee] hover:underline">Open Settings</Link> },
+    { done: setup.whatsappConnected, label: 'Connect WhatsApp', detail: 'Needed to receive orders and message customers.', action: <Link href="/dashboard/settings" className="font-semibold text-[#006d5b] dark:text-[#00a884] hover:underline">Open Settings</Link> },
     { done: setup.catalogLinked, label: 'Link your Meta catalog', detail: 'Lets customers add products to a cart in WhatsApp.', action: null },
     { done: setup.paymentGateway || setup.cashOnDelivery, label: 'Choose how customers pay', detail: 'An in-chat payment gateway, Cash on Delivery, or both.', action: null },
     { done: setup.addressFlow, label: 'Collect delivery addresses (optional)', detail: 'Sends an address form after each order.', action: null },
@@ -157,7 +157,7 @@ export default function CommercePage() {
         {/* The tabs sit on their own row: next to the title, Website, Order flow and Store settings were cut off */}
         <div className="flex flex-col gap-4">
           <div className="flex items-center gap-3">
-            <div className="h-11 w-11 shrink-0 rounded-2xl bg-[#1D5BEA] flex items-center justify-center text-white shadow-sm">
+            <div className="h-11 w-11 shrink-0 rounded-2xl bg-[#008069] flex items-center justify-center text-white shadow-sm">
               <ShoppingBag size={20} />
             </div>
             <div>
@@ -176,7 +176,7 @@ export default function CommercePage() {
                 aria-selected={activeTab === id}
                 onClick={() => setActiveTab(id)}
                 className={`shrink-0 inline-flex items-center gap-1.5 h-9 px-3.5 rounded-lg text-xs font-bold whitespace-nowrap transition-colors cursor-pointer ${
-                  activeTab === id ? 'bg-[#1D5BEA] text-white shadow-sm' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800'
+                  activeTab === id ? 'bg-[#008069] text-white shadow-sm' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800'
                 }`}
               >
                 <Icon size={14} />
@@ -227,7 +227,7 @@ export default function CommercePage() {
             <ul className="grid grid-cols-1 md:grid-cols-2 gap-2">
               {setupSteps.map((step) => (
                 <li key={step.label} className="flex items-start gap-2.5 p-2.5 rounded-xl bg-slate-50 dark:bg-slate-900/60">
-                  {step.done ? <CheckCircle2 size={18} className="shrink-0 mt-px text-[#1D5BEA]" /> : <Circle size={18} className="shrink-0 mt-px text-slate-300 dark:text-slate-600" />}
+                  {step.done ? <CheckCircle2 size={18} className="shrink-0 mt-px text-[#008069]" /> : <Circle size={18} className="shrink-0 mt-px text-slate-300 dark:text-slate-600" />}
                   <div className="min-w-0 text-xs">
                     <p className={`font-semibold ${step.done ? 'text-slate-500 dark:text-slate-400 line-through decoration-slate-300' : 'text-slate-900 dark:text-white'}`}>{step.label}</p>
                     {!step.done && (
@@ -251,7 +251,7 @@ export default function CommercePage() {
             value={summary ? formatMoney(revenue[0]?.amount || 0, revenue[0]?.currency || currency) : '—'}
             note={revenue.length > 1 ? `Also ${revenue.slice(1).map((item) => formatMoney(item.amount, item.currency)).join(', ')}` : 'Paid orders, excluding canceled'}
             icon={Wallet}
-            tone="text-[#1D5BEA]"
+            tone="text-[#008069]"
           />
           <Metric label="Orders" value={summary ? summary.total.toLocaleString('en-IN') : '—'} note="WhatsApp, shop and phone orders" icon={Package} />
           <Metric label="Awaiting customer" value={summary ? summary.awaiting.toLocaleString('en-IN') : '—'} note="Address or payment not completed" icon={Clock} />
@@ -292,7 +292,7 @@ export default function CommercePage() {
         {/* Phones: the bottom bar has no room for Reports, Reviews, Offers and Website, so they open from the Store tab */}
         {activeTab === 'settings' && (
           <button type="button" onClick={() => setActiveTab('reports')} className={`${cardClass} md:hidden w-full p-4 flex items-center gap-3 text-left cursor-pointer`}>
-            <BarChart3 size={20} className="text-[#1D5BEA] shrink-0" />
+            <BarChart3 size={20} className="text-[#008069] shrink-0" />
             <span className="flex-1 min-w-0">
               <span className="block text-sm font-bold text-slate-900 dark:text-white">Shop reports</span>
               <span className="block text-xs text-slate-500">Visits, sales, what sells, carts left, best customers</span>
@@ -302,7 +302,7 @@ export default function CommercePage() {
         )}
         {activeTab === 'settings' && (
           <button type="button" onClick={() => setActiveTab('reviews')} className={`${cardClass} md:hidden w-full p-4 flex items-center gap-3 text-left cursor-pointer`}>
-            <Star size={20} className="text-[#1D5BEA] shrink-0" />
+            <Star size={20} className="text-[#008069] shrink-0" />
             <span className="flex-1 min-w-0">
               <span className="block text-sm font-bold text-slate-900 dark:text-white">Customer reviews</span>
               <span className="block text-xs text-slate-500">Stars, words and photos from your customers</span>
@@ -312,7 +312,7 @@ export default function CommercePage() {
         )}
         {activeTab === 'settings' && canManageStore && (
           <button type="button" onClick={() => setActiveTab('offers')} className={`${cardClass} md:hidden w-full p-4 flex items-center gap-3 text-left cursor-pointer`}>
-            <BadgePercent size={20} className="text-[#1D5BEA] shrink-0" />
+            <BadgePercent size={20} className="text-[#008069] shrink-0" />
             <span className="flex-1 min-w-0">
               <span className="block text-sm font-bold text-slate-900 dark:text-white">Offers and discount codes</span>
               <span className="block text-xs text-slate-500">DIWALI10, free delivery above ₹999, buy 2 get 1</span>
@@ -322,7 +322,7 @@ export default function CommercePage() {
         )}
         {activeTab === 'settings' && canManageStore && (
           <button type="button" onClick={() => setActiveTab('website')} className={`${cardClass} md:hidden w-full p-4 flex items-center gap-3 text-left cursor-pointer`}>
-            <Globe size={20} className="text-[#1D5BEA] shrink-0" />
+            <Globe size={20} className="text-[#008069] shrink-0" />
             <span className="flex-1 min-w-0">
               <span className="block text-sm font-bold text-slate-900 dark:text-white">Online store website</span>
               <span className="block text-xs text-slate-500">Banners, categories, ordering from your own shop page</span>
@@ -356,7 +356,7 @@ export default function CommercePage() {
             toast.kind === 'error' ? 'bg-[#b91c1c] text-white' : 'bg-[#0E1B3D] text-white dark:bg-white dark:text-slate-900'
           }`}
         >
-          {toast.kind === 'error' ? <AlertCircle size={16} className="shrink-0 mt-px" /> : <CheckCircle2 size={16} className="shrink-0 mt-px text-[#5f86ee] dark:text-[#1D5BEA]" />}
+          {toast.kind === 'error' ? <AlertCircle size={16} className="shrink-0 mt-px" /> : <CheckCircle2 size={16} className="shrink-0 mt-px text-[#00a884] dark:text-[#008069]" />}
           <span className="flex-1 leading-relaxed">{toast.text}</span>
           <button type="button" aria-label="Dismiss" onClick={() => setToast(null)} className="p-0.5 rounded hover:bg-white/15 dark:hover:bg-slate-900/10 cursor-pointer">
             <X size={14} />

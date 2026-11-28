@@ -4,8 +4,8 @@ import { useState } from 'react'
 import { Check, Printer, Share2, Star } from 'lucide-react'
 
 // Phones: three equal tiles (icon over a short label). Wider screens: normal buttons in a row.
-const base = 'inline-flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-2 h-14 sm:h-11 px-2 sm:px-5 rounded-xl text-[12.5px] sm:text-[14.5px] font-semibold whitespace-nowrap cursor-pointer transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#1D5BEA]'
-const primary = `${base} bg-[#1D5BEA] hover:bg-[#174bc4] text-white`
+const base = 'inline-flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-2 h-14 sm:h-11 px-2 sm:px-5 rounded-xl text-[12.5px] sm:text-[14.5px] font-semibold whitespace-nowrap cursor-pointer transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#008069]'
+const primary = `${base} bg-[#008069] hover:bg-[#006d5b] text-white`
 const secondary = `${base} border border-[#d5ddeb] bg-white text-[#0E1B3D] hover:bg-[#f4f6fa]`
 
 export function PrintButton() {

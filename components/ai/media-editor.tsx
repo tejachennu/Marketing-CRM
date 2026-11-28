@@ -11,7 +11,7 @@ import { MAX_MEDIA, MEDIA_LABELS, mediaTypeOf, type KnowledgeMedia } from '@/lib
 import { uploadKnowledgeFile } from './knowledge-upload'
 
 const ICONS = { image: ImageIcon, video: Video, document: FileText, link: Link2 }
-const input = 'min-w-0 flex-1 px-3 py-2 bg-white dark:bg-[#1f2c34] border border-[#d5ddeb] dark:border-[#2a3942] rounded-lg text-[13px] text-[#0E1B3D] dark:text-white placeholder:text-[#8a94a8] focus:outline-none focus:border-[#1D5BEA]'
+const input = 'min-w-0 flex-1 px-3 py-2 bg-white dark:bg-[#1f2c34] border border-[#d5ddeb] dark:border-[#2a3942] rounded-lg text-[13px] text-[#0E1B3D] dark:text-white placeholder:text-[#8a94a8] focus:outline-none focus:border-[#008069]'
 const plain = 'inline-flex items-center justify-center gap-1.5 h-8 px-3 rounded-lg border border-[#d5ddeb] dark:border-[#2a3942] bg-white dark:bg-[#1f2c34] hover:bg-[#f4f6fa] text-[#4a5672] dark:text-white text-xs font-bold disabled:opacity-50'
 
 export function MediaEditor({ organizationId, value, onChange }: { organizationId: string; value: KnowledgeMedia[]; onChange: (next: KnowledgeMedia[]) => void }) {
@@ -59,7 +59,7 @@ export function MediaEditor({ organizationId, value, onChange }: { organizationI
             const Icon = ICONS[m.type]
             return (
               <li key={m.url} className="inline-flex items-center gap-1.5 max-w-full rounded-lg border border-[#d5ddeb] dark:border-[#2a3942] bg-[#f4f6fa] dark:bg-[#1f2c34] pl-2 pr-1 py-1 text-[12px] text-[#0E1B3D] dark:text-white">
-                <Icon size={13} className="shrink-0 text-[#1D5BEA]" aria-hidden />
+                <Icon size={13} className="shrink-0 text-[#008069]" aria-hidden />
                 <span className="shrink-0 text-[#6B7894]">{MEDIA_LABELS[m.type]}:</span>
                 <a href={m.url} target="_blank" rel="noopener noreferrer" className="truncate max-w-[180px] sm:max-w-[260px] hover:underline">{m.name || m.url}</a>
                 <button type="button" aria-label={`Remove ${m.name || MEDIA_LABELS[m.type]}`} onClick={() => onChange(value.filter((_, j) => j !== i))} className="p-0.5 rounded text-[#6B7894] hover:text-[#b91c1c]"><X size={13} /></button>
@@ -73,7 +73,7 @@ export function MediaEditor({ organizationId, value, onChange }: { organizationI
           <input aria-label="Link address" className={input} placeholder="https://yourshop.com/book" value={link.url} onChange={(e) => setLink({ ...link, url: e.target.value })} />
           <input aria-label="Link words" className={input} placeholder="Words, like Book online" value={link.name} onChange={(e) => setLink({ ...link, name: e.target.value })} />
           <div className="flex gap-2">
-            <button type="button" className="inline-flex items-center h-8 px-3 rounded-lg bg-[#1D5BEA] hover:bg-[#174bc4] text-white text-xs font-bold" onClick={addLink}>Add link</button>
+            <button type="button" className="inline-flex items-center h-8 px-3 rounded-lg bg-[#008069] hover:bg-[#006d5b] text-white text-xs font-bold" onClick={addLink}>Add link</button>
             <button type="button" className={plain} onClick={() => { setLinkOpen(false); setError('') }}>Cancel</button>
           </div>
         </div>

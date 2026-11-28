@@ -3,7 +3,8 @@
  * analytics we can 999 ... if they connected Meta our plans will come ... be secure"). Starter (₹300 since 25 Nov 2026; was ₹999) is Front Desk or E-commerce
  * without the business's own WhatsApp: bookings, bills, GST invoices and reports. Everything that needs the business's
  * own WhatsApp (Meta) — the inbox, tickets, templates, campaigns, flows, Instagram, the AI that answers chats — and the
- * other connectors come with Growth and Pro. The pages already hide these; this makes the server refuse them too, for
+ * other connectors come with Business (₹999) and up; Instagram and the business's own website with Growth (₹1,499) and
+ * up (owner, 28 Nov 2026). The pages already hide these; this makes the server refuse them too, for
  * every caller (website, app, or anyone calling the address directly).
  */
 import type { ConnectorKey } from './connectors'
@@ -13,7 +14,10 @@ import { planAllows, upgradeMessage, type PlanFeature, type PlanLimits } from '.
 const FEATURE_PATHS: [string, PlanFeature][] = [
   ['/api/conversations', 'inbox'],
   ['/api/messages', 'inbox'],
-  ['/api/instagram', 'inbox'],
+  // Instagram and the business's own website (its settings, own domain and online payments) come with Growth
+  ['/api/instagram', 'instagram'],
+  ['/api/salon/website', 'website'],
+  ['/api/commerce/storefront', 'website'],
   ['/api/whatsapp', 'inbox'],
   ['/api/commerce/catalog', 'inbox'],
   ['/api/commerce/meta-detect', 'inbox'],
@@ -62,12 +66,12 @@ export function planRefusal(limits: PlanLimits, path: string): string | null {
   if (feature && !planAllows(limits, feature)) return upgradeMessage(feature)
   const connector = connectorForPath(path)
   if (connector && limits.connectorKeys.length && !limits.connectorKeys.includes(connector)) {
-    return `Your plan includes ${limits.connectorKeys.map((k) => CONNECTOR_NAMES[k]).join(' and ')} only. Upgrade to Growth or Pro in Billing to use ${CONNECTOR_NAMES[connector]}.`
+    return `Your plan includes ${limits.connectorKeys.map((k) => CONNECTOR_NAMES[k]).join(' and ')} only. Upgrade to Business or a bigger plan in Billing to use ${CONNECTOR_NAMES[connector]}.`
   }
   return null
 }
 
-/** WhatsApp sender settings: saving any of them (not clearing) connects a number, which needs Growth or Pro */
+/** WhatsApp sender settings: saving any of them (not clearing) connects a number, which needs Business or bigger */
 export const SENDER_FIELDS = ['whatsapp_api_token', 'whatsapp_phone_number_id', 'whatsapp_business_account_id', 'twilio_account_sid', 'twilio_auth_token', 'twilio_whatsapp_number'] as const
 
 /** Pure: does this settings change connect a WhatsApp number? */

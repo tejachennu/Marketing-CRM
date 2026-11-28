@@ -68,7 +68,7 @@ function getPasswordStrength(password: string): { label: string; color: string; 
 
   if (score <= 2) return { label: 'Weak', color: 'text-red-500', barColor: 'bg-red-500', percent: 33 }
   if (score <= 3) return { label: 'Medium', color: 'text-amber-500', barColor: 'bg-amber-500', percent: 66 }
-  return { label: 'Strong', color: 'text-[#1D5BEA]', barColor: 'bg-[#1D5BEA]', percent: 100 }
+  return { label: 'Strong', color: 'text-[#008069]', barColor: 'bg-[#008069]', percent: 100 }
 }
 
 export default function ProfilePage() {
@@ -235,7 +235,7 @@ export default function ProfilePage() {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-96">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#1D5BEA]" />
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#008069]" />
       </div>
     )
   }
@@ -270,7 +270,7 @@ export default function ProfilePage() {
         <div
           className="fixed top-4 right-4 z-50 flex items-start gap-3 bg-white dark:bg-[#1f2c34] p-4 rounded-xl border border-[#e9edef] dark:border-[#2a3942] shadow-2xl max-w-sm w-full select-none"
           style={{
-            borderLeft: `4px solid ${notification.type === 'success' ? '#1D5BEA' : '#ef4444'}`,
+            borderLeft: `4px solid ${notification.type === 'success' ? '#008069' : '#ef4444'}`,
             animation: 'slideInFromTop 0.3s ease-out',
           }}
         >
@@ -307,11 +307,11 @@ export default function ProfilePage() {
           style={{ animation: 'fadeInUp 0.4s ease-out' }}
         >
           {/* Gradient banner */}
-          <div className="h-20 bg-[#1D5BEA] " />
+          <div className="h-20 bg-[#008069] " />
 
           <div className="px-5 pb-5 -mt-10">
             {/* Avatar */}
-            <div className="w-20 h-20 rounded-full bg-[#1D5BEA] flex items-center justify-center text-white text-2xl font-bold ring-4 ring-white dark:ring-[#111b21] shadow-lg select-none">
+            <div className="w-20 h-20 rounded-full bg-[#008069] flex items-center justify-center text-white text-2xl font-bold ring-4 ring-white dark:ring-[#111b21] shadow-lg select-none">
               {initials}
             </div>
 
@@ -348,7 +348,7 @@ export default function ProfilePage() {
           style={{ animation: 'fadeInUp 0.5s ease-out' }}
         >
           <div className="flex items-center gap-2 mb-4">
-            <User size={16} className="text-[#1D5BEA]" />
+            <User size={16} className="text-[#008069]" />
             <h3 className="text-sm font-bold text-[#111b21] dark:text-white">Personal Information</h3>
           </div>
 
@@ -364,14 +364,14 @@ export default function ProfilePage() {
                   value={editName}
                   onChange={(e) => setEditName(e.target.value)}
                   placeholder="Enter your full name"
-                  className="flex-1 px-3.5 py-2.5 border border-[#e9edef] dark:border-[#2a3942] bg-white dark:bg-[#1f2c34] text-[#111b21] dark:text-[#e9edef] rounded-lg text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-[#1D5BEA]/30 focus:border-[#1D5BEA] transition-all placeholder:text-[#8696a0]"
+                  className="flex-1 px-3.5 py-2.5 border border-[#e9edef] dark:border-[#2a3942] bg-white dark:bg-[#1f2c34] text-[#111b21] dark:text-[#e9edef] rounded-lg text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-[#008069]/30 focus:border-[#008069] transition-all placeholder:text-[#8696a0]"
                 />
                 <button
                   onClick={handleSaveName}
                   disabled={!nameChanged || savingName}
                   className={`px-4 py-2.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer select-none ${
                     nameChanged
-                      ? 'bg-[#1D5BEA] hover:bg-[#1D5BEA] text-white shadow-sm'
+                      ? 'bg-[#008069] hover:bg-[#008069] text-white shadow-sm'
                       : 'bg-[#e9edef] dark:bg-[#2a3942] text-[#8696a0] cursor-not-allowed'
                   }`}
                 >
@@ -413,7 +413,7 @@ export default function ProfilePage() {
           style={{ animation: 'fadeInUp 0.6s ease-out' }}
         >
           <div className="flex items-center gap-2 mb-4">
-            <Lock size={16} className="text-[#1D5BEA]" />
+            <Lock size={16} className="text-[#008069]" />
             <h3 className="text-sm font-bold text-[#111b21] dark:text-white">Change Password</h3>
           </div>
 
@@ -433,7 +433,7 @@ export default function ProfilePage() {
                     setPasswordMessage(null)
                   }}
                   placeholder="Enter new password"
-                  className="w-full pl-9 pr-10 py-2.5 border border-[#e9edef] dark:border-[#2a3942] bg-white dark:bg-[#1f2c34] text-[#111b21] dark:text-[#e9edef] rounded-lg text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-[#1D5BEA]/30 focus:border-[#1D5BEA] transition-all placeholder:text-[#8696a0]"
+                  className="w-full pl-9 pr-10 py-2.5 border border-[#e9edef] dark:border-[#2a3942] bg-white dark:bg-[#1f2c34] text-[#111b21] dark:text-[#e9edef] rounded-lg text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-[#008069]/30 focus:border-[#008069] transition-all placeholder:text-[#8696a0]"
                 />
                 <button
                   type="button"
@@ -475,7 +475,7 @@ export default function ProfilePage() {
                     setPasswordMessage(null)
                   }}
                   placeholder="Confirm new password"
-                  className="w-full pl-9 pr-10 py-2.5 border border-[#e9edef] dark:border-[#2a3942] bg-white dark:bg-[#1f2c34] text-[#111b21] dark:text-[#e9edef] rounded-lg text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-[#1D5BEA]/30 focus:border-[#1D5BEA] transition-all placeholder:text-[#8696a0]"
+                  className="w-full pl-9 pr-10 py-2.5 border border-[#e9edef] dark:border-[#2a3942] bg-white dark:bg-[#1f2c34] text-[#111b21] dark:text-[#e9edef] rounded-lg text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-[#008069]/30 focus:border-[#008069] transition-all placeholder:text-[#8696a0]"
                 />
                 <button
                   type="button"
@@ -499,7 +499,7 @@ export default function ProfilePage() {
               <div
                 className={`text-xs font-semibold px-3 py-2 rounded-lg ${
                   passwordMessage.type === 'success'
-                    ? 'bg-[#eef3fe] dark:bg-[#0E1B3D]/20 text-[#174bc4] dark:text-[#9db5ef]'
+                    ? 'bg-[#e7f5f0] dark:bg-[#0E1B3D]/20 text-[#006d5b] dark:text-[#8fcfbf]'
                     : 'bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300'
                 }`}
                 style={{ animation: 'fadeInUp 0.2s ease-out' }}
@@ -513,7 +513,7 @@ export default function ProfilePage() {
               disabled={changingPassword || !newPassword || !confirmPassword}
               className={`w-full py-2.5 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer select-none ${
                 newPassword && confirmPassword
-                  ? 'bg-[#1D5BEA] hover:bg-[#1D5BEA] text-white shadow-sm'
+                  ? 'bg-[#008069] hover:bg-[#008069] text-white shadow-sm'
                   : 'bg-[#e9edef] dark:bg-[#2a3942] text-[#8696a0] cursor-not-allowed'
               }`}
             >
@@ -541,7 +541,7 @@ export default function ProfilePage() {
             style={{ animation: 'fadeInUp 0.7s ease-out' }}
           >
             <div className="flex items-center gap-2 mb-4">
-              <Building2 size={16} className="text-[#1D5BEA]" />
+              <Building2 size={16} className="text-[#008069]" />
               <h3 className="text-sm font-bold text-[#111b21] dark:text-white">Organization</h3>
             </div>
 
@@ -579,7 +579,7 @@ export default function ProfilePage() {
                     enabledFeatures.map((f) => (
                       <span
                         key={f}
-                        className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-bold bg-[#1D5BEA]/10 text-[#1D5BEA] dark:bg-[#1D5BEA]/20 dark:text-[#1D5BEA]"
+                        className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-bold bg-[#008069]/10 text-[#008069] dark:bg-[#008069]/20 dark:text-[#008069]"
                       >
                         <Check size={9} />
                         {f}

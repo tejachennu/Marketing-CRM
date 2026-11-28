@@ -45,16 +45,16 @@ async function sendPasswordLink(
 
   const inviteHtml = `
     <div style="font-family: -apple-system, Segoe UI, Roboto, Arial, sans-serif; max-width: 520px; margin: 0 auto; padding: 28px; border: 1px solid #e3e8f2; border-radius: 16px; background: #ffffff;">
-      <div style="font-size: 18px; font-weight: 800; color: #0E1B3D; margin-bottom: 20px;">WAMA <span style="color: #1D5BEA;">CRM</span></div>
+      <div style="font-size: 18px; font-weight: 800; color: #0E1B3D; margin-bottom: 20px;">WAMA <span style="color: #008069;">CRM</span></div>
       <h2 style="color: #0E1B3D; font-weight: 800; font-size: 22px; margin: 0 0 8px;">You're invited to ${orgName}</h2>
       <p style="color: #4a5672; font-size: 14px; line-height: 1.6; margin: 0 0 18px;">
         ${orgName} added you to their WAMA CRM workspace as <strong style="color: #0E1B3D;">${roleLabel}</strong>.
         Set your password to sign in. This link works for 24 hours.
       </p>
-      <a href="${setupLink}" style="background: #1D5BEA; color: #ffffff; padding: 12px 26px; border-radius: 10px; font-weight: 700; font-size: 14px; text-decoration: none; display: inline-block;">Set my password</a>
+      <a href="${setupLink}" style="background: #008069; color: #ffffff; padding: 12px 26px; border-radius: 10px; font-weight: 700; font-size: 14px; text-decoration: none; display: inline-block;">Set my password</a>
       <p style="color: #8a94a8; font-size: 12px; line-height: 1.5; margin: 24px 0 0; border-top: 1px solid #eef1f6; padding-top: 14px;">
         If the button doesn't work, open this link:<br/>
-        <a href="${setupLink}" style="color: #1D5BEA; word-break: break-all;">${setupLink}</a>
+        <a href="${setupLink}" style="color: #008069; word-break: break-all;">${setupLink}</a>
       </p>
     </div>
   `

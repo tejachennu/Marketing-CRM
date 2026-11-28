@@ -51,7 +51,7 @@ export const personName = (team: TeamMember[], id: string | null | undefined) =>
 
 const FOLLOW_TONE: Record<FollowUpState, string> = {
   overdue: 'bg-[#fdf0f0] text-[#b91c1c] dark:bg-red-950/40 dark:text-red-300',
-  today: 'bg-[#eef3fe] text-[#1D5BEA] dark:bg-blue-950/40 dark:text-blue-300',
+  today: 'bg-[#e7f5f0] text-[#008069] dark:bg-emerald-950/40 dark:text-emerald-300',
   tomorrow: 'bg-[#f4f6fa] text-[#4a5672] dark:bg-slate-800 dark:text-slate-300',
   later: 'bg-[#f4f6fa] text-[#4a5672] dark:bg-slate-800 dark:text-slate-300',
   none: 'bg-[#f4f6fa] text-[#8a94a8] dark:bg-slate-800 dark:text-slate-400',
@@ -114,7 +114,7 @@ export function ContactActions({ contact, conversationId, size = 'md' }: { conta
   )
 }
 
-export const selectInput = 'h-10 w-full px-3 pr-8 rounded-xl border border-[#d5ddeb] dark:border-slate-700 bg-white dark:bg-[#0b141a] text-base sm:text-[14.5px] text-[#0E1B3D] dark:text-white focus:outline-none focus:border-[#1D5BEA] focus:ring-2 focus:ring-[#1D5BEA]/15 cursor-pointer'
+export const selectInput = 'h-10 w-full px-3 pr-8 rounded-xl border border-[#d5ddeb] dark:border-slate-700 bg-white dark:bg-[#0b141a] text-base sm:text-[14.5px] text-[#0E1B3D] dark:text-white focus:outline-none focus:border-[#008069] focus:ring-2 focus:ring-[#008069]/15 cursor-pointer'
 
 export const timeAgo = (at: string | null | undefined, now = Date.now()) => {
   if (!at) return '—'

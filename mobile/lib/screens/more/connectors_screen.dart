@@ -251,7 +251,7 @@ class _ConnectorsScreenState extends State<ConnectorsScreen> {
           if (locked)
             Text(
               // Store builds change plan on the web only
-              'Your plan includes $_included. To use this, move to Growth or Pro ${AppConfig.store ? 'on the WAMA CRM website' : 'in Billing'}.',
+              'Your plan includes $_included. To use this, move to Business or a bigger plan ${AppConfig.store ? 'on the WAMA CRM website' : 'in Billing'}.',
               style: const TextStyle(fontSize: 13, color: Brand.muted),
             )
           else if (!admin)

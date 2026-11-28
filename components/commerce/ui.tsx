@@ -9,14 +9,14 @@ import { ORDER_STATUS_LABELS, needsRefund, type OrderStatus } from '@/lib/commer
 export const cardClass = 'bg-white dark:bg-[#111b21] rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-[0_1px_2px_rgba(11,20,26,0.05)]'
 // Phones: 44 px tall and 16 px text (smaller text makes iPhones zoom in when the box is tapped)
 export const inputClass =
-  'w-full h-9 max-sm:h-11 px-3 text-[13px] max-sm:text-base rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:border-[#1D5BEA] focus:ring-2 focus:ring-[#1D5BEA]/20 disabled:opacity-60'
+  'w-full h-9 max-sm:h-11 px-3 text-[13px] max-sm:text-base rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:border-[#008069] focus:ring-2 focus:ring-[#008069]/20 disabled:opacity-60'
 export const textareaClass = inputClass.replace('h-9 max-sm:h-11 ', '') + ' py-2 resize-y'
 export const labelClass = 'block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1'
 export const hintClass = 'text-[11px] leading-relaxed text-slate-500 dark:text-slate-400 mt-1'
 export const sectionTitle = 'text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-1.5'
 // Buttons are at least 44 px tall on phones, so a thumb can hit them
 export const primaryButton =
-  'inline-flex items-center justify-center gap-1.5 h-9 max-sm:min-h-11 px-4 rounded-lg bg-[#1D5BEA] hover:bg-[#174bc4] text-white text-xs font-bold shadow-sm transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap'
+  'inline-flex items-center justify-center gap-1.5 h-9 max-sm:min-h-11 px-4 rounded-lg bg-[#008069] hover:bg-[#006d5b] text-white text-xs font-bold shadow-sm transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap'
 export const secondaryButton =
   'inline-flex items-center justify-center gap-1.5 h-9 max-sm:min-h-11 px-3.5 rounded-lg bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 text-xs font-semibold transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap'
 export const dangerButton =
@@ -35,9 +35,9 @@ const STATUS_STYLES: Record<OrderStatus, string> = {
   cart_submitted: 'bg-[#eef1f6] text-[#4a5672] dark:bg-slate-800 dark:text-slate-300',
   awaiting_address: 'bg-white text-[#0E1B3D] ring-1 ring-inset ring-[#d5ddeb] dark:bg-transparent dark:text-slate-200 dark:ring-slate-600',
   payment_pending: 'bg-white text-[#0E1B3D] ring-1 ring-inset ring-[#d5ddeb] dark:bg-transparent dark:text-slate-200 dark:ring-slate-600',
-  paid: 'bg-[#dfe8fd] text-[#163d9c] dark:bg-[#0E1B3D] dark:text-[#9db5ef]',
-  cod_confirmed: 'bg-[#dfe8fd] text-[#163d9c] dark:bg-[#0E1B3D] dark:text-[#9db5ef]',
-  shipped: 'bg-[#1D5BEA] text-white',
+  paid: 'bg-[#d6efe7] text-[#00594a] dark:bg-[#0E1B3D] dark:text-[#8fcfbf]',
+  cod_confirmed: 'bg-[#d6efe7] text-[#00594a] dark:bg-[#0E1B3D] dark:text-[#8fcfbf]',
+  shipped: 'bg-[#008069] text-white',
   delivered: 'bg-[#eef1f6] text-[#4a5672] dark:bg-slate-800 dark:text-slate-300',
   canceled: 'bg-[#f4f6fa] text-[#8a94a8] dark:bg-slate-900 dark:text-slate-500',
 }
@@ -57,7 +57,7 @@ export function PaymentFlag({ order }: { order: { status: string; payment_status
 }
 
 /** A number tile. The note wraps to two lines (it was cut off on phones); `extra` sits under it, inside the tile. */
-export function Metric({ label, value, note, icon: Icon, tone = 'text-[#1D5BEA]', attention = false, extra }: { label: string; value: string; note: string; icon: LucideIcon; tone?: string; attention?: boolean; extra?: React.ReactNode }) {
+export function Metric({ label, value, note, icon: Icon, tone = 'text-[#008069]', attention = false, extra }: { label: string; value: string; note: string; icon: LucideIcon; tone?: string; attention?: boolean; extra?: React.ReactNode }) {
   return (
     <div className={`${cardClass} p-3.5 sm:p-4 h-full flex flex-col min-w-0`}>
       <div className="flex items-start justify-between gap-2 text-xs font-medium text-slate-500 dark:text-slate-400">

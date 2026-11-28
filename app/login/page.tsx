@@ -13,7 +13,7 @@ const HIGHLIGHTS = [
   { icon: Megaphone, title: 'Campaigns that reach every customer', text: 'Approved templates, sent in minutes.' },
 ]
 
-const inputClass = 'w-full h-12 px-4 rounded-xl border border-[#d5ddeb] dark:border-slate-700 bg-white dark:bg-[#0b141a] text-[15px] text-[#0E1B3D] dark:text-white placeholder:text-[#8a94a8] focus:outline-none focus:border-[#1D5BEA] focus:ring-4 focus:ring-[#1D5BEA]/10 transition'
+const inputClass = 'w-full h-12 px-4 rounded-xl border border-[#d5ddeb] dark:border-slate-700 bg-white dark:bg-[#0b141a] text-[15px] text-[#0E1B3D] dark:text-white placeholder:text-[#8a94a8] focus:outline-none focus:border-[#008069] focus:ring-4 focus:ring-[#008069]/10 transition'
 
 function storeSession(data: any) {
   if (!data.session) return
@@ -145,19 +145,19 @@ export default function LoginPage() {
     <div className="min-h-[100dvh] flex bg-[#f6f8fc] dark:bg-[#0b141a] font-sans text-[#0E1B3D] dark:text-slate-100">
       {/* Brand side (large screens) */}
       <aside className="hidden lg:flex relative w-[46%] max-w-[640px] flex-col justify-between overflow-hidden bg-[#0E1B3D] px-12 py-10 text-white">
-        <div className="absolute -top-40 -right-40 h-[420px] w-[420px] rounded-full bg-[#1D5BEA]/30 blur-[120px] pointer-events-none" />
-        <div className="absolute -bottom-40 -left-32 h-[380px] w-[380px] rounded-full bg-[#1D5BEA]/25 blur-[120px] pointer-events-none" />
+        <div className="absolute -top-40 -right-40 h-[420px] w-[420px] rounded-full bg-[#008069]/30 blur-[120px] pointer-events-none" />
+        <div className="absolute -bottom-40 -left-32 h-[380px] w-[380px] rounded-full bg-[#008069]/25 blur-[120px] pointer-events-none" />
 
         <Link href="/" className="relative w-fit"><WamaLogo size={40} tone="light" /></Link>
 
         <div className="relative max-w-md">
           <h1 className="text-[40px] leading-[1.1] font-extrabold tracking-tight">
-            Turn WhatsApp chats into <span className="text-[#9db5ef]">customers</span>.
+            Turn WhatsApp chats into <span className="text-[#8fcfbf]">customers</span>.
           </h1>
           <ul className="mt-9 space-y-5">
             {HIGHLIGHTS.map(({ icon: Icon, title, text }) => (
               <li key={title} className="flex gap-3.5">
-                <span className="mt-0.5 h-10 w-10 shrink-0 rounded-xl bg-white/10 flex items-center justify-center"><Icon size={19} className="text-[#9db5ef]" /></span>
+                <span className="mt-0.5 h-10 w-10 shrink-0 rounded-xl bg-white/10 flex items-center justify-center"><Icon size={19} className="text-[#8fcfbf]" /></span>
                 <span>
                   <span className="block text-[16px] font-semibold">{title}</span>
                   <span className="block text-[14.5px] text-white/65 mt-0.5">{text}</span>
@@ -168,7 +168,7 @@ export default function LoginPage() {
         </div>
 
         <div className="relative inline-flex w-fit items-center gap-2 rounded-full border border-white/15 bg-white/5 px-4 py-2 text-[13.5px] font-semibold">
-          <BadgeCheck size={17} className="text-[#9db5ef]" /> Official Meta Tech Provider
+          <BadgeCheck size={17} className="text-[#8fcfbf]" /> Official Meta Tech Provider
         </div>
       </aside>
 
@@ -204,7 +204,7 @@ export default function LoginPage() {
                   <div>
                     <div className="flex items-center justify-between mb-1.5">
                       <label htmlFor="password" className="block text-[14px] font-semibold">Password</label>
-                      <Link href={email.trim() ? `/forgot-password?email=${encodeURIComponent(email.trim())}` : '/forgot-password'} className="text-[14px] font-semibold text-[#1D5BEA] hover:underline">
+                      <Link href={email.trim() ? `/forgot-password?email=${encodeURIComponent(email.trim())}` : '/forgot-password'} className="text-[14px] font-semibold text-[#008069] hover:underline">
                         Forgot password?
                       </Link>
                     </div>
@@ -218,13 +218,13 @@ export default function LoginPage() {
 
                   {error && <div role="alert" className="rounded-xl bg-[#fdf0f0] dark:bg-red-950/30 px-4 py-3 text-[14px] font-medium text-[#b91c1c] dark:text-red-300">{error}</div>}
 
-                  <button type="submit" disabled={loading} className="w-full h-12 rounded-xl bg-[#1D5BEA] hover:bg-[#174bc4] text-white text-[16px] font-bold flex items-center justify-center gap-2 transition-colors disabled:opacity-60 cursor-pointer">
+                  <button type="submit" disabled={loading} className="w-full h-12 rounded-xl bg-[#008069] hover:bg-[#006d5b] text-white text-[16px] font-bold flex items-center justify-center gap-2 transition-colors disabled:opacity-60 cursor-pointer">
                     {loading ? <><Loader2 size={18} className="animate-spin" /> Signing in…</> : <>Sign in <ArrowRight size={18} /></>}
                   </button>
                 </form>
 
                 <p className="mt-8 text-center text-[15px] text-[#4a5672] dark:text-slate-400">
-                  New to WAMA CRM? <Link href="/signup" className="font-semibold text-[#1D5BEA] hover:underline">Start your free trial</Link>
+                  New to WAMA CRM? <Link href="/signup" className="font-semibold text-[#008069] hover:underline">Start your free trial</Link>
                 </p>
               </div>
             ) : (
@@ -232,7 +232,7 @@ export default function LoginPage() {
                 <button type="button" onClick={() => { setOtpRequired(false); setError(null); setNotice(null) }} className="inline-flex items-center gap-1.5 text-[14px] font-semibold text-[#4a5672] dark:text-slate-400 hover:text-[#0E1B3D] dark:hover:text-white mb-6 cursor-pointer">
                   <ArrowLeft size={16} /> Back
                 </button>
-                <div className="h-12 w-12 rounded-2xl bg-[#e8f7f1] dark:bg-[#0E1B3D]/40 flex items-center justify-center mb-4"><ShieldCheck size={24} className="text-[#1D5BEA]" /></div>
+                <div className="h-12 w-12 rounded-2xl bg-[#e8f7f1] dark:bg-[#0E1B3D]/40 flex items-center justify-center mb-4"><ShieldCheck size={24} className="text-[#008069]" /></div>
                 <h2 className="text-[28px] font-extrabold tracking-tight">Check your email</h2>
                 <p className="text-[15.5px] text-[#4a5672] dark:text-slate-400 mt-1.5">
                   We sent a 6-digit code to <strong className="text-[#0E1B3D] dark:text-white">{otpSentEmail}</strong>.
@@ -255,16 +255,16 @@ export default function LoginPage() {
                     />
                   </div>
 
-                  {notice && !error && <div role="status" className="rounded-xl bg-[#e8f7f1] dark:bg-[#0E1B3D]/30 px-4 py-3 text-[14px] font-medium text-[#174bc4] dark:text-[#9db5ef]">{notice}</div>}
+                  {notice && !error && <div role="status" className="rounded-xl bg-[#e8f7f1] dark:bg-[#0E1B3D]/30 px-4 py-3 text-[14px] font-medium text-[#006d5b] dark:text-[#8fcfbf]">{notice}</div>}
                   {error && <div role="alert" className="rounded-xl bg-[#fdf0f0] dark:bg-red-950/30 px-4 py-3 text-[14px] font-medium text-[#b91c1c] dark:text-red-300">{error}</div>}
 
-                  <button type="submit" disabled={loading || otpCode.length < 4} className="w-full h-12 rounded-xl bg-[#1D5BEA] hover:bg-[#174bc4] text-white text-[16px] font-bold flex items-center justify-center gap-2 transition-colors disabled:opacity-60 cursor-pointer">
+                  <button type="submit" disabled={loading || otpCode.length < 4} className="w-full h-12 rounded-xl bg-[#008069] hover:bg-[#006d5b] text-white text-[16px] font-bold flex items-center justify-center gap-2 transition-colors disabled:opacity-60 cursor-pointer">
                     {loading ? <><Loader2 size={18} className="animate-spin" /> Checking…</> : 'Verify and sign in'}
                   </button>
                 </form>
 
                 <div className="mt-6 text-center">
-                  <button type="button" onClick={handleResendOtp} disabled={resendTimer > 0 || resending} className="inline-flex items-center gap-1.5 text-[14.5px] font-semibold text-[#1D5BEA] disabled:text-[#8a94a8] disabled:cursor-not-allowed cursor-pointer">
+                  <button type="button" onClick={handleResendOtp} disabled={resendTimer > 0 || resending} className="inline-flex items-center gap-1.5 text-[14.5px] font-semibold text-[#008069] disabled:text-[#8a94a8] disabled:cursor-not-allowed cursor-pointer">
                     <RefreshCw size={15} className={resending ? 'animate-spin' : ''} />
                     {resendTimer > 0 ? `Send a new code in ${resendTimer}s` : 'Send a new code'}
                   </button>

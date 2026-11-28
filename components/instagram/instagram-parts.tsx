@@ -12,7 +12,7 @@ import { DEFAULT_AUTOMATION, checkCaption, type IgAutomation } from '@/lib/insta
 import { cardClass, hintClass, inputClass, labelClass, primaryButton as commerceButton, secondaryButton, textareaClass } from '@/components/commerce/ui'
 
 // The Commerce screens' main button is WhatsApp green; Instagram uses the product's one blue
-const primaryButton = commerceButton.replace('bg-[#008069] hover:bg-[#006d59]', 'bg-[#1D5BEA] hover:bg-[#174bc4]')
+const primaryButton = commerceButton.replace('bg-[#008069] hover:bg-[#006d59]', 'bg-[#008069] hover:bg-[#006d5b]')
 
 // Disconnect needs attention: red words on white, the one place red is used here
 const disconnectButton = 'inline-flex items-center justify-center gap-1.5 h-9 px-3.5 rounded-xl border border-[#f3caca] bg-white dark:bg-transparent text-[#b91c1c] text-xs font-bold hover:bg-[#fdf0f0] disabled:opacity-50'
@@ -29,7 +29,7 @@ const when = (iso: string) => {
   if (d.toDateString() === today.toDateString()) return d.toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit' })
   return d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', ...(d.getFullYear() !== today.getFullYear() ? { year: 'numeric' } : {}) })
 }
-const TONES = ['bg-[#eef1f6] text-[#0E1B3D]', 'bg-[#e8effd] text-[#1D5BEA]', 'bg-[#e3e8f2] text-[#4a5672]']
+const TONES = ['bg-[#eef1f6] text-[#0E1B3D]', 'bg-[#e1f3ec] text-[#008069]', 'bg-[#e3e8f2] text-[#4a5672]']
 const tone = (name: string) => TONES[[...name].reduce((n, c) => n + c.charCodeAt(0), 0) % TONES.length]
 const initial = (name: string) => (name.replace('@', '').trim()[0] || 'I').toUpperCase()
 const autoOn = (a: IgAutomation | null) => Boolean(a && (a.dmAi || a.commentAi || a.rules.length || a.everyComment.on || a.hideWords.length))
@@ -140,7 +140,7 @@ export function InstagramSettings() {
     <div className="space-y-4 sm:space-y-5">
       {message && (
         <p role="status" className={`p-3 rounded-xl text-sm flex gap-2 ${message.ok ? 'bg-white dark:bg-[#111b21] border border-[#e3e8f2] dark:border-slate-800' : 'bg-[#fdf0f0] text-[#b91c1c]'}`}>
-          {message.ok ? <Check size={16} className="shrink-0 mt-0.5 text-[#1D5BEA]" /> : <AlertCircle size={16} className="shrink-0 mt-0.5" />} {message.text}
+          {message.ok ? <Check size={16} className="shrink-0 mt-0.5 text-[#008069]" /> : <AlertCircle size={16} className="shrink-0 mt-0.5" />} {message.text}
         </p>
       )}
 
@@ -171,7 +171,7 @@ export function InstagramSettings() {
               <p className="font-bold truncate">@{account.username || 'instagram'}</p>
               {account.lastError ? <p className="text-xs text-[#b91c1c]">{account.lastError}</p>
                 : slow ? <p className="text-xs text-[#6B7894] flex items-center gap-1"><Clock size={12} className="shrink-0" /> Instagram asked us to slow down. Checking again in about {slow} min.</p>
-                : <p className="text-xs text-[#6B7894] flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-[#1D5BEA]" /> Connected</p>}
+                : <p className="text-xs text-[#6B7894] flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-[#008069]" /> Connected</p>}
             </div>
             {canManage && (
               <div className="flex flex-wrap gap-2">
@@ -192,7 +192,7 @@ export function InstagramSettings() {
 
           {orgId && (
             <div id="instagram-auto" className="space-y-3 scroll-mt-20">
-              <h2 className="text-base font-bold flex items-center gap-2"><Zap size={17} className="text-[#1D5BEA]" /> Auto replies</h2>
+              <h2 className="text-base font-bold flex items-center gap-2"><Zap size={17} className="text-[#008069]" /> Auto replies</h2>
               <AutoRepliesPanel orgId={orgId} initial={automation || DEFAULT_AUTOMATION} canEdit={can(viewer, 'automation.manage')} onSaved={setAutomation} />
             </div>
           )}
@@ -277,8 +277,8 @@ export function InstagramShell({ children }: { children: React.ReactNode }) {
                 <Link key={href} href={href} aria-current={on ? 'page' : undefined} className={`relative shrink-0 flex items-center gap-1.5 px-3 text-[13px] font-semibold whitespace-nowrap ${on ? 'text-[#0E1B3D] dark:text-white' : 'text-[#6B7894] hover:text-[#0E1B3D] dark:hover:text-white'}`}>
                   <Icon size={15} />
                   {label}
-                  {n > 0 && <span className="min-w-5 h-5 px-1.5 rounded-full bg-[#1D5BEA] text-white text-[11px] font-bold flex items-center justify-center">{n > 99 ? '99+' : n}</span>}
-                  {on && <span className="absolute left-2 right-2 bottom-0 h-0.5 rounded-full bg-[#1D5BEA]" />}
+                  {n > 0 && <span className="min-w-5 h-5 px-1.5 rounded-full bg-[#008069] text-white text-[11px] font-bold flex items-center justify-center">{n > 99 ? '99+' : n}</span>}
+                  {on && <span className="absolute left-2 right-2 bottom-0 h-0.5 rounded-full bg-[#008069]" />}
                 </Link>
               )
             })}
@@ -373,7 +373,7 @@ export function InstagramAutoRepliesTab() {
   return (
     <TabPage>
       <div>
-        <h1 className="text-lg font-bold flex items-center gap-2"><Zap size={18} className="text-[#1D5BEA]" /> Auto replies</h1>
+        <h1 className="text-lg font-bold flex items-center gap-2"><Zap size={18} className="text-[#008069]" /> Auto replies</h1>
         <p className="text-xs text-[#6B7894] dark:text-slate-400 mt-0.5">Answer DMs and comments by themselves: with AI from your knowledge base, or with your own words for chosen keywords.</p>
       </div>
       <AutoRepliesPanel orgId={shell.orgId} initial={shell.automation || DEFAULT_AUTOMATION} canEdit={can(shell.viewer, 'automation.manage')} onSaved={(a) => { shell.setAutomation(a); shell.refresh() }} />
@@ -571,7 +571,7 @@ function CommentsPanel({ orgId, canReply, me, onChange }: { orgId: string; canRe
           <p className={`text-sm leading-snug break-words ${c.hidden ? 'text-[#8a94a8]' : ''}`}><b className="font-semibold text-[#0E1B3D] dark:text-white mr-1.5">{who}</b>{c.text}</p>
           <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs font-semibold text-[#8a94a8]">
             <span className="font-normal">{ago(c.created_at)}</span>
-            {waitingOn(c) && <span className="inline-flex items-center gap-1 text-[#1D5BEA]"><span className="h-1.5 w-1.5 rounded-full bg-[#1D5BEA]" /> Waiting</span>}
+            {waitingOn(c) && <span className="inline-flex items-center gap-1 text-[#008069]"><span className="h-1.5 w-1.5 rounded-full bg-[#008069]" /> Waiting</span>}
             {c.hidden && <span className="inline-flex items-center gap-1"><EyeOff size={11} /> Hidden</span>}
             {canReply && <button type="button" onClick={() => startReply(c)} className="hover:text-[#0E1B3D] dark:hover:text-white cursor-pointer">Reply</button>}
             {canReply && <button type="button" disabled={busy !== null} onClick={() => act(c, c.hidden ? 'unhide' : 'hide')} className="hover:text-[#0E1B3D] dark:hover:text-white cursor-pointer">{busy === `${c.comment_id}:hide` || busy === `${c.comment_id}:unhide` ? 'Saving…' : c.hidden ? 'Show' : 'Hide'}</button>}
@@ -585,7 +585,7 @@ function CommentsPanel({ orgId, canReply, me, onChange }: { orgId: string; canRe
                 <p className="text-sm leading-snug break-words"><b className="font-semibold text-[#0E1B3D] dark:text-white mr-1.5">{me?.username || 'You'}</b>{c.reply_text}</p>
                 <p className="mt-1 text-xs text-[#8a94a8] flex items-center gap-2">
                   {c.private_reply_at && !c.replied_at ? <span className="inline-flex items-center gap-1"><MessageCircle size={11} /> Sent as a DM</span> : <span>{c.replied_at ? ago(c.replied_at) : ''}</span>}
-                  {c.auto_replied && <span className="inline-flex items-center gap-0.5 font-semibold text-[#1D5BEA]"><Zap size={11} /> Auto reply</span>}
+                  {c.auto_replied && <span className="inline-flex items-center gap-0.5 font-semibold text-[#008069]"><Zap size={11} /> Auto reply</span>}
                 </p>
               </div>
             </div>
@@ -594,19 +594,19 @@ function CommentsPanel({ orgId, canReply, me, onChange }: { orgId: string; canRe
           {replies.map((r) => renderComment(r, true))}
 
           {replyTo?.comment_id === c.comment_id && (
-            <div className="mt-3 rounded-xl border border-[#d5ddeb] dark:border-slate-700 bg-white dark:bg-[#0b141a] focus-within:border-[#1D5BEA]">
+            <div className="mt-3 rounded-xl border border-[#d5ddeb] dark:border-slate-700 bg-white dark:bg-[#0b141a] focus-within:border-[#008069]">
               <textarea autoFocus rows={2} maxLength={1000} value={draft} onChange={(e) => setDraft(e.target.value)}
                 onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); sendReply() } }}
                 placeholder={`Reply to ${who}…`} className="w-full bg-transparent text-sm resize-none outline-none px-3 pt-2.5" />
               <div className="flex flex-wrap items-center gap-2 px-2 pb-2">
                 {dmAllowed(c.parent_id ? (list || []).find((x) => x.comment_id === c.parent_id) || c : c) && (
                   <label className="flex items-center gap-1.5 text-xs text-[#4a5672] dark:text-slate-300 cursor-pointer pl-1" title="Instagram allows one DM per comment, within 7 days">
-                    <input type="checkbox" checked={asDm} onChange={(e) => setAsDm(e.target.checked)} className="accent-[#1D5BEA]" /> Send as a DM instead
+                    <input type="checkbox" checked={asDm} onChange={(e) => setAsDm(e.target.checked)} className="accent-[#008069]" /> Send as a DM instead
                   </label>
                 )}
                 <span className="flex-1" />
                 <button type="button" onClick={() => { setReplyTo(null); setDraft('') }} className="h-8 px-3 rounded-lg text-xs font-semibold text-[#6B7894] hover:bg-[#f4f6fa] dark:hover:bg-slate-800 cursor-pointer">Cancel</button>
-                <button type="button" disabled={busy !== null || !draft.trim()} onClick={sendReply} className="h-8 px-4 rounded-lg text-xs font-bold bg-[#1D5BEA] hover:bg-[#174bc4] text-white disabled:opacity-50 cursor-pointer inline-flex items-center gap-1.5">
+                <button type="button" disabled={busy !== null || !draft.trim()} onClick={sendReply} className="h-8 px-4 rounded-lg text-xs font-bold bg-[#008069] hover:bg-[#006d5b] text-white disabled:opacity-50 cursor-pointer inline-flex items-center gap-1.5">
                   {busy?.endsWith(':reply') || busy?.endsWith(':private') ? <Loader2 size={12} className="animate-spin" /> : <Send size={12} />} {asDm ? 'Send DM' : 'Post'}
                 </button>
               </div>
@@ -621,7 +621,7 @@ function CommentsPanel({ orgId, canReply, me, onChange }: { orgId: string; canRe
     <section className="space-y-3">
       <div className="flex items-center gap-2 text-xs">
         {(['open', 'all'] as const).map((f) => (
-          <button key={f} type="button" onClick={() => { setFilter(f); setSelected(null) }} className={`h-8 px-3 rounded-full border cursor-pointer font-semibold ${filter === f ? 'border-[#1D5BEA] bg-[#e8effd] text-[#1D5BEA]' : 'border-[#e3e8f2] dark:border-slate-700 bg-white dark:bg-[#111b21] text-[#4a5672]'}`}>
+          <button key={f} type="button" onClick={() => { setFilter(f); setSelected(null) }} className={`h-8 px-3 rounded-full border cursor-pointer font-semibold ${filter === f ? 'border-[#008069] bg-[#e1f3ec] text-[#008069]' : 'border-[#e3e8f2] dark:border-slate-700 bg-white dark:bg-[#111b21] text-[#4a5672]'}`}>
             {f === 'open' ? `Waiting${threads.reduce((n, t) => n + t.waiting, 0) ? ` · ${threads.reduce((n, t) => n + t.waiting, 0)}` : ''}` : 'All comments'}
           </button>
         ))}
@@ -643,13 +643,13 @@ function CommentsPanel({ orgId, canReply, me, onChange }: { orgId: string; canRe
                   const on = thread?.key === t.key
                   return (
                     <li key={t.key}>
-                      <button type="button" onClick={() => { setSelected(t.key); setReplyTo(null) }} className={`w-full text-left flex items-center gap-3 px-4 py-3 cursor-pointer border-l-2 ${on ? 'md:bg-[#f4f6fa] md:dark:bg-slate-800/60 md:border-[#1D5BEA] border-transparent' : 'border-transparent hover:bg-[#f4f6fa] dark:hover:bg-slate-800/40'}`}>
+                      <button type="button" onClick={() => { setSelected(t.key); setReplyTo(null) }} className={`w-full text-left flex items-center gap-3 px-4 py-3 cursor-pointer border-l-2 ${on ? 'md:bg-[#f4f6fa] md:dark:bg-slate-800/60 md:border-[#008069] border-transparent' : 'border-transparent hover:bg-[#f4f6fa] dark:hover:bg-slate-800/40'}`}>
                         <PostThumb post={t.post} size="h-12 w-12" />
                         <span className="flex-1 min-w-0">
                           <span className="block text-sm font-semibold text-[#0E1B3D] dark:text-slate-100 truncate">{t.post?.caption?.split('\n')[0] || (t.mediaType === 'REELS' ? 'Reel' : 'Post')}</span>
                           <span className="block text-xs text-[#8a94a8] mt-0.5">{t.total} {t.total === 1 ? 'comment' : 'comments'} · {ago(t.latest)}</span>
                         </span>
-                        {t.waiting > 0 && <span className="min-w-5 h-5 px-1.5 rounded-full bg-[#1D5BEA] text-white text-[11px] font-bold flex items-center justify-center">{t.waiting}</span>}
+                        {t.waiting > 0 && <span className="min-w-5 h-5 px-1.5 rounded-full bg-[#008069] text-white text-[11px] font-bold flex items-center justify-center">{t.waiting}</span>}
                       </button>
                     </li>
                   )
@@ -667,7 +667,7 @@ function CommentsPanel({ orgId, canReply, me, onChange }: { orgId: string; canRe
                     <p className="text-sm text-[#0E1B3D] dark:text-slate-100 line-clamp-2 break-words">{thread.post?.caption || (thread.mediaType === 'REELS' ? 'Reel' : 'Post')}</p>
                     <p className="text-xs text-[#8a94a8] mt-1">{thread.total} {thread.total === 1 ? 'comment' : 'comments'}{thread.waiting ? ` · ${thread.waiting} waiting` : ''}</p>
                   </div>
-                  {thread.post?.link && <a href={thread.post.link} target="_blank" rel="noopener noreferrer" className="shrink-0 text-xs font-semibold text-[#1D5BEA] hover:underline whitespace-nowrap">Open on Instagram</a>}
+                  {thread.post?.link && <a href={thread.post.link} target="_blank" rel="noopener noreferrer" className="shrink-0 text-xs font-semibold text-[#008069] hover:underline whitespace-nowrap">Open on Instagram</a>}
                 </div>
                 <div className="flex-1 md:overflow-y-auto p-4 space-y-5">
                   {thread.top.map((c) => renderComment(c))}
@@ -688,7 +688,7 @@ function Switch({ on, onChange, label, hint, disabled }: { on: boolean; onChange
         <span className="block text-xs text-[#6B7894] dark:text-slate-400 mt-0.5">{hint}</span>
       </span>
       <input type="checkbox" className="sr-only" checked={on} disabled={disabled} onChange={(e) => onChange(e.target.checked)} />
-      <span aria-hidden className={`mt-0.5 h-6 w-11 shrink-0 rounded-full p-0.5 transition-colors ${on ? 'bg-[#1D5BEA]' : 'bg-[#d5ddeb] dark:bg-slate-700'}`}><span className={`block h-5 w-5 rounded-full bg-white shadow transition-transform ${on ? 'translate-x-5' : ''}`} /></span>
+      <span aria-hidden className={`mt-0.5 h-6 w-11 shrink-0 rounded-full p-0.5 transition-colors ${on ? 'bg-[#008069]' : 'bg-[#d5ddeb] dark:bg-slate-700'}`}><span className={`block h-5 w-5 rounded-full bg-white shadow transition-transform ${on ? 'translate-x-5' : ''}`} /></span>
     </label>
   )
 }
@@ -727,14 +727,14 @@ function AutoRepliesPanel({ orgId, initial: start, canEdit, onSaved }: { orgId: 
       {off && <p className={`${cardClass} p-3 text-xs text-[#6B7894]`}>Only managers can change automatic replies.</p>}
 
       <div className={`${cardClass} p-4 sm:p-5 space-y-4`}>
-        <h2 className="text-sm font-bold flex items-center gap-2"><Sparkles size={16} className="text-[#1D5BEA]" /> AI replies</h2>
+        <h2 className="text-sm font-bold flex items-center gap-2"><Sparkles size={16} className="text-[#008069]" /> AI replies</h2>
         <Switch disabled={off} on={a.dmAi} onChange={(v) => setA((x) => ({ ...x, dmAi: v }))} label="AI answers DMs" hint="Answers from your knowledge base in the customer's language. When it can't answer, the chat goes to your team. Turn AI off in one chat to answer it yourself." />
         <Switch disabled={off} on={a.commentAi} onChange={(v) => setA((x) => ({ ...x, commentAi: v }))} label="AI replies to comments" hint="A short public reply when your knowledge base has the answer, and a warm thank-you for praise. It stays quiet on complaints and spam. Keyword replies below come first." />
       </div>
 
       <div className={`${cardClass} p-4 sm:p-5 space-y-3`}>
         <div>
-          <h2 className="text-sm font-bold flex items-center gap-2"><Zap size={16} className="text-[#1D5BEA]" /> Keyword replies for comments</h2>
+          <h2 className="text-sm font-bold flex items-center gap-2"><Zap size={16} className="text-[#008069]" /> Keyword replies for comments</h2>
           <p className={hintClass}>When a comment has one of the words, reply in public, send a DM, or both. Example: &quot;price, cost, rate&quot; → public &quot;Sent you a DM {'{name}'}&quot; + a DM with the price list. {'{name}'} becomes their @username.</p>
         </div>
         {a.rules.map((r, i) => (
@@ -779,7 +779,7 @@ function AutoRepliesPanel({ orgId, initial: start, canEdit, onSaved }: { orgId: 
       </div>
 
       <div className={`${cardClass} p-4 sm:p-5 space-y-2`}>
-        <h2 className="text-sm font-bold flex items-center gap-2"><EyeOff size={16} className="text-[#1D5BEA]" /> Hide comments with these words</h2>
+        <h2 className="text-sm font-bold flex items-center gap-2"><EyeOff size={16} className="text-[#008069]" /> Hide comments with these words</h2>
         <input disabled={off} value={hide} onChange={(e) => setHide(e.target.value)} placeholder="spam words, abuse, competitor names…" className={inputClass} aria-label="Words to hide" />
         <p className={hintClass}>Hidden comments stay visible to the person who wrote them, and you can show them again from Comments.</p>
       </div>
@@ -872,12 +872,12 @@ function PostsPanel({ orgId, canPost }: { orgId: string; canPost: boolean }) {
         <RefreshButton busy={refreshing} onClick={() => void load(true)} label="Load the latest posts" />
         {canPost && !composing && <button type="button" onClick={() => { setComposing(true); setNote(null) }} className={primaryButton}><ImagePlus size={14} /> New post</button>}
       </div>
-      {note?.ok && <p role="status" className="p-3 rounded-xl bg-white dark:bg-[#111b21] border border-[#e3e8f2] dark:border-slate-800 text-sm flex gap-2"><Check size={16} className="shrink-0 mt-0.5 text-[#1D5BEA]" /> {note.text}</p>}
+      {note?.ok && <p role="status" className="p-3 rounded-xl bg-white dark:bg-[#111b21] border border-[#e3e8f2] dark:border-slate-800 text-sm flex gap-2"><Check size={16} className="shrink-0 mt-0.5 text-[#008069]" /> {note.text}</p>}
 
       {canPost && composing && (
         <div className={`${cardClass} p-4 sm:p-5 space-y-3`}>
           <div className="flex items-center gap-2">
-            <h2 className="text-sm font-bold flex items-center gap-2 flex-1"><ImagePlus size={16} className="text-[#1D5BEA]" /> New post</h2>
+            <h2 className="text-sm font-bold flex items-center gap-2 flex-1"><ImagePlus size={16} className="text-[#008069]" /> New post</h2>
             <button type="button" onClick={() => { drop(images); reset() }} className="h-8 px-3 rounded-lg text-xs font-semibold text-[#6B7894] hover:bg-[#f4f6fa] cursor-pointer">Cancel</button>
           </div>
           <input ref={fileInput} type="file" accept="image/*" multiple className="hidden" onChange={(e) => void upload(e.target.files)} />
@@ -894,7 +894,7 @@ function PostsPanel({ orgId, canPost }: { orgId: string; canPost: boolean }) {
               <div key={`up-${i}`} className="aspect-square rounded-lg bg-[#eef1f6] dark:bg-slate-800 flex items-center justify-center"><Loader2 size={18} className="animate-spin text-[#6B7894]" /></div>
             ))}
             {images.length + uploading < 10 && (
-              <button type="button" onClick={() => fileInput.current?.click()} className="aspect-square rounded-lg border-2 border-dashed border-[#d5ddeb] dark:border-slate-700 text-[#4a5672] dark:text-slate-300 hover:border-[#1D5BEA] hover:text-[#1D5BEA] flex flex-col items-center justify-center gap-1 text-xs font-semibold cursor-pointer">
+              <button type="button" onClick={() => fileInput.current?.click()} className="aspect-square rounded-lg border-2 border-dashed border-[#d5ddeb] dark:border-slate-700 text-[#4a5672] dark:text-slate-300 hover:border-[#008069] hover:text-[#008069] flex flex-col items-center justify-center gap-1 text-xs font-semibold cursor-pointer">
                 <ImagePlus size={20} /> {images.length ? 'Add photo' : 'Upload photos'}
               </button>
             )}
@@ -906,7 +906,7 @@ function PostsPanel({ orgId, canPost }: { orgId: string; canPost: boolean }) {
               <button type="button" onClick={addLink} className={secondaryButton}>Add</button>
             </div>
           ) : (
-            <button type="button" onClick={() => setShowLink(true)} className="text-xs font-semibold text-[#1D5BEA] cursor-pointer">or paste a photo link</button>
+            <button type="button" onClick={() => setShowLink(true)} className="text-xs font-semibold text-[#008069] cursor-pointer">or paste a photo link</button>
           )}
           <div>
             <label className={labelClass} htmlFor="ig-caption">Caption</label>

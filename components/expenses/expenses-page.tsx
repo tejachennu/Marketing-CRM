@@ -134,7 +134,7 @@ export function ExpensesBoard({ orgId }: { orgId?: string }) {
           {view.repeatsDue > 0 && (
             <div className={`${card} p-4 flex flex-col @xl:flex-row @xl:items-center gap-3 justify-between`}>
               <div className="flex items-start gap-3 min-w-0">
-                <span className="h-10 w-10 shrink-0 rounded-xl bg-[#eef3fe] dark:bg-blue-950/40 text-[#1D5BEA] flex items-center justify-center"><Repeat size={18} /></span>
+                <span className="h-10 w-10 shrink-0 rounded-xl bg-[#e7f5f0] dark:bg-emerald-950/40 text-[#008069] flex items-center justify-center"><Repeat size={18} /></span>
                 <p className="text-[15px] text-[#0E1B3D] dark:text-slate-100"><b>{view.repeatsDue} monthly {view.repeatsDue === 1 ? 'expense' : 'expenses'}</b> (like salaries or rent) {view.repeatsDue === 1 ? 'is' : 'are'} not added for {monthName(month, false)} yet.</p>
               </div>
               <button type="button" className={primaryButton} onClick={copyRepeats} disabled={copying}>{copying ? <Loader2 size={18} className="animate-spin" /> : <Plus size={18} />} Add them</button>
@@ -216,7 +216,7 @@ function InsightCard({ view, asking, onAsk }: { view: Overview; asking: boolean;
     <section className={`${card} p-4 @xl:p-5`}>
       <div className="flex flex-col @xl:flex-row @xl:items-center justify-between gap-3">
         <div className="flex items-start gap-3 min-w-0">
-          <span className="h-11 w-11 shrink-0 rounded-2xl bg-[#eef3fe] dark:bg-blue-950/40 text-[#1D5BEA] flex items-center justify-center"><Sparkles size={20} /></span>
+          <span className="h-11 w-11 shrink-0 rounded-2xl bg-[#e7f5f0] dark:bg-emerald-950/40 text-[#008069] flex items-center justify-center"><Sparkles size={20} /></span>
           <div className="min-w-0">
             <h2 className="text-[17px] font-extrabold text-[#0E1B3D] dark:text-white">AI review of your sales</h2>
             <p className="text-[13.5px] text-[#6B7894] dark:text-slate-400">
@@ -260,7 +260,7 @@ function InsightList({ title, icon, items }: { title: string; icon: React.ReactN
   if (!items.length) return null
   return (
     <div className="rounded-xl bg-[#f4f6fa] dark:bg-slate-800/60 p-3.5">
-      <h3 className="flex items-center gap-2 text-[14px] font-extrabold text-[#0E1B3D] dark:text-white mb-2"><span className="text-[#1D5BEA]">{icon}</span>{title}</h3>
+      <h3 className="flex items-center gap-2 text-[14px] font-extrabold text-[#0E1B3D] dark:text-white mb-2"><span className="text-[#008069]">{icon}</span>{title}</h3>
       <ul className="flex flex-col gap-1.5">
         {items.map((item, i) => <li key={i} className="text-[14.5px] leading-snug text-[#4a5672] dark:text-slate-300 pl-3 relative before:absolute before:left-0 before:top-[0.6em] before:h-1.5 before:w-1.5 before:rounded-full before:bg-[#8a94a8]">{item}</li>)}
       </ul>
@@ -270,7 +270,7 @@ function InsightList({ title, icon, items }: { title: string; icon: React.ReactN
 
 // ── Charts ──────────────────────────────────────────────────────────────────
 
-const SALES = 'bg-[#1D5BEA] dark:bg-[#4F83F5]'
+const SALES = 'bg-[#008069] dark:bg-[#19a383]'
 const SPENT = 'bg-[#7486B3] dark:bg-[#97A3C4]'
 
 function MonthsChart({ months, picked }: { months: MonthTotals[]; picked: string }) {
@@ -316,7 +316,7 @@ function MonthsChart({ months, picked }: { months: MonthTotals[]; picked: string
         {months.map((m) => <span key={m.month} className={`flex-1 text-center text-[12px] ${m.month === picked ? 'font-extrabold text-[#0E1B3D] dark:text-white' : 'font-semibold text-[#8a94a8]'}`}>{shortMonth(m.month)}</span>)}
       </div>
       <details className="mt-3 group">
-        <summary className="text-[13.5px] font-semibold text-[#1D5BEA] cursor-pointer list-none">See as a table</summary>
+        <summary className="text-[13.5px] font-semibold text-[#008069] cursor-pointer list-none">See as a table</summary>
         <div className="overflow-x-auto mt-2">
           <table className="w-full text-[13.5px]">
             <thead><tr className="text-left text-[#6B7894]"><th className="py-1.5 font-semibold">Month</th><th className="py-1.5 font-semibold text-right">Sales</th><th className="py-1.5 font-semibold text-right">Expenses</th><th className="py-1.5 font-semibold text-right">Left</th></tr></thead>

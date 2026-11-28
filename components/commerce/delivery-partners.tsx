@@ -102,7 +102,7 @@ export function DeliveryPartners({ orgId, canManage, showToast }: { orgId: strin
   return (
     <section className={`${cardClass} p-4 sm:p-5 space-y-4`} aria-labelledby="delivery-partners-title">
       <div className="flex items-start gap-3">
-        <Truck size={20} className="text-[#1D5BEA] shrink-0 mt-0.5" />
+        <Truck size={20} className="text-[#008069] shrink-0 mt-0.5" />
         <div className="min-w-0">
           <h2 id="delivery-partners-title" className={heading}>Delivery partners</h2>
           <p className="text-xs text-slate-500 dark:text-slate-400">
@@ -206,7 +206,7 @@ export function DeliveryPartners({ orgId, canManage, showToast }: { orgId: strin
                 </div>
               </details>
               <label className="flex items-center gap-2 text-[13px] cursor-pointer">
-                <input type="checkbox" className="h-4 w-4 accent-[#1D5BEA]" checked={!dl.live} disabled={disabled} onChange={(e) => setDl({ ...dl, live: !e.target.checked })} />
+                <input type="checkbox" className="h-4 w-4 accent-[#008069]" checked={!dl.live} disabled={disabled} onChange={(e) => setDl({ ...dl, live: !e.target.checked })} />
                 This is a Delhivery test account (no real parcels)
               </label>
               <div className="flex flex-wrap gap-2">
@@ -231,7 +231,7 @@ export function DeliveryPartners({ orgId, canManage, showToast }: { orgId: strin
           ))}
         </div>
         <label className="flex items-start gap-2 text-[13px] cursor-pointer">
-          <input type="checkbox" className="h-4 w-4 mt-0.5 accent-[#1D5BEA]" checked={notify} disabled={disabled} onChange={(e) => setNotify(e.target.checked)} />
+          <input type="checkbox" className="h-4 w-4 mt-0.5 accent-[#008069]" checked={notify} disabled={disabled} onChange={(e) => setNotify(e.target.checked)} />
           <span>Tell the customer on WhatsApp as the parcel moves<span className={`block ${hintClass}`}>On the way (with the tracking link), out for delivery, delivered, or not delivered. Sent inside the 24-hour WhatsApp window.</span></span>
         </label>
         <button type="button" className={primaryButton} disabled={disabled} onClick={() => save('parcel', { parcel, notify }, 'Saved.')}>{busy === 'parcel' ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />} Save</button>

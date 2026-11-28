@@ -169,7 +169,7 @@ export function DealSheet({ data, dealId, onClose, onChanged, onDeleted, flash }
   return (
     <Modal title={deal?.title || 'Deal'} subtitle={subtitle} onClose={onClose} size="lg" footer={footer}>
       {error && <p className="text-[15px] text-[#b91c1c] py-6">{error}</p>}
-      {!deal && !error && <div className="py-16 flex justify-center"><Loader2 className="animate-spin text-[#1D5BEA]" size={28} /></div>}
+      {!deal && !error && <div className="py-16 flex justify-center"><Loader2 className="animate-spin text-[#008069]" size={28} /></div>}
       {deal && (
         <div className="space-y-5 pb-2">
           {/* Value, owner and talking to the customer */}
@@ -207,7 +207,7 @@ export function DealSheet({ data, dealId, onClose, onChanged, onDeleted, flash }
                   return (
                     <button key={stage.id} type="button" disabled={!canWrite || !!busy || current} aria-pressed={current}
                       onClick={() => change({ pipeline_stage_id: stage.id }, `Moved to ${stage.name}.`, `stage-${stage.id}`)}
-                      className={`inline-flex items-center gap-1.5 h-9 px-3 rounded-lg border text-[13.5px] font-semibold transition-colors ${current ? 'border-[#0E1B3D] bg-[#0E1B3D] text-white dark:border-white dark:bg-white dark:text-[#0E1B3D]' : passed ? 'border-[#d5ddeb] dark:border-slate-700 text-[#0E1B3D] dark:text-slate-200 bg-[#f4f6fa] dark:bg-slate-800' : 'border-[#d5ddeb] dark:border-slate-700 text-[#4a5672] dark:text-slate-300'} ${canWrite && !current ? 'hover:border-[#1D5BEA] cursor-pointer' : ''} disabled:cursor-default`}>
+                      className={`inline-flex items-center gap-1.5 h-9 px-3 rounded-lg border text-[13.5px] font-semibold transition-colors ${current ? 'border-[#0E1B3D] bg-[#0E1B3D] text-white dark:border-white dark:bg-white dark:text-[#0E1B3D]' : passed ? 'border-[#d5ddeb] dark:border-slate-700 text-[#0E1B3D] dark:text-slate-200 bg-[#f4f6fa] dark:bg-slate-800' : 'border-[#d5ddeb] dark:border-slate-700 text-[#4a5672] dark:text-slate-300'} ${canWrite && !current ? 'hover:border-[#008069] cursor-pointer' : ''} disabled:cursor-default`}>
                       {busy === `stage-${stage.id}` ? <Loader2 size={13} className="animate-spin" /> : passed ? <Check size={13} /> : null}{stage.name}
                     </button>
                   )
@@ -245,7 +245,7 @@ export function DealSheet({ data, dealId, onClose, onChanged, onDeleted, flash }
                 <div className="flex flex-wrap gap-1.5">
                   {FOLLOW_PRESETS.map((p) => (
                     <button key={p.id} type="button" disabled={!!busy} onClick={() => change({ next_follow_up_at: followUpPreset(p.id) }, 'Follow-up set.', `follow-${p.id}`)}
-                      className="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg border border-[#d5ddeb] dark:border-slate-700 text-[13.5px] font-semibold text-[#0E1B3D] dark:text-slate-200 hover:border-[#1D5BEA] cursor-pointer disabled:opacity-50">
+                      className="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg border border-[#d5ddeb] dark:border-slate-700 text-[13.5px] font-semibold text-[#0E1B3D] dark:text-slate-200 hover:border-[#008069] cursor-pointer disabled:opacity-50">
                       {busy === `follow-${p.id}` && <Loader2 size={13} className="animate-spin" />}{p.label}
                     </button>
                   ))}
@@ -314,7 +314,7 @@ export function DealSheet({ data, dealId, onClose, onChanged, onDeleted, flash }
           {/* AI summary */}
           <section className="rounded-2xl border border-[#e3e8f2] dark:border-slate-700 p-3.5">
             <div className="flex items-center justify-between gap-3">
-              <h3 className="flex items-center gap-2 text-[15px] font-bold text-[#0E1B3D] dark:text-white"><Sparkles size={16} className="text-[#1D5BEA]" /> AI summary</h3>
+              <h3 className="flex items-center gap-2 text-[15px] font-bold text-[#0E1B3D] dark:text-white"><Sparkles size={16} className="text-[#008069]" /> AI summary</h3>
               <button type="button" onClick={summarize} disabled={busy === 'ai'} className={`${secondaryButton} h-9 text-[14px]`}>{busy === 'ai' ? <Loader2 size={15} className="animate-spin" /> : <Sparkles size={15} />}{analysis ? 'Refresh' : 'Summarize'}</button>
             </div>
             {analysis ? (
@@ -334,7 +334,7 @@ export function DealSheet({ data, dealId, onClose, onChanged, onDeleted, flash }
               <ol className="space-y-0">
                 {history.map((item) => (
                   <li key={item.id} className="relative pl-5 pb-3.5 border-l border-[#e3e8f2] dark:border-slate-700 ml-1.5 last:pb-0">
-                    <span className={`absolute -left-[5px] top-1.5 h-2.5 w-2.5 rounded-full ${['note', 'call', 'whatsapp', 'meeting', 'email'].includes(item.type) ? 'bg-[#1D5BEA]' : 'bg-[#c0c8d8] dark:bg-slate-600'}`} />
+                    <span className={`absolute -left-[5px] top-1.5 h-2.5 w-2.5 rounded-full ${['note', 'call', 'whatsapp', 'meeting', 'email'].includes(item.type) ? 'bg-[#008069]' : 'bg-[#c0c8d8] dark:bg-slate-600'}`} />
                     <p className="text-[12.5px] text-[#6B7894]"><span className="font-semibold text-[#4a5672] dark:text-slate-300">{ACTIVITY_LABEL[item.type] || item.type}</span> · {item.by} · {timeAgo(item.created_at)}</p>
                     {item.content && <p className="text-[14.5px] text-[#0E1B3D] dark:text-slate-200 whitespace-pre-line [overflow-wrap:anywhere]">{item.content}</p>}
                   </li>

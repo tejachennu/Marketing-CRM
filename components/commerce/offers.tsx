@@ -79,7 +79,7 @@ export function Offers({ orgId, canManage, showToast }: { orgId: string; canMana
       {canManage && <LoyaltyCard orgId={orgId} showToast={showToast} />}
       <section className={`${cardClass} p-4 sm:p-5`}>
         <div className="flex flex-wrap items-start gap-3">
-          <BadgePercent size={20} className="text-[#1D5BEA] shrink-0 mt-0.5" />
+          <BadgePercent size={20} className="text-[#008069] shrink-0 mt-0.5" />
           <div className="min-w-0 flex-1 basis-60">
             <h2 className="text-sm font-bold text-slate-900 dark:text-white">Offers and discount codes</h2>
             <p className="text-xs text-slate-500 dark:text-slate-400">A code like DIWALI10 that customers type, or an offer that applies by itself (free delivery above ₹999, buy 2 get 1 free, first order). One offer per order: the best one.</p>
@@ -125,7 +125,7 @@ export function Offers({ orgId, canManage, showToast }: { orgId: string; canMana
           <form onSubmit={save} className="space-y-3.5">
             <div className="grid grid-cols-2 gap-2">
               {([[false, 'Customers type a code'], [true, 'Applies by itself']] as const).map(([auto, label]) => (
-                <button key={label} type="button" aria-pressed={form.automatic === auto} onClick={() => setForm({ ...form, automatic: auto })} className={`h-10 rounded-lg border-2 text-xs font-bold cursor-pointer ${form.automatic === auto ? 'border-[#1D5BEA] text-[#1D5BEA] bg-[#1D5BEA]/5' : 'border-slate-200 dark:border-slate-700 text-slate-600'}`}>{label}</button>
+                <button key={label} type="button" aria-pressed={form.automatic === auto} onClick={() => setForm({ ...form, automatic: auto })} className={`h-10 rounded-lg border-2 text-xs font-bold cursor-pointer ${form.automatic === auto ? 'border-[#008069] text-[#008069] bg-[#008069]/5' : 'border-slate-200 dark:border-slate-700 text-slate-600'}`}>{label}</button>
               ))}
             </div>
             {!form.automatic && (
@@ -166,9 +166,9 @@ export function Offers({ orgId, canManage, showToast }: { orgId: string; canMana
                 <p className={hintClass}>Only orders with this phone can use the code. Send them the code on WhatsApp.</p>
               </div>
             )}
-            <label className="flex items-center gap-2 text-[13px] cursor-pointer"><input type="checkbox" className="h-4 w-4 accent-[#1D5BEA]" checked={form.first_order_only} onChange={(e) => setForm({ ...form, first_order_only: e.target.checked })} /> First order only (new customers)</label>
-            <label className="flex items-center gap-2 text-[13px] cursor-pointer"><input type="checkbox" className="h-4 w-4 accent-[#1D5BEA]" checked={form.once_per_phone} onChange={(e) => setForm({ ...form, once_per_phone: e.target.checked })} /> Once per customer (by phone number)</label>
-            <label className="flex items-center gap-2 text-[13px] cursor-pointer"><input type="checkbox" className="h-4 w-4 accent-[#1D5BEA]" checked={form.active} onChange={(e) => setForm({ ...form, active: e.target.checked })} /> On</label>
+            <label className="flex items-center gap-2 text-[13px] cursor-pointer"><input type="checkbox" className="h-4 w-4 accent-[#008069]" checked={form.first_order_only} onChange={(e) => setForm({ ...form, first_order_only: e.target.checked })} /> First order only (new customers)</label>
+            <label className="flex items-center gap-2 text-[13px] cursor-pointer"><input type="checkbox" className="h-4 w-4 accent-[#008069]" checked={form.once_per_phone} onChange={(e) => setForm({ ...form, once_per_phone: e.target.checked })} /> Once per customer (by phone number)</label>
+            <label className="flex items-center gap-2 text-[13px] cursor-pointer"><input type="checkbox" className="h-4 w-4 accent-[#008069]" checked={form.active} onChange={(e) => setForm({ ...form, active: e.target.checked })} /> On</label>
             <div>
               <label className={labelClass} htmlFor="offer-title">Name customers see (optional)</label>
               <input id="offer-title" className={inputClass} maxLength={80} placeholder="Made from the offer, like 10% off" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} />

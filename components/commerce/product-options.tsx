@@ -103,7 +103,7 @@ export function ProductOptions({ orgId, productId, productPrice, canEdit, showTo
                   <input aria-label={`${v.name} price`} type="number" min={0} inputMode="decimal" className={`${inputClass} h-8`} placeholder={String(productPrice)} value={e.price} disabled={!canEdit} onChange={(ev) => edit(v, { price: ev.target.value })} />
                   <input aria-label={`${v.name} stock`} type="number" min={0} inputMode="numeric" className={`${inputClass} h-8`} placeholder="Not counted" value={e.stock} disabled={!canEdit} onChange={(ev) => edit(v, { stock: ev.target.value })} />
                   <input aria-label={`${v.name} SKU`} className={`${inputClass} h-8`} placeholder="Optional" value={e.sku} disabled={!canEdit} onChange={(ev) => edit(v, { sku: ev.target.value })} />
-                  <label className="flex justify-center cursor-pointer"><input type="checkbox" aria-label={`Sell ${v.name}`} className="h-4 w-4 accent-[#1D5BEA]" checked={e.active} disabled={!canEdit} onChange={(ev) => edit(v, { active: ev.target.checked })} /></label>
+                  <label className="flex justify-center cursor-pointer"><input type="checkbox" aria-label={`Sell ${v.name}`} className="h-4 w-4 accent-[#008069]" checked={e.active} disabled={!canEdit} onChange={(ev) => edit(v, { active: ev.target.checked })} /></label>
                 </li>
               )
             })}

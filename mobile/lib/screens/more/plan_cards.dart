@@ -6,7 +6,16 @@ import '../../ui/theme.dart';
 /// One plan, as on the web's plan picker: name, price, what it is for, what it includes (tap to see
 /// all), and the button to move to it. [action] is null in store builds (plans are bought on the web).
 class PlanCard extends StatelessWidget {
-  const PlanCard({super.key, required this.plan, required this.current, required this.pending, required this.currentPrice, this.approve = false, this.busy = false, this.onChoose});
+  const PlanCard({
+    super.key,
+    required this.plan,
+    required this.current,
+    required this.pending,
+    required this.currentPrice,
+    this.approve = false,
+    this.busy = false,
+    this.onChoose,
+  });
 
   final Map plan;
   final bool current;
@@ -22,7 +31,9 @@ class PlanCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final price = (plan['price'] as num?) ?? 0;
-    final features = ((plan['features'] as List?) ?? const []).map((f) => '$f').toList();
+    final features = ((plan['features'] as List?) ?? const [])
+        .map((f) => '$f')
+        .toList();
     final label = approve
         ? 'Approve monthly auto-pay'
         : current
@@ -39,7 +50,10 @@ class PlanCard extends StatelessWidget {
         color: current ? Brand.bubble : Colors.white,
         clipBehavior: Clip.antiAlias,
         shape: RoundedRectangleBorder(
-          side: BorderSide(color: current ? Brand.blue : Brand.line, width: current ? 1.5 : 1),
+          side: BorderSide(
+            color: current ? Brand.blue : Brand.line,
+            width: current ? 1.5 : 1,
+          ),
           borderRadius: BorderRadius.circular(14),
         ),
         child: Theme(
@@ -51,16 +65,32 @@ class PlanCard extends StatelessWidget {
             title: Row(
               children: [
                 Flexible(
-                  child: Text('${plan['name']}', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+                  child: Text(
+                    '${plan['name']}',
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
                 ),
                 if (current) ...[
                   const SizedBox(width: 6),
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                    decoration: BoxDecoration(color: Brand.blue, borderRadius: BorderRadius.circular(20)),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 2,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Brand.blue,
+                      borderRadius: BorderRadius.circular(20),
+                    ),
                     child: const Text(
                       'Current',
-                      style: TextStyle(color: Colors.white, fontSize: 11.5, fontWeight: FontWeight.w700),
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
                   ),
                 ],
@@ -76,7 +106,11 @@ class PlanCard extends StatelessWidget {
                       children: [
                         TextSpan(
                           text: formatRupees(price),
-                          style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: Brand.text),
+                          style: const TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.w700,
+                            color: Brand.text,
+                          ),
                         ),
                         const TextSpan(
                           text: ' / month',
@@ -85,13 +119,20 @@ class PlanCard extends StatelessWidget {
                       ],
                     ),
                   ),
-                  Text('${plan['tagline'] ?? ''}', style: const TextStyle(color: Brand.textSoft, fontSize: 13)),
+                  Text(
+                    '${plan['tagline'] ?? ''}',
+                    style: const TextStyle(color: Brand.textSoft, fontSize: 13),
+                  ),
                   if (plan['whatsapp'] == 'shared')
                     const Padding(
                       padding: EdgeInsets.only(top: 4),
                       child: Text(
                         'No WhatsApp setup needed',
-                        style: TextStyle(color: Brand.textSoft, fontSize: 12.5, fontWeight: FontWeight.w600),
+                        style: TextStyle(
+                          color: Brand.textSoft,
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w600,
+                        ),
                       ),
                     ),
                 ],
@@ -99,25 +140,56 @@ class PlanCard extends StatelessWidget {
             ),
             children: [
               for (final f in features)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 6),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Icon(Icons.check, size: 17, color: Brand.blue),
-                      const SizedBox(width: 8),
-                      Expanded(child: Text(f, style: const TextStyle(fontSize: 13.5))),
-                    ],
+                // "Everything in Business, plus:" is a small heading, not a tick
+                if (f.endsWith(':'))
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 6, top: 2),
+                    child: Text(
+                      f.substring(0, f.length - 1).toUpperCase(),
+                      style: const TextStyle(
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 0.4,
+                        color: Brand.muted,
+                      ),
+                    ),
+                  )
+                else
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 6),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Icon(Icons.check, size: 17, color: Brand.blue),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            f,
+                            style: const TextStyle(fontSize: 13.5),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
-                ),
               if (onChoose != null || current || pending)
                 Padding(
                   padding: const EdgeInsets.only(top: 6),
                   child: SizedBox(
                     width: double.infinity,
                     child: FilledButton(
-                      onPressed: busy || (!approve && (current || pending)) ? null : onChoose,
-                      child: busy ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : Text(label, textAlign: TextAlign.center),
+                      onPressed: busy || (!approve && (current || pending))
+                          ? null
+                          : onChoose,
+                      child: busy
+                          ? const SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Colors.white,
+                              ),
+                            )
+                          : Text(label, textAlign: TextAlign.center),
                     ),
                   ),
                 ),
@@ -131,7 +203,16 @@ class PlanCard extends StatelessWidget {
 
 /// The message wallet: booking messages from WAMA's number, paid at Meta's price.
 class MessageWalletCard extends StatelessWidget {
-  const MessageWalletCard({super.key, required this.balance, required this.price, required this.history, required this.options, this.busy = false, this.onTopup, this.note});
+  const MessageWalletCard({
+    super.key,
+    required this.balance,
+    required this.price,
+    required this.history,
+    required this.options,
+    this.busy = false,
+    this.onTopup,
+    this.note,
+  });
 
   final num balance;
   final num price;
@@ -158,18 +239,28 @@ class MessageWalletCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text("WhatsApp messages at Meta's price, no extra charge", style: TextStyle(color: Brand.textSoft, fontSize: 13)),
+          const Text(
+            "WhatsApp messages at Meta's price, no extra charge",
+            style: TextStyle(color: Brand.textSoft, fontSize: 13),
+          ),
           const SizedBox(height: 10),
           Container(
             width: double.infinity,
             padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(color: low ? Brand.redSoft : Brand.page, borderRadius: BorderRadius.circular(12)),
+            decoration: BoxDecoration(
+              color: low ? Brand.redSoft : Brand.page,
+              borderRadius: BorderRadius.circular(12),
+            ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
                   formatRupees(balance),
-                  style: TextStyle(fontSize: 26, fontWeight: FontWeight.w700, color: low ? Brand.red : Brand.text),
+                  style: TextStyle(
+                    fontSize: 26,
+                    fontWeight: FontWeight.w700,
+                    color: low ? Brand.red : Brand.text,
+                  ),
                 ),
                 Text(
                   '${left != null ? 'About ${formatRupees(left).replaceFirst('₹', '')} booking messages at ${formatRupees(price)} each.' : 'Booking messages are free right now.'}${low ? ' Top up so confirmations and reminders keep going out.' : ''}',
@@ -193,7 +284,10 @@ class MessageWalletCard extends StatelessWidget {
                         width: width,
                         child: OutlinedButton(
                           onPressed: busy ? null : () => onTopup!(amount),
-                          child: FittedBox(fit: BoxFit.scaleDown, child: Text('+ ${formatRupees(amount)}')),
+                          child: FittedBox(
+                            fit: BoxFit.scaleDown,
+                            child: Text('+ ${formatRupees(amount)}'),
+                          ),
                         ),
                       ),
                   ],
@@ -202,10 +296,16 @@ class MessageWalletCard extends StatelessWidget {
             ),
           ] else if (note != null) ...[
             const SizedBox(height: 10),
-            Text(note!, style: const TextStyle(color: Brand.textSoft, fontSize: 13)),
+            Text(
+              note!,
+              style: const TextStyle(color: Brand.textSoft, fontSize: 13),
+            ),
           ],
           const SizedBox(height: 8),
-          const Text('A message that does not reach the customer is not charged.', style: TextStyle(color: Brand.muted, fontSize: 12.5)),
+          const Text(
+            'A message that does not reach the customer is not charged.',
+            style: TextStyle(color: Brand.muted, fontSize: 12.5),
+          ),
           if (history.isNotEmpty) ...[
             const SizedBox(height: 10),
             const Text('Recent', style: TextStyle(fontWeight: FontWeight.w700)),
@@ -223,10 +323,19 @@ class MessageWalletCard extends StatelessWidget {
                           _ => 'Message sent',
                         },
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(color: Brand.textSoft, fontSize: 13),
+                        style: const TextStyle(
+                          color: Brand.textSoft,
+                          fontSize: 13,
+                        ),
                       ),
                     ),
-                    Text('${((row['amount'] as num?) ?? 0) < 0 ? '−' : '+'}${formatRupees(((row['amount'] as num?) ?? 0).abs())}', style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+                    Text(
+                      '${((row['amount'] as num?) ?? 0) < 0 ? '−' : '+'}${formatRupees(((row['amount'] as num?) ?? 0).abs())}',
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w600,
+                        fontSize: 13,
+                      ),
+                    ),
                   ],
                 ),
               ),

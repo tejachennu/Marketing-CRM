@@ -47,7 +47,7 @@ export function SalonWebsite({ orgId, canEdit, canManageDomain, flash }: { orgId
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [orgId])
 
-  if (!meta) return <Loader2 className="animate-spin text-[#1D5BEA]" size={22} />
+  if (!meta) return <Loader2 className="animate-spin text-[#008069]" size={22} />
   const set = (patch: Partial<SiteSettings>) => setSite((s) => ({ ...s, ...patch }))
   const bookings = meta.takesAppointments
   const reach = { bookings, store: meta.storeOn, phone: meta.hasPhone, address: meta.hasAddress }
@@ -98,7 +98,7 @@ export function SalonWebsite({ orgId, canEdit, canManageDomain, flash }: { orgId
   const label = 'block text-[13px] font-bold text-[#4a5672] dark:text-slate-300 mb-1.5'
   const check = (key: keyof SiteSettings['show'], text: string) => (
     <label className="flex items-center gap-2.5 text-[14px] text-[#0E1B3D] dark:text-white cursor-pointer">
-      <input type="checkbox" checked={site.show[key]} disabled={!canEdit} onChange={(e) => set({ show: { ...site.show, [key]: e.target.checked } })} className="h-4 w-4 accent-[#1D5BEA]" /> {text}
+      <input type="checkbox" checked={site.show[key]} disabled={!canEdit} onChange={(e) => set({ show: { ...site.show, [key]: e.target.checked } })} className="h-4 w-4 accent-[#008069]" /> {text}
     </label>
   )
 
@@ -111,7 +111,7 @@ export function SalonWebsite({ orgId, canEdit, canManageDomain, flash }: { orgId
             <p className="text-[14px] text-[#4a5672] dark:text-slate-400 mt-1">A full website for your business: services and prices{bookings ? ' with Book' : ''}, your team, photos, reviews, hours and a map. Share it on Google Maps, Instagram and WhatsApp.</p>
           </div>
           <label className="inline-flex items-center gap-2 text-[14px] font-bold cursor-pointer shrink-0">
-            <input type="checkbox" checked={site.enabled} disabled={!canEdit} onChange={(e) => set({ enabled: e.target.checked })} className="h-5 w-5 accent-[#1D5BEA]" /> {site.enabled ? 'On' : 'Off'}
+            <input type="checkbox" checked={site.enabled} disabled={!canEdit} onChange={(e) => set({ enabled: e.target.checked })} className="h-5 w-5 accent-[#008069]" /> {site.enabled ? 'On' : 'Off'}
           </label>
         </div>
         <div className="mt-4 flex flex-wrap items-center gap-2">
@@ -163,12 +163,12 @@ export function SalonWebsite({ orgId, canEdit, canManageDomain, flash }: { orgId
           {canEdit && site.gallery.length < MAX_GALLERY && <button type="button" onClick={() => galleryRef.current?.click()} disabled={Boolean(busy)} className={secondaryButton}>{busy === 'gallery' ? <Loader2 size={15} className="animate-spin" /> : <ImagePlus size={15} />} Add photos</button>}
         </div>
         <label className="flex items-start gap-2.5 rounded-xl border border-[#e3e8f2] dark:border-slate-700 p-3 cursor-pointer">
-          <input type="checkbox" checked={site.instagramLive} disabled={!canEdit} onChange={(e) => set({ instagramLive: e.target.checked })} className="mt-0.5 h-4 w-4 accent-[#1D5BEA]" />
+          <input type="checkbox" checked={site.instagramLive} disabled={!canEdit} onChange={(e) => set({ instagramLive: e.target.checked })} className="mt-0.5 h-4 w-4 accent-[#008069]" />
           <span className="min-w-0 text-[13.5px]">
             <span className="block font-bold text-[#0E1B3D] dark:text-white">Show my latest Instagram posts</span>
             <span className="block text-[#6B7894]">{meta.instagram.connected
               ? <>From <b>@{meta.instagram.username || 'your account'}</b>, by themselves: new posts appear on the website within 30 minutes.</>
-              : <>Connect Instagram first in <a href="/dashboard/settings?tab=instagram" className="font-semibold text-[#1D5BEA] hover:underline">Settings → Instagram</a>. Until then, your photos above show.</>}</span>
+              : <>Connect Instagram first in <a href="/dashboard/settings?tab=instagram" className="font-semibold text-[#008069] hover:underline">Settings → Instagram</a>. Until then, your photos above show.</>}</span>
           </span>
         </label>
         {site.gallery.length === 0 ? <p className="text-[13.5px] text-[#6B7894]">Add photos of your place, your team at work and results customers love. The first one shows biggest.</p> : (
@@ -193,7 +193,7 @@ export function SalonWebsite({ orgId, canEdit, canManageDomain, flash }: { orgId
           {check('reviews', 'Customer reviews (4 and 5 stars with words)')}
         </div>
         <label className="flex items-start gap-2.5 rounded-xl border border-[#e3e8f2] dark:border-slate-700 p-3 cursor-pointer">
-          <input type="checkbox" checked={site.chat} disabled={!canEdit} onChange={(e) => set({ chat: e.target.checked })} className="mt-0.5 h-4 w-4 accent-[#1D5BEA]" />
+          <input type="checkbox" checked={site.chat} disabled={!canEdit} onChange={(e) => set({ chat: e.target.checked })} className="mt-0.5 h-4 w-4 accent-[#008069]" />
           <span className="min-w-0 text-[13.5px]">
             <span className="block font-bold text-[#0E1B3D] dark:text-white">AI chat on your website</span>
             <span className="block text-[#6B7894]">An "Ask us" button that answers visitors from your services and prices, timings, team, memberships and Knowledge Base{bookings ? ', shows services with Book, and checks a customer\'s booking' : ''}. Each answer uses a little of your AI credit.</span>
@@ -246,7 +246,7 @@ export function SalonWebsite({ orgId, canEdit, canManageDomain, flash }: { orgId
         <div className="grid sm:grid-cols-3 gap-2" role="radiogroup" aria-label="Payment when booking">
           {([['shop', 'Pay at the shop', 'No online payment'], ['choice', 'Customer chooses', 'Pay now or at the shop'], ['online', 'Pay online to book', 'Fewer no-shows']] as const).map(([value, title, sub]) => (
             <button key={value} type="button" role="radio" aria-checked={site.bookingPay.mode === value} disabled={!canEdit} onClick={() => set({ bookingPay: { ...site.bookingPay, mode: value } })}
-              className={`text-left rounded-xl border-2 p-3 cursor-pointer ${site.bookingPay.mode === value ? 'border-[#1D5BEA] bg-[#f4f7fe] dark:bg-slate-900' : 'border-[#e3e8f2] dark:border-slate-700'}`}>
+              className={`text-left rounded-xl border-2 p-3 cursor-pointer ${site.bookingPay.mode === value ? 'border-[#008069] bg-[#f0f9f6] dark:bg-slate-900' : 'border-[#e3e8f2] dark:border-slate-700'}`}>
               <span className="block text-[14px] font-bold text-[#0E1B3D] dark:text-white">{title}</span>
               <span className="block text-[12.5px] text-[#6B7894]">{sub}</span>
             </button>
@@ -259,7 +259,7 @@ export function SalonWebsite({ orgId, canEdit, canManageDomain, flash }: { orgId
               <div className="flex flex-wrap gap-2">
                 {ADVANCE_CHOICES.map((n) => (
                   <button key={n} type="button" aria-pressed={site.bookingPay.advance === n} disabled={!canEdit} onClick={() => set({ bookingPay: { ...site.bookingPay, advance: n } })}
-                    className={`h-9 px-3.5 rounded-full border text-[13.5px] font-semibold cursor-pointer ${site.bookingPay.advance === n ? 'border-[#1D5BEA] bg-[#1D5BEA] text-white' : 'border-[#d5ddeb] dark:border-slate-700 text-[#0E1B3D] dark:text-white'}`}>
+                    className={`h-9 px-3.5 rounded-full border text-[13.5px] font-semibold cursor-pointer ${site.bookingPay.advance === n ? 'border-[#008069] bg-[#008069] text-white' : 'border-[#d5ddeb] dark:border-slate-700 text-[#0E1B3D] dark:text-white'}`}>
                     {n === 100 ? 'Full amount' : `${n}% advance`}
                   </button>
                 ))}
@@ -280,7 +280,7 @@ export function SalonWebsite({ orgId, canEdit, canManageDomain, flash }: { orgId
           <div className="flex flex-wrap gap-4 pt-1">
             {(['website', 'store'] as const).map((v) => (
               <label key={v} className="inline-flex items-center gap-2 text-[14px] font-semibold cursor-pointer">
-                <input type="radio" name="domain-shows" checked={site.domainShows === v} disabled={!canEdit} onChange={() => set({ domainShows: v })} className="h-4 w-4 accent-[#1D5BEA]" /> {v === 'website' ? 'This website' : 'The online store'}
+                <input type="radio" name="domain-shows" checked={site.domainShows === v} disabled={!canEdit} onChange={() => set({ domainShows: v })} className="h-4 w-4 accent-[#008069]" /> {v === 'website' ? 'This website' : 'The online store'}
               </label>
             ))}
           </div>

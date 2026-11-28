@@ -345,7 +345,7 @@ export default function FlowsHubPage() {
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
             <div className="flex items-center gap-2">
-              <span className="p-2 rounded-xl bg-[#1D5BEA]/10 text-[#1D5BEA] dark:text-[#5f86ee] border border-[#1D5BEA]/20 shadow-sm">
+              <span className="p-2 rounded-xl bg-[#008069]/10 text-[#008069] dark:text-[#00a884] border border-[#008069]/20 shadow-sm">
                 <Workflow className="w-6 h-6" />
               </span>
               <h1 className="text-xl md:text-2xl font-bold tracking-tight">Flows</h1>
@@ -358,15 +358,15 @@ export default function FlowsHubPage() {
           <div className="flex items-center gap-2.5">
             <button
               onClick={() => setShowAiModal(true)}
-              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[#1D5BEA] text-white font-medium text-sm hover:bg-[#174bc4] shadow-sm shadow-[#1D5BEA]/20 transition-all hover:scale-[1.02]"
+              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[#008069] text-white font-medium text-sm hover:bg-[#006d5b] shadow-sm shadow-[#008069]/20 transition-all hover:scale-[1.02]"
             >
-              <Sparkles className="w-4 h-4 text-[#c5d5fa]" />
+              <Sparkles className="w-4 h-4 text-[#b8e2d6]" />
               <span>Generate with AI</span>
             </button>
 
             <button
               onClick={() => setShowCreateModal(true)}
-              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[#1D5BEA] text-white font-medium text-sm hover:bg-[#174bc4] shadow-sm transition-all hover:scale-[1.02]"
+              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[#008069] text-white font-medium text-sm hover:bg-[#006d5b] shadow-sm transition-all hover:scale-[1.02]"
             >
               <Plus className="w-4 h-4" />
               <span>Create Flow</span>
@@ -379,7 +379,7 @@ export default function FlowsHubPage() {
           <div className="bg-white dark:bg-[#111b21] p-4 rounded-2xl border border-slate-200/80 dark:border-slate-800/80 shadow-sm">
             <div className="flex items-center justify-between text-slate-500 dark:text-slate-400 text-xs font-medium">
               <span>Active Workflows</span>
-              <Activity className="w-4 h-4 text-[#1D5BEA]" />
+              <Activity className="w-4 h-4 text-[#008069]" />
             </div>
             <p className="text-2xl font-bold mt-2">
               {workflows.filter((w) => w.is_active).length}
@@ -426,7 +426,7 @@ export default function FlowsHubPage() {
               onClick={() => setActiveTab('workflows')}
               className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold transition-all ${
                 activeTab === 'workflows'
-                  ? 'bg-[#1D5BEA] text-white shadow-sm'
+                  ? 'bg-[#008069] text-white shadow-sm'
                   : 'text-slate-600 dark:text-slate-400 hover:bg-slate-200/50 dark:hover:bg-slate-800/50'
               }`}
             >
@@ -438,7 +438,7 @@ export default function FlowsHubPage() {
               onClick={() => setActiveTab('native_forms')}
               className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold transition-all ${
                 activeTab === 'native_forms'
-                  ? 'bg-[#1D5BEA] text-white shadow-sm'
+                  ? 'bg-[#008069] text-white shadow-sm'
                   : 'text-slate-600 dark:text-slate-400 hover:bg-slate-200/50 dark:hover:bg-slate-800/50'
               }`}
             >
@@ -450,7 +450,7 @@ export default function FlowsHubPage() {
               onClick={() => setActiveTab('templates')}
               className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold transition-all ${
                 activeTab === 'templates'
-                  ? 'bg-[#1D5BEA] text-white shadow-sm'
+                  ? 'bg-[#008069] text-white shadow-sm'
                   : 'text-slate-600 dark:text-slate-400 hover:bg-slate-200/50 dark:hover:bg-slate-800/50'
               }`}
             >
@@ -466,7 +466,7 @@ export default function FlowsHubPage() {
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Search flows..."
-              className="w-full pl-9 pr-3 py-1.5 text-sm rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#111b21] focus:outline-none focus:ring-2 focus:ring-[#1D5BEA]"
+              className="w-full pl-9 pr-3 py-1.5 text-sm rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#111b21] focus:outline-none focus:ring-2 focus:ring-[#008069]"
             />
           </div>
         </div>
@@ -486,13 +486,13 @@ export default function FlowsHubPage() {
                 <div className="flex items-center justify-center gap-3 pt-2">
                   <button
                     onClick={() => setShowAiModal(true)}
-                    className="px-4 py-2 rounded-xl bg-[#1D5BEA] text-white font-medium text-xs shadow-sm hover:opacity-95"
+                    className="px-4 py-2 rounded-xl bg-[#008069] text-white font-medium text-xs shadow-sm hover:opacity-95"
                   >
                     Generate with AI
                   </button>
                   <button
                     onClick={() => setShowCreateModal(true)}
-                    className="px-4 py-2 rounded-xl bg-[#1D5BEA] text-white font-medium text-xs hover:bg-[#174bc4]"
+                    className="px-4 py-2 rounded-xl bg-[#008069] text-white font-medium text-xs hover:bg-[#006d5b]"
                   >
                     Create a flow
                   </button>
@@ -513,10 +513,10 @@ export default function FlowsHubPage() {
                         <div className="flex items-center gap-2">
                           <span
                             className={`w-2.5 h-2.5 shrink-0 rounded-full ${
-                              workflow.is_active ? 'bg-[#1D5BEA]' : 'bg-slate-300 dark:bg-slate-600'
+                              workflow.is_active ? 'bg-[#008069]' : 'bg-slate-300 dark:bg-slate-600'
                             }`}
                           />
-                          <h3 className="font-semibold text-base line-clamp-1 group-hover:text-[#1D5BEA] dark:group-hover:text-[#5f86ee] transition-colors">
+                          <h3 className="font-semibold text-base line-clamp-1 group-hover:text-[#008069] dark:group-hover:text-[#00a884] transition-colors">
                             {workflow.name}
                           </h3>
                         </div>
@@ -524,7 +524,7 @@ export default function FlowsHubPage() {
                           title={!workflow.is_active && problems ? `${problems} problem${problems === 1 ? '' : 's'} to fix before this flow can go live` : undefined}
                           className={`shrink-0 text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full ${
                             workflow.is_active
-                              ? 'bg-[#1D5BEA]/10 text-[#1D5BEA] dark:text-[#5f86ee] border border-[#1D5BEA]/20'
+                              ? 'bg-[#008069]/10 text-[#008069] dark:text-[#00a884] border border-[#008069]/20'
                               : problems
                               ? 'bg-amber-500/10 text-amber-700 dark:text-amber-300 border border-amber-500/30'
                               : 'bg-slate-500/10 text-slate-500 dark:text-slate-400'
@@ -575,7 +575,7 @@ export default function FlowsHubPage() {
                           </span>
                         </div>
                         {workflow.active_sessions_count ? (
-                          <span className="text-[#1D5BEA] dark:text-[#5f86ee] font-medium">
+                          <span className="text-[#008069] dark:text-[#00a884] font-medium">
                             {workflow.active_sessions_count} active
                           </span>
                         ) : null}
@@ -592,7 +592,7 @@ export default function FlowsHubPage() {
                           className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
                             workflow.is_active
                               ? 'text-amber-500 hover:bg-amber-50 dark:hover:bg-amber-950/30'
-                              : 'text-[#1D5BEA] dark:text-[#5f86ee] hover:bg-[#eef3fe] dark:hover:bg-[#0E1B3D]/30'
+                              : 'text-[#008069] dark:text-[#00a884] hover:bg-[#e7f5f0] dark:hover:bg-[#0E1B3D]/30'
                           }`}
                         >
                           {workflow.is_active ? (
@@ -622,7 +622,7 @@ export default function FlowsHubPage() {
                         </Link>
                         <Link
                           href={`/dashboard/flows/${workflow.id}`}
-                          className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-[#1D5BEA] hover:bg-[#174bc4] text-white text-xs font-semibold shadow-xs transition-all whitespace-nowrap"
+                          className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-[#008069] hover:bg-[#006d5b] text-white text-xs font-semibold shadow-xs transition-all whitespace-nowrap"
                         >
                           <span>Edit</span>
                           <ChevronRight className="w-3.5 h-3.5" />
@@ -640,9 +640,9 @@ export default function FlowsHubPage() {
         {/* Tab 2: Meta Native Forms */}
         {activeTab === 'native_forms' && (
           <div className="space-y-4">
-            <div className="bg-[#1D5BEA]/10 border border-[#1D5BEA]/20 p-4 rounded-2xl flex items-center justify-between">
+            <div className="bg-[#008069]/10 border border-[#008069]/20 p-4 rounded-2xl flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <Smartphone className="w-8 h-8 text-[#1D5BEA] dark:text-[#5f86ee]" />
+                <Smartphone className="w-8 h-8 text-[#008069] dark:text-[#00a884]" />
                 <div>
                   <h4 className="font-semibold text-sm">WhatsApp forms</h4>
                   <p className="text-xs text-slate-500 dark:text-slate-400">
@@ -652,7 +652,7 @@ export default function FlowsHubPage() {
               </div>
               <button
                 onClick={() => handleCreateNativeFlow()}
-                className="px-3.5 py-1.5 rounded-xl bg-[#1D5BEA] text-white text-xs font-semibold hover:bg-[#174bc4] transition-all flex items-center gap-1.5"
+                className="px-3.5 py-1.5 rounded-xl bg-[#008069] text-white text-xs font-semibold hover:bg-[#006d5b] transition-all flex items-center gap-1.5"
               >
                 <Plus className="w-4 h-4" />
                 <span>New form</span>
@@ -670,7 +670,7 @@ export default function FlowsHubPage() {
                 </p>
                 <button
                   onClick={() => handleCreateNativeFlow()}
-                  className="px-4 py-2 rounded-xl bg-[#1D5BEA] text-white font-medium text-xs hover:bg-[#174bc4]"
+                  className="px-4 py-2 rounded-xl bg-[#008069] text-white font-medium text-xs hover:bg-[#006d5b]"
                 >
                   Create your first form
                 </button>
@@ -692,7 +692,7 @@ export default function FlowsHubPage() {
                           title={flow.status === 'PUBLISHED' && Boolean(flow.flow_id_meta) ? 'Approved and published on Meta WhatsApp Cloud API' : 'Click to open Screen Designer and publish'}
                           className={`text-[10px] uppercase font-bold tracking-wider px-2.5 py-1 rounded-full cursor-pointer transition-colors flex items-center gap-1.5 ${
                             flow.status === 'PUBLISHED' && Boolean(flow.flow_id_meta)
-                              ? 'bg-[#1D5BEA]/15 text-[#1D5BEA] dark:text-[#5f86ee] border border-[#1D5BEA]/30 hover:bg-[#1D5BEA]/25'
+                              ? 'bg-[#008069]/15 text-[#008069] dark:text-[#00a884] border border-[#008069]/30 hover:bg-[#008069]/25'
                               : flow.flow_id_meta
                               ? 'bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30 hover:bg-amber-500/25'
                               : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700 hover:bg-slate-200 dark:hover:bg-slate-700'
@@ -700,7 +700,7 @@ export default function FlowsHubPage() {
                         >
                           {flow.status === 'PUBLISHED' && Boolean(flow.flow_id_meta) ? (
                             <>
-                              <CheckCircle2 className="w-3 h-3 text-[#1D5BEA]" />
+                              <CheckCircle2 className="w-3 h-3 text-[#008069]" />
                               <span>Published</span>
                             </>
                           ) : flow.flow_id_meta ? (
@@ -729,8 +729,8 @@ export default function FlowsHubPage() {
                       <div className="mt-2.5 flex items-center gap-2 flex-wrap">
                         {flow.status === 'PUBLISHED' && Boolean(flow.flow_id_meta) ? (
                           <>
-                            <span className="inline-flex items-center gap-1 text-[10px] font-bold text-[#174bc4] dark:text-[#9db5ef] bg-[#eef3fe] dark:bg-[#0E1B3D]/40 px-2 py-0.5 rounded-md border border-[#c5d5fa] dark:border-[#163d9c]">
-                              <CheckCircle2 className="w-3 h-3 text-[#1D5BEA] dark:text-[#5f86ee]" />
+                            <span className="inline-flex items-center gap-1 text-[10px] font-bold text-[#006d5b] dark:text-[#8fcfbf] bg-[#e7f5f0] dark:bg-[#0E1B3D]/40 px-2 py-0.5 rounded-md border border-[#b8e2d6] dark:border-[#00594a]">
+                              <CheckCircle2 className="w-3 h-3 text-[#008069] dark:text-[#00a884]" />
                               <span>Live on WhatsApp</span>
                             </span>
                             <span className="font-mono text-[10px] text-slate-400 dark:text-slate-500 truncate" title={`Meta Flow ID: ${flow.flow_id_meta}`}>
@@ -765,7 +765,7 @@ export default function FlowsHubPage() {
                         </button>
                         <button
                           onClick={() => createWorkflowForNativeFlow(flow)}
-                          className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-slate-600 dark:text-slate-300 hover:text-[#1D5BEA] dark:hover:text-[#5f86ee] hover:bg-[#eef3fe] dark:hover:bg-[#0E1B3D]/30 text-xs font-medium transition-colors"
+                          className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-slate-600 dark:text-slate-300 hover:text-[#008069] dark:hover:text-[#00a884] hover:bg-[#e7f5f0] dark:hover:bg-[#0E1B3D]/30 text-xs font-medium transition-colors"
                           title="Create a flow that sends this form and saves the answers as a lead"
                         >
                           <Zap className="w-3.5 h-3.5 text-amber-500" />
@@ -785,7 +785,7 @@ export default function FlowsHubPage() {
 
                         <Link
                           href={`/dashboard/flows/native/${flow.id}`}
-                          className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-[#1D5BEA] hover:bg-[#174bc4] text-white text-xs font-semibold shadow-xs transition-all whitespace-nowrap"
+                          className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-[#008069] hover:bg-[#006d5b] text-white text-xs font-semibold shadow-xs transition-all whitespace-nowrap"
                         >
                           <span>Designer</span>
                           <ChevronRight className="w-3.5 h-3.5" />
@@ -803,7 +803,7 @@ export default function FlowsHubPage() {
         {activeTab === 'templates' && (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             <div className="bg-white dark:bg-[#111b21] p-6 rounded-2xl border border-slate-200/80 dark:border-slate-800/80 shadow-sm space-y-4">
-              <span className="w-10 h-10 rounded-xl bg-[#1D5BEA]/10 text-[#1D5BEA] dark:text-[#5f86ee] flex items-center justify-center font-bold text-lg">
+              <span className="w-10 h-10 rounded-xl bg-[#008069]/10 text-[#008069] dark:text-[#00a884] flex items-center justify-center font-bold text-lg">
                 📋
               </span>
               <h3 className="font-bold text-base">Lead qualification form</h3>
@@ -812,14 +812,14 @@ export default function FlowsHubPage() {
               </p>
               <button
                 onClick={() => handleCreateNativeFlow('LEAD_QUALIFICATION')}
-                className="w-full py-2 rounded-xl bg-[#1D5BEA] text-white text-xs font-semibold hover:bg-[#174bc4] transition-colors"
+                className="w-full py-2 rounded-xl bg-[#008069] text-white text-xs font-semibold hover:bg-[#006d5b] transition-colors"
               >
                 Use this template
               </button>
             </div>
 
             <div className="bg-white dark:bg-[#111b21] p-6 rounded-2xl border border-slate-200/80 dark:border-slate-800/80 shadow-sm space-y-4">
-              <span className="w-10 h-10 rounded-xl bg-[#1D5BEA]/10 text-[#1D5BEA] dark:text-[#5f86ee] flex items-center justify-center font-bold text-lg">
+              <span className="w-10 h-10 rounded-xl bg-[#008069]/10 text-[#008069] dark:text-[#00a884] flex items-center justify-center font-bold text-lg">
                 📅
               </span>
               <h3 className="font-bold text-base">Appointment booking form</h3>
@@ -828,7 +828,7 @@ export default function FlowsHubPage() {
               </p>
               <button
                 onClick={() => handleCreateNativeFlow('APPOINTMENT_BOOKING')}
-                className="w-full py-2 rounded-xl bg-[#1D5BEA] text-white text-xs font-semibold hover:bg-[#174bc4] transition-colors"
+                className="w-full py-2 rounded-xl bg-[#008069] text-white text-xs font-semibold hover:bg-[#006d5b] transition-colors"
               >
                 Use this template
               </button>
@@ -844,7 +844,7 @@ export default function FlowsHubPage() {
               </p>
               <button
                 onClick={() => handleCreateNativeFlow('CUSTOMER_FEEDBACK')}
-                className="w-full py-2 rounded-xl bg-[#1D5BEA] text-white text-xs font-semibold hover:bg-[#174bc4] transition-colors"
+                className="w-full py-2 rounded-xl bg-[#008069] text-white text-xs font-semibold hover:bg-[#006d5b] transition-colors"
               >
                 Use this template
               </button>
@@ -859,7 +859,7 @@ export default function FlowsHubPage() {
           <div className="bg-white dark:bg-[#111b21] rounded-2xl border border-slate-200 dark:border-slate-800 w-full max-w-lg p-6 space-y-4 shadow-2xl animate-in fade-in zoom-in-95">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <span className="p-2 rounded-xl bg-[#1D5BEA] text-white">
+                <span className="p-2 rounded-xl bg-[#008069] text-white">
                   <Sparkles className="w-5 h-5" />
                 </span>
                 <h3 className="font-bold text-lg">Generate a flow with AI</h3>
@@ -883,7 +883,7 @@ Describe the conversation you want in plain English. The AI drafts the trigger, 
               value={aiPrompt}
               onChange={(e) => setAiPrompt(e.target.value)}
               placeholder="e.g. Build an inbound lead qualification flow for our luxury car rental service. Greet the customer, ask if they want sports or SUV, collect rental dates with WhatsApp native form, and create a high-priority deal for our sales reps."
-              className="w-full p-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-[#0c1317] text-sm focus:outline-none focus:ring-2 focus:ring-[#1D5BEA]"
+              className="w-full p-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-[#0c1317] text-sm focus:outline-none focus:ring-2 focus:ring-[#008069]"
             />
 
             <div className="space-y-1.5">
@@ -897,7 +897,7 @@ Describe the conversation you want in plain English. The AI drafts the trigger, 
                   <button
                     key={i}
                     onClick={() => setAiPrompt(sample)}
-                    className="text-[11px] px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-[#eef3fe] hover:text-[#174bc4] dark:hover:bg-[#0E1B3D]/40 transition-colors"
+                    className="text-[11px] px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-[#e7f5f0] hover:text-[#006d5b] dark:hover:bg-[#0E1B3D]/40 transition-colors"
                   >
                     {sample}
                   </button>
@@ -915,7 +915,7 @@ Describe the conversation you want in plain English. The AI drafts the trigger, 
               <button
                 onClick={handleAiGenerate}
                 disabled={isGeneratingAi || !aiPrompt.trim()}
-                className="px-5 py-2 rounded-xl bg-[#1D5BEA] text-white font-medium text-sm hover:bg-[#174bc4] shadow-sm disabled:opacity-50 flex items-center gap-2"
+                className="px-5 py-2 rounded-xl bg-[#008069] text-white font-medium text-sm hover:bg-[#006d5b] shadow-sm disabled:opacity-50 flex items-center gap-2"
               >
                 {isGeneratingAi ? (
                   <>
@@ -951,7 +951,7 @@ Describe the conversation you want in plain English. The AI drafts the trigger, 
                   value={newFlowName}
                   onChange={(e) => setNewFlowName(e.target.value)}
                   placeholder="e.g. Inbound Website Lead Funnel"
-                  className="w-full mt-1 p-2.5 text-sm rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-[#0c1317] focus:outline-none focus:ring-2 focus:ring-[#1D5BEA]"
+                  className="w-full mt-1 p-2.5 text-sm rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-[#0c1317] focus:outline-none focus:ring-2 focus:ring-[#008069]"
                 />
               </div>
 
@@ -962,7 +962,7 @@ Describe the conversation you want in plain English. The AI drafts the trigger, 
                   value={newFlowDescription}
                   onChange={(e) => setNewFlowDescription(e.target.value)}
                   placeholder="e.g. Triggered when customers message 'pricing' or 'demo'"
-                  className="w-full mt-1 p-2.5 text-sm rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-[#0c1317] focus:outline-none focus:ring-2 focus:ring-[#1D5BEA]"
+                  className="w-full mt-1 p-2.5 text-sm rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-[#0c1317] focus:outline-none focus:ring-2 focus:ring-[#008069]"
                 />
               </div>
             </div>
@@ -977,7 +977,7 @@ Describe the conversation you want in plain English. The AI drafts the trigger, 
               <button
                 onClick={() => handleCreateWorkflow()}
                 disabled={isCreating}
-                className="px-5 py-2 rounded-xl bg-[#1D5BEA] text-white font-medium text-sm hover:bg-[#174bc4] disabled:opacity-50"
+                className="px-5 py-2 rounded-xl bg-[#008069] text-white font-medium text-sm hover:bg-[#006d5b] disabled:opacity-50"
               >
                 {isCreating ? 'Creating…' : 'Create and open'}
               </button>
@@ -990,7 +990,7 @@ Describe the conversation you want in plain English. The AI drafts the trigger, 
       {(isCreating || isGeneratingAi || isCreatingNativeFlow) && (
         <div className="fixed inset-0 z-[60] bg-slate-950/50 backdrop-blur-[2px] flex items-center justify-center p-4" role="status" aria-live="polite">
           <div className="bg-white dark:bg-[#111b21] rounded-2xl border border-slate-200 dark:border-slate-800 shadow-2xl px-6 py-5 flex items-center gap-3">
-            <Loader2 className="w-5 h-5 text-[#1D5BEA] animate-spin shrink-0" />
+            <Loader2 className="w-5 h-5 text-[#008069] animate-spin shrink-0" />
             <div>
               <h3 className="text-sm font-bold text-slate-900 dark:text-white">
                 {isGeneratingAi ? 'Generating your flow…' : isCreatingNativeFlow ? 'Creating the form…' : 'Creating the flow…'}

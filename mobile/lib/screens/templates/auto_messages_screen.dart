@@ -180,7 +180,7 @@ class _AutoMessagesScreenState extends State<AutoMessagesScreen> {
                             Expanded(
                               child: Text(
                                 widget.shop
-                                    ? "These messages go from your own WhatsApp number, which comes with Growth. On your plan, customers get their order confirmation from WAMA's WhatsApp number."
+                                    ? "These messages go from your own WhatsApp number, which comes with the Business plan. On your plan, customers get their order confirmation from WAMA's WhatsApp number."
                                     : "On your plan these messages go from WAMA's WhatsApp number with fixed wording that is already approved, so there is nothing to set up here. Your own wording, from your own WhatsApp number, comes with Growth.",
                                 style: const TextStyle(color: Brand.textSoft, height: 1.4),
                               ),

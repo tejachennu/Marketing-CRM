@@ -51,7 +51,7 @@ export function CategoryPicker({ value, own, onChange }: { value: string; own: s
           aria-autocomplete="list"
           aria-activedescendant={open && items[active] ? `${listId}-${active}` : undefined}
           aria-label="What for: type to search or add your own"
-          className="w-full h-12 rounded-xl border border-[#d5ddeb] dark:border-slate-700 bg-white dark:bg-[#111b21] pl-10 pr-10 text-[15.5px] font-semibold text-[#0E1B3D] dark:text-white placeholder:font-normal placeholder:text-[#8a94a8] outline-none focus:border-[#1D5BEA] focus:ring-2 focus:ring-[#1D5BEA]/20"
+          className="w-full h-12 rounded-xl border border-[#d5ddeb] dark:border-slate-700 bg-white dark:bg-[#111b21] pl-10 pr-10 text-[15.5px] font-semibold text-[#0E1B3D] dark:text-white placeholder:font-normal placeholder:text-[#8a94a8] outline-none focus:border-[#008069] focus:ring-2 focus:ring-[#008069]/20"
           placeholder="Search or type a new one, e.g. Tea and snacks"
           value={open ? query : value ? categoryLabel(value) : ''}
           maxLength={40}
@@ -75,8 +75,8 @@ export function CategoryPicker({ value, own, onChange }: { value: string; own: s
               <li key={`${item.add ? 'add:' : ''}${item.key}`} id={`${listId}-${index}`} role="option" aria-selected={selected}
                 onMouseDown={(event) => { event.preventDefault(); pick(item.key) }}
                 onMouseEnter={() => setActive(index)}
-                className={`flex items-center gap-2.5 min-h-11 px-3.5 py-2 cursor-pointer text-[15px] ${index === active ? 'bg-[#eef1f6] dark:bg-slate-800' : ''} ${item.add ? 'text-[#1D5BEA] font-semibold border-t border-[#eef1f6] dark:border-slate-800' : 'text-[#0E1B3D] dark:text-white'}`}>
-                {item.add ? <Plus size={17} className="shrink-0" /> : <Check size={17} className={`shrink-0 ${selected ? 'text-[#1D5BEA]' : 'invisible'}`} />}
+                className={`flex items-center gap-2.5 min-h-11 px-3.5 py-2 cursor-pointer text-[15px] ${index === active ? 'bg-[#eef1f6] dark:bg-slate-800' : ''} ${item.add ? 'text-[#008069] font-semibold border-t border-[#eef1f6] dark:border-slate-800' : 'text-[#0E1B3D] dark:text-white'}`}>
+                {item.add ? <Plus size={17} className="shrink-0" /> : <Check size={17} className={`shrink-0 ${selected ? 'text-[#008069]' : 'invisible'}`} />}
                 <span className="min-w-0 flex-1 truncate">{item.add ? `Add “${item.label}”` : item.label}</span>
                 {!item.add && item.own && <span className="shrink-0 text-[12px] font-semibold text-[#6B7894] bg-[#f4f6fa] dark:bg-slate-800 rounded-full px-2 py-0.5">Yours</span>}
               </li>

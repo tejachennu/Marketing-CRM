@@ -74,7 +74,7 @@ bool _awaitingApproval(Map b) => b['pendingPlan'] is Map && b['status'] == 'acti
 ({String tone, IconData icon, String eyebrow, String title, String body, String? action, String? actionKind, String? caption, double? progress, List<(String, String)> facts}) _status(Map b) {
   final until = _date(b['accessUntil']);
   final plan = (b['plan'] as Map?) ?? const {};
-  final price = formatRupees(plan['price'] ?? 2500);
+  final price = formatRupees(plan['price'] ?? 1499);
   final planName = 'WAMA CRM ${plan['name'] ?? 'Growth'}';
   final pending = b['pendingPlan'] as Map?;
   if (b['configured'] != true) {
@@ -331,7 +331,7 @@ class _BillingScreenState extends State<BillingScreen> {
       _notice = '';
     });
     try {
-      final price = formatRupees(((_b?['plan'] as Map?) ?? const {})['price'] ?? 2500);
+      final price = formatRupees(((_b?['plan'] as Map?) ?? const {})['price'] ?? 1499);
       final data = await app.ask('/api/billing/subscribe', {'plan': ((_b?['plan'] as Map?) ?? const {})['id']});
       final startsAt = data['startsAt'];
       final paid = await _checkout({

@@ -55,7 +55,7 @@ export function OrderInvoice({ orgId, orderId, canEdit, showToast }: { orgId: st
       {invoice ? (
         <div className="flex flex-wrap items-center gap-2">
           <p className="text-sm font-semibold text-slate-900 dark:text-white flex items-center gap-1.5 min-w-0">
-            <FileText size={14} className="text-[#1D5BEA] shrink-0" /> <span className="truncate">{invoice.number}</span>
+            <FileText size={14} className="text-[#008069] shrink-0" /> <span className="truncate">{invoice.number}</span>
             {invoice.status === 'cancelled' && <span className="text-xs font-semibold text-[#b91c1c]">Cancelled</span>}
           </p>
           <div className="flex gap-2 ml-auto">
@@ -66,7 +66,7 @@ export function OrderInvoice({ orgId, orderId, canEdit, showToast }: { orgId: st
       ) : null}
       {invoice && (state.creditNotes || []).length > 0 && (
         <ul className="mt-1.5 space-y-0.5 text-xs text-slate-600 dark:text-slate-300">
-          {state.creditNotes!.map((n) => <li key={n.number}>Credit note <a href={n.url} target="_blank" rel="noopener noreferrer" className="font-semibold text-[#1D5BEA] hover:underline">{n.number}</a> · − ₹{n.total.toLocaleString('en-IN')}</li>)}
+          {state.creditNotes!.map((n) => <li key={n.number}>Credit note <a href={n.url} target="_blank" rel="noopener noreferrer" className="font-semibold text-[#008069] hover:underline">{n.number}</a> · − ₹{n.total.toLocaleString('en-IN')}</li>)}
         </ul>
       )}
       {invoice ? null : canEdit ? (

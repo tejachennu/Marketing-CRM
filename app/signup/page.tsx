@@ -185,7 +185,7 @@ export default function SignupPage() {
                   value={fullName}
                   onChange={(e) => setFullName(e.target.value)}
                   readOnly={codeSent}
-                  className="w-full pl-10 pr-4 py-3 bg-white dark:bg-slate-950/50 border border-slate-200 dark:border-slate-800/80 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#1D5BEA]/20 focus:border-[#1D5BEA] text-xs font-semibold placeholder-slate-400 dark:placeholder-slate-500 text-slate-800 dark:text-slate-200 transition-all"
+                  className="w-full pl-10 pr-4 py-3 bg-white dark:bg-slate-950/50 border border-slate-200 dark:border-slate-800/80 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#008069]/20 focus:border-[#008069] text-xs font-semibold placeholder-slate-400 dark:placeholder-slate-500 text-slate-800 dark:text-slate-200 transition-all"
                   placeholder="John Doe"
                   required
                 />
@@ -206,7 +206,7 @@ export default function SignupPage() {
                   value={companyName}
                   onChange={(e) => setCompanyName(e.target.value)}
                   readOnly={codeSent}
-                  className="w-full pl-10 pr-4 py-3 bg-white dark:bg-slate-950/50 border border-slate-200 dark:border-slate-800/80 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#1D5BEA]/20 focus:border-[#1D5BEA] text-xs font-semibold placeholder-slate-400 dark:placeholder-slate-500 text-slate-800 dark:text-slate-200 transition-all"
+                  className="w-full pl-10 pr-4 py-3 bg-white dark:bg-slate-950/50 border border-slate-200 dark:border-slate-800/80 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#008069]/20 focus:border-[#008069] text-xs font-semibold placeholder-slate-400 dark:placeholder-slate-500 text-slate-800 dark:text-slate-200 transition-all"
                   placeholder="Acme Inc"
                   required
                 />
@@ -227,7 +227,7 @@ export default function SignupPage() {
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   readOnly={codeSent}
-                  className="w-full pl-10 pr-4 py-3 bg-white dark:bg-slate-950/50 border border-slate-200 dark:border-slate-800/80 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#1D5BEA]/20 focus:border-[#1D5BEA] text-xs font-semibold placeholder-slate-400 dark:placeholder-slate-500 text-slate-800 dark:text-slate-200 transition-all"
+                  className="w-full pl-10 pr-4 py-3 bg-white dark:bg-slate-950/50 border border-slate-200 dark:border-slate-800/80 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#008069]/20 focus:border-[#008069] text-xs font-semibold placeholder-slate-400 dark:placeholder-slate-500 text-slate-800 dark:text-slate-200 transition-all"
                   placeholder="you@example.com"
                   required
                 />
@@ -248,7 +248,7 @@ export default function SignupPage() {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   readOnly={codeSent}
-                  className="w-full pl-10 pr-4 py-3 bg-white dark:bg-slate-950/50 border border-slate-200 dark:border-slate-800/80 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#1D5BEA]/20 focus:border-[#1D5BEA] text-xs font-semibold placeholder-slate-400 dark:placeholder-slate-500 text-slate-800 dark:text-slate-200 transition-all"
+                  className="w-full pl-10 pr-4 py-3 bg-white dark:bg-slate-950/50 border border-slate-200 dark:border-slate-800/80 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#008069]/20 focus:border-[#008069] text-xs font-semibold placeholder-slate-400 dark:placeholder-slate-500 text-slate-800 dark:text-slate-200 transition-all"
                   placeholder="Choose a strong password"
                   required
                 />
@@ -269,13 +269,13 @@ export default function SignupPage() {
                   maxLength={6}
                   value={code}
                   onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                  className="w-full px-4 py-3 bg-white dark:bg-slate-950/50 border border-slate-200 dark:border-slate-800/80 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#1D5BEA]/20 focus:border-[#1D5BEA] text-xl font-bold tracking-[0.5em] text-center text-slate-900 dark:text-white"
+                  className="w-full px-4 py-3 bg-white dark:bg-slate-950/50 border border-slate-200 dark:border-slate-800/80 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#008069]/20 focus:border-[#008069] text-xl font-bold tracking-[0.5em] text-center text-slate-900 dark:text-white"
                   placeholder="······"
                   required
                 />
                 <div className="flex items-center justify-between text-xs">
                   <button type="button" onClick={() => { setCodeSent(false); setCode(''); setError(null) }} className="font-semibold text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 cursor-pointer">Change details</button>
-                  <button type="button" onClick={sendCode} disabled={loading || resendIn > 0} className="font-bold text-[#1D5BEA] disabled:text-slate-400 cursor-pointer disabled:cursor-default">
+                  <button type="button" onClick={sendCode} disabled={loading || resendIn > 0} className="font-bold text-[#008069] disabled:text-slate-400 cursor-pointer disabled:cursor-default">
                     {resendIn > 0 ? `Send again in ${resendIn}s` : 'Send a new code'}
                   </button>
                 </div>
@@ -291,7 +291,7 @@ export default function SignupPage() {
             <Button
               type="submit"
               disabled={loading || (codeSent && code.length !== 6)}
-              className="w-full bg-[#1D5BEA] hover:bg-[#174bc4] text-white py-3 rounded-xl font-bold transition-colors disabled:opacity-50 text-xs flex items-center justify-center gap-2 cursor-pointer border-0"
+              className="w-full bg-[#008069] hover:bg-[#006d5b] text-white py-3 rounded-xl font-bold transition-colors disabled:opacity-50 text-xs flex items-center justify-center gap-2 cursor-pointer border-0"
             >
               {loading ? (
                 <span>Creating account...</span>
@@ -307,7 +307,7 @@ export default function SignupPage() {
           <div className="mt-8 pt-6 border-t border-slate-200/80 dark:border-slate-800/80 text-center">
             <p className="text-xs text-slate-500 dark:text-slate-400 font-semibold">
               Already have an account?{' '}
-              <Link href="/login" className="text-[#1D5BEA] dark:text-blue-300 hover:text-[#174bc4] dark:hover:text-blue-200 font-bold transition-colors">
+              <Link href="/login" className="text-[#008069] dark:text-emerald-300 hover:text-[#006d5b] dark:hover:text-emerald-200 font-bold transition-colors">
                 Sign in
               </Link>
             </p>

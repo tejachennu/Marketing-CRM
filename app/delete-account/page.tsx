@@ -13,7 +13,7 @@ export default function DeleteAccountPage() {
     <main className="min-h-screen bg-[#f4f6fa] px-4 py-10 text-[#4a5672] sm:py-16">
       <div className="mx-auto max-w-2xl space-y-6">
         <header className="rounded-2xl border border-[#e3e8f2] bg-white p-6 sm:p-8">
-          <p className="text-xs font-semibold uppercase tracking-wider text-[#1D5BEA]">Your account</p>
+          <p className="text-xs font-semibold uppercase tracking-wider text-[#008069]">Your account</p>
           <h1 className="mt-2 text-2xl font-bold text-[#0E1B3D] sm:text-3xl">Delete your account</h1>
           <p className="mt-3 leading-relaxed">
             You can ask us to delete your WAMA CRM account at any time. Our team checks that the request came from
@@ -37,7 +37,7 @@ export default function DeleteAccountPage() {
           </p>
           <a
             href={mail}
-            className="mt-4 inline-flex min-h-11 items-center rounded-lg bg-[#1D5BEA] px-4 py-2.5 font-semibold text-white hover:bg-[#174bc4]"
+            className="mt-4 inline-flex min-h-11 items-center rounded-lg bg-[#008069] px-4 py-2.5 font-semibold text-white hover:bg-[#006d5b]"
           >
             Email {DELETION_SUPPORT_EMAIL}
           </a>
@@ -59,9 +59,9 @@ export default function DeleteAccountPage() {
         </section>
 
         <p className="text-center text-sm">
-          <Link href="/privacy" className="font-semibold text-[#1D5BEA] hover:text-[#174bc4]">Privacy Policy</Link>
+          <Link href="/privacy" className="font-semibold text-[#008069] hover:text-[#006d5b]">Privacy Policy</Link>
           <span className="mx-2 text-[#8a94a8]">·</span>
-          <Link href="/terms" className="font-semibold text-[#1D5BEA] hover:text-[#174bc4]">Terms</Link>
+          <Link href="/terms" className="font-semibold text-[#008069] hover:text-[#006d5b]">Terms</Link>
         </p>
       </div>
     </main>

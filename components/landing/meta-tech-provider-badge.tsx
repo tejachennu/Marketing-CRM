@@ -26,14 +26,14 @@ export function MetaTechProviderBadge({
       className={`inline-flex items-center rounded-full border ${sizes.wrap} ${
         dark
           ? 'bg-white/[0.06] border-white/15 text-white'
-          : 'bg-white border-[#d6e4ff] text-[#0c2014] shadow-[0_6px_20px_-10px_rgba(8,102,255,0.45)]'
+          : 'bg-white border-[#cdeee3] text-[#0c2014] shadow-[0_6px_20px_-10px_rgba(8,102,255,0.45)]'
       } ${className}`}
     >
       <span className={`${sizes.icon} shrink-0 rounded-full bg-gradient-to-br from-[#1877F2] to-[#0866FF] flex items-center justify-center text-white shadow-[inset_0_-2px_4px_rgba(0,0,0,0.15)]`}>
         <BadgeCheck size={sizes.iconSize} strokeWidth={2.4} />
       </span>
       <span className="flex flex-col leading-none text-left">
-        <span className={`${sizes.top} font-bold uppercase tracking-[0.14em] ${dark ? 'text-[#8fb8ff]' : 'text-[#0866FF]'}`}>
+        <span className={`${sizes.top} font-bold uppercase tracking-[0.14em] ${dark ? 'text-[#7fcfb9]' : 'text-[#0866FF]'}`}>
           Official
         </span>
         <span className={`${sizes.main} font-extrabold tracking-tight mt-0.5 whitespace-nowrap`}>

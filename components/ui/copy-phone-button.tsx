@@ -57,7 +57,7 @@ export function CopyPhoneButton({
       title={copied ? 'Copied!' : `${title}: ${cleanNumber}`}
       aria-label={copied ? 'Copied to clipboard' : `Copy ${cleanNumber}`}
       className={`inline-flex items-center gap-1.5 px-1.5 py-0.5 rounded hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 select-none group cursor-pointer ${
-        copied ? '!text-[#1D5BEA] font-semibold' : ''
+        copied ? '!text-[#008069] font-semibold' : ''
       } ${className}`}
     >
       {showText && (
@@ -66,7 +66,7 @@ export function CopyPhoneButton({
         </span>
       )}
       {copied ? (
-        <span className="inline-flex items-center gap-1 text-[#1D5BEA] font-bold text-[10px]">
+        <span className="inline-flex items-center gap-1 text-[#008069] font-bold text-[10px]">
           <Check size={iconSize} className="shrink-0 animate-in zoom-in-75 duration-150" />
           {showText && <span className="text-[10px] uppercase tracking-wider">Copied</span>}
         </span>

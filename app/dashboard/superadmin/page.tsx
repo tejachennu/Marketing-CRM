@@ -90,9 +90,9 @@ type Filter = WorkspaceFilter
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 const card = 'bg-white dark:bg-[#111b21] rounded-2xl border border-[#e3e8f2] dark:border-slate-800'
-const field = 'h-10 px-3 rounded-xl border border-[#d5ddeb] dark:border-slate-700 bg-white dark:bg-[#0b141a] text-[14px] text-[#0E1B3D] dark:text-white placeholder:text-[#8a94a8] focus:outline-none focus:border-[#1D5BEA] focus:ring-2 focus:ring-[#1D5BEA]/15'
+const field = 'h-10 px-3 rounded-xl border border-[#d5ddeb] dark:border-slate-700 bg-white dark:bg-[#0b141a] text-[14px] text-[#0E1B3D] dark:text-white placeholder:text-[#8a94a8] focus:outline-none focus:border-[#008069] focus:ring-2 focus:ring-[#008069]/15'
 const input = `w-full ${field}`
-const primary = 'inline-flex items-center justify-center gap-2 h-10 px-4 rounded-xl bg-[#1D5BEA] hover:bg-[#174bc4] text-white text-[14px] font-bold transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed'
+const primary = 'inline-flex items-center justify-center gap-2 h-10 px-4 rounded-xl bg-[#008069] hover:bg-[#006d5b] text-white text-[14px] font-bold transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed'
 const secondary = 'inline-flex items-center justify-center gap-2 h-10 px-4 rounded-xl border border-[#d5ddeb] dark:border-slate-700 text-[#0E1B3D] dark:text-slate-100 text-[14px] font-semibold hover:bg-[#f4f6fa] dark:hover:bg-slate-800 transition-colors cursor-pointer disabled:opacity-50'
 const rupees = (value: number) => `₹${value.toLocaleString('en-IN', { maximumFractionDigits: 2 })}`
 const formatDate = (iso: string | null | undefined) => (iso ? new Date(iso).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '—')
@@ -112,7 +112,7 @@ function planLabel(billing: WorkspaceBilling): [string, string] {
   if (!billing.configured) return ['No billing yet', 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300']
   if (billing.exempt) return ['Exempt', 'bg-[#e8ecf5] text-[#0E1B3D] dark:bg-slate-800 dark:text-slate-200']
   if (billing.status === 'active') return [billing.cancelAtPeriodEnd ? `Paid till ${formatDate(billing.accessUntil)}` : 'Paying', 'bg-[#eef1f6] text-[#0E1B3D] dark:bg-slate-800 dark:text-slate-200']
-  if (billing.status === 'trialing') return [`Trial · ${billing.trialDaysLeft}d left`, 'bg-[#eef3fe] text-[#1D5BEA] dark:bg-blue-950/40 dark:text-blue-300']
+  if (billing.status === 'trialing') return [`Trial · ${billing.trialDaysLeft}d left`, 'bg-[#e7f5f0] text-[#008069] dark:bg-emerald-950/40 dark:text-emerald-300']
   if (billing.status === 'past_due') return ['Payment failed', 'bg-[#fdf0f0] text-[#b91c1c] dark:bg-red-950/40 dark:text-red-300']
   if (billing.status === 'cancelled') return [`Cancelled · till ${formatDate(billing.accessUntil)}`, 'bg-[#eef1f6] text-[#0E1B3D] dark:bg-slate-800 dark:text-slate-200']
   return [billing.onTrial ? 'Trial ended' : 'Plan ended', 'bg-[#fdf0f0] text-[#b91c1c] dark:bg-red-950/40 dark:text-red-300']
@@ -126,7 +126,7 @@ function PlanPill({ billing }: { billing: WorkspaceBilling }) {
 function CreditBar({ billing }: { billing: WorkspaceBilling }) {
   if (billing.exempt || billing.aiPercentLeft === null) return <span className="text-[13px] text-[#6B7894]">Own key</span>
   const percent = billing.aiPercentLeft
-  const color = billing.aiPaused || percent <= 20 ? '#b91c1c' : '#1D5BEA'
+  const color = billing.aiPaused || percent <= 20 ? '#b91c1c' : '#008069'
   return (
     <div className="flex items-center gap-2 min-w-[110px]">
       <div className="h-2 w-16 rounded-full bg-[#eef1f6] dark:bg-slate-800 overflow-hidden"><div className="h-full rounded-full" style={{ width: `${percent}%`, background: color }} /></div>
@@ -377,7 +377,7 @@ function SuperAdminConsole() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 sm:py-8 space-y-6">
         <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
           <div>
-            <div className="inline-flex items-center gap-1.5 text-[13px] font-semibold text-[#1D5BEA]"><ShieldCheck size={15} /> WAMA CRM staff</div>
+            <div className="inline-flex items-center gap-1.5 text-[13px] font-semibold text-[#008069]"><ShieldCheck size={15} /> WAMA CRM staff</div>
             <h1 className="text-[26px] sm:text-[30px] font-extrabold tracking-tight text-[#0E1B3D] dark:text-white">Super Admin</h1>
             <p className="text-[15px] text-[#4a5672] dark:text-slate-400 mt-1">Every workspace, its plan, AI credit and team, in one place.</p>
           </div>
@@ -389,7 +389,7 @@ function SuperAdminConsole() {
         </div>
 
         {toast && (
-          <div role="status" className={`flex items-start gap-2.5 rounded-xl px-4 py-3 text-[14px] font-medium ${toast.tone === 'success' ? 'bg-[#eef3fe] text-[#174bc4]' : 'bg-[#fdf0f0] text-[#b91c1c]'}`}>
+          <div role="status" className={`flex items-start gap-2.5 rounded-xl px-4 py-3 text-[14px] font-medium ${toast.tone === 'success' ? 'bg-[#e7f5f0] text-[#006d5b]' : 'bg-[#fdf0f0] text-[#b91c1c]'}`}>
             {toast.tone === 'success' ? <Check size={18} className="mt-0.5 shrink-0" /> : <AlertTriangle size={18} className="mt-0.5 shrink-0" />}
             <span>{toast.text}</span>
           </div>
@@ -411,13 +411,13 @@ function SuperAdminConsole() {
 
         <div className="flex md:hidden gap-1 overflow-x-auto border-b border-[#e3e8f2] dark:border-slate-800">
           {([['overview', 'Overview'], ['workspaces', `Workspaces (${workspaces.length})`], ['people', `People (${people.length})`], ['setup', 'Setup'], ['email', 'Platform email']] as [Tab, string][]).map(([id, label]) => (
-            <button key={id} type="button" onClick={() => setTab(id)} className={`px-4 h-11 text-[14.5px] font-semibold whitespace-nowrap border-b-2 -mb-px cursor-pointer ${tab === id ? 'border-[#1D5BEA] text-[#1D5BEA]' : 'border-transparent text-[#6B7894] hover:text-[#0E1B3D] dark:hover:text-white'}`}>{label}</button>
+            <button key={id} type="button" onClick={() => setTab(id)} className={`px-4 h-11 text-[14.5px] font-semibold whitespace-nowrap border-b-2 -mb-px cursor-pointer ${tab === id ? 'border-[#008069] text-[#008069]' : 'border-transparent text-[#6B7894] hover:text-[#0E1B3D] dark:hover:text-white'}`}>{label}</button>
           ))}
           <Link href="/dashboard/superadmin/advanced" className="ml-auto px-3 h-11 inline-flex items-center gap-1.5 text-[14px] font-semibold text-[#6B7894] hover:text-[#0E1B3D] dark:hover:text-white whitespace-nowrap"><Settings2 size={15} /> Advanced</Link>
         </div>
 
         {loading && workspaces.length === 0 ? (
-          <div className="flex justify-center py-20"><Loader2 className="animate-spin text-[#1D5BEA]" size={28} /></div>
+          <div className="flex justify-center py-20"><Loader2 className="animate-spin text-[#008069]" size={28} /></div>
         ) : tab === 'overview' ? (
           <ConsoleOverview workspaces={workspaces} totals={totals} billingReady={billingReady} onOpen={openWorkspace} onShow={(next) => { setFilter(next); setTab('workspaces') }} />
         ) : tab === 'workspaces' ? (
@@ -489,13 +489,13 @@ function SuperAdminConsole() {
             </div>
 
             {detailsLoading || !details ? (
-              <div className="flex justify-center py-20"><Loader2 className="animate-spin text-[#1D5BEA]" size={26} /></div>
+              <div className="flex justify-center py-20"><Loader2 className="animate-spin text-[#008069]" size={26} /></div>
             ) : (
               <div className="p-5 space-y-4">
                 {/* Plan */}
                 <section className={`${card} p-4 space-y-3`}>
                   <div className="flex items-center justify-between gap-3">
-                    <h3 className="text-[15px] font-bold text-[#0E1B3D] dark:text-white flex items-center gap-2"><CreditCard size={16} className="text-[#1D5BEA]" /> Plan</h3>
+                    <h3 className="text-[15px] font-bold text-[#0E1B3D] dark:text-white flex items-center gap-2"><CreditCard size={16} className="text-[#008069]" /> Plan</h3>
                     <PlanPill billing={details.workspace.billing} />
                   </div>
                   {!details.workspace.billing.configured ? (
@@ -547,7 +547,7 @@ function SuperAdminConsole() {
                 {/* Plan, limits and the message wallet */}
                 {details.workspace.billing.configured && !details.workspace.billing.exempt && (
                   <section className={`${card} p-4 space-y-3`}>
-                    <h3 className="text-[15px] font-bold text-[#0E1B3D] dark:text-white flex items-center gap-2"><CreditCard size={16} className="text-[#1D5BEA]" /> Plan</h3>
+                    <h3 className="text-[15px] font-bold text-[#0E1B3D] dark:text-white flex items-center gap-2"><CreditCard size={16} className="text-[#008069]" /> Plan</h3>
                     <p className="text-[14px] text-[#4a5672] dark:text-slate-400">
                       {details.workspace.billing.planName} · {rupees(details.workspace.billing.price)} a month · {details.workspace.billing.whatsappMode === 'shared' ? 'WAMA\'s number' : 'own WhatsApp number'}
                       {details.workspace.billing.pendingPlan ? ` · changing to ${PLANS.find((plan) => plan.id === details.workspace.billing.pendingPlan)?.name || details.workspace.billing.pendingPlan} on the bill date` : ''}
@@ -596,7 +596,7 @@ function SuperAdminConsole() {
                 {details.workspace.billing.configured && !details.workspace.billing.exempt && (
                   <section className={`${card} p-4 space-y-3`}>
                     <div className="flex items-center justify-between gap-3">
-                      <h3 className="text-[15px] font-bold text-[#0E1B3D] dark:text-white flex items-center gap-2"><Sparkles size={16} className="text-[#1D5BEA]" /> AI credit</h3>
+                      <h3 className="text-[15px] font-bold text-[#0E1B3D] dark:text-white flex items-center gap-2"><Sparkles size={16} className="text-[#008069]" /> AI credit</h3>
                       <CreditBar billing={details.workspace.billing} />
                     </div>
                     <p className="text-[14px] text-[#4a5672] dark:text-slate-400">
@@ -623,7 +623,7 @@ function SuperAdminConsole() {
                 {/* Team */}
                 <section className={`${card} p-4 space-y-3`}>
                   <div className="flex items-center justify-between gap-3">
-                    <h3 className="text-[15px] font-bold text-[#0E1B3D] dark:text-white flex items-center gap-2"><Users size={16} className="text-[#1D5BEA]" /> Team ({details.members.length})</h3>
+                    <h3 className="text-[15px] font-bold text-[#0E1B3D] dark:text-white flex items-center gap-2"><Users size={16} className="text-[#008069]" /> Team ({details.members.length})</h3>
                     <form className="flex items-center gap-2" onSubmit={(e) => { e.preventDefault(); act({ action: 'set_seat_limit', limit: seatLimit === '' ? null : Number(seatLimit) }, seatLimit ? `Seat limit set to ${seatLimit}.` : 'No seat limit.') }}>
                       <input type="number" min={1} max={1000} value={seatLimit} onChange={(e) => setSeatLimit(e.target.value)} placeholder="No limit" className={`${field} w-24 h-8 text-[13px]`} aria-label="Seat limit" />
                       <button type="submit" disabled={busy !== null} className={`${secondary} h-8 px-2.5 text-[13px] whitespace-nowrap`}>Set limit</button>
@@ -646,7 +646,7 @@ function SuperAdminConsole() {
                 {/* Payments */}
                 {details.payments.length > 0 && (
                   <section className={`${card} p-4 space-y-2`}>
-                    <h3 className="text-[15px] font-bold text-[#0E1B3D] dark:text-white flex items-center gap-2"><IndianRupee size={16} className="text-[#174bc4]" /> Payments</h3>
+                    <h3 className="text-[15px] font-bold text-[#0E1B3D] dark:text-white flex items-center gap-2"><IndianRupee size={16} className="text-[#006d5b]" /> Payments</h3>
                     {details.payments.map((payment) => (
                       <div key={payment.razorpay_payment_id} className="flex justify-between text-[13.5px] py-1">
                         <span className="text-[#4a5672] dark:text-slate-300">{payment.purpose === 'ai_topup' ? 'AI credit' : 'Plan'} · {formatDate(payment.created_at)}</span>

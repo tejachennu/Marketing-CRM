@@ -27,10 +27,10 @@ type View = 'day' | 'month' | 'holidays'
 
 /** One look per status: blue for in, navy for leave, greys for half day and week off, red only for absent. */
 const TONE: Record<AttendanceStatus, { on: string; soft: string; dot: string }> = {
-  present: { on: 'bg-[#1D5BEA] border-[#1D5BEA] text-white', soft: 'bg-[#eef3fe] text-[#1D5BEA] dark:bg-blue-950/40 dark:text-blue-300', dot: 'bg-[#1D5BEA]' },
+  present: { on: 'bg-[#008069] border-[#008069] text-white', soft: 'bg-[#e7f5f0] text-[#008069] dark:bg-emerald-950/40 dark:text-emerald-300', dot: 'bg-[#008069]' },
   absent: { on: 'bg-[#b91c1c] border-[#b91c1c] text-white', soft: 'bg-[#fdf0f0] text-[#b91c1c] dark:bg-red-950/30 dark:text-red-300', dot: 'bg-[#b91c1c]' },
   leave: { on: 'bg-[#0E1B3D] border-[#0E1B3D] text-white dark:bg-white dark:border-white dark:text-[#0E1B3D]', soft: 'bg-[#e3e8f2] text-[#0E1B3D] dark:bg-slate-700 dark:text-white', dot: 'bg-[#0E1B3D] dark:bg-white' },
-  half_day: { on: 'bg-[#4a5672] border-[#4a5672] text-white', soft: 'bg-[#eef1f6] text-[#4a5672] dark:bg-slate-800 dark:text-slate-200', dot: 'bg-white border-2 border-[#1D5BEA] dark:bg-transparent' },
+  half_day: { on: 'bg-[#4a5672] border-[#4a5672] text-white', soft: 'bg-[#eef1f6] text-[#4a5672] dark:bg-slate-800 dark:text-slate-200', dot: 'bg-white border-2 border-[#008069] dark:bg-transparent' },
   week_off: { on: 'bg-[#6B7894] border-[#6B7894] text-white', soft: 'bg-[#f4f6fa] text-[#6B7894] dark:bg-slate-800 dark:text-slate-400', dot: 'bg-[#d5ddeb] dark:bg-slate-600' },
 }
 const SHORT_LABEL: Record<AttendanceStatus, string> = { present: 'Present', absent: 'Absent', leave: 'Leave', half_day: 'Half day', week_off: 'Week off' }
@@ -218,7 +218,7 @@ export function SalonAttendance({ orgId, flash, initialDay }: { orgId: string; f
           <button type="button" disabled={view === 'month' && readMonth(addMonths(month, 1)) !== addMonths(month, 1)} onClick={() => (view === 'day' ? setDay(addDays(day, 1)) : setMonth(addMonths(month, 1)))} aria-label={view === 'day' ? 'Next day' : 'Next month'} className="h-10 w-10 shrink-0 rounded-xl flex items-center justify-center text-[#4a5672] dark:text-slate-300 hover:bg-[#f4f6fa] dark:hover:bg-slate-800 cursor-pointer disabled:opacity-30 disabled:cursor-default"><ChevronRight size={19} /></button>
         </div>}
         {((view === 'day' && day !== today) || (view === 'month' && month !== today.slice(0, 7))) && (
-          <button type="button" onClick={() => (view === 'day' ? setDay(today) : setMonth(today.slice(0, 7)))} className="self-start @2xl:self-auto h-10 px-3 rounded-xl text-[14px] font-semibold text-[#1D5BEA] hover:bg-[#eef3fe] dark:hover:bg-blue-950/40 cursor-pointer">{view === 'day' ? 'Today' : 'This month'}</button>
+          <button type="button" onClick={() => (view === 'day' ? setDay(today) : setMonth(today.slice(0, 7)))} className="self-start @2xl:self-auto h-10 px-3 rounded-xl text-[14px] font-semibold text-[#008069] hover:bg-[#e7f5f0] dark:hover:bg-emerald-950/40 cursor-pointer">{view === 'day' ? 'Today' : 'This month'}</button>
         )}
 
         {canMark && (
@@ -233,12 +233,12 @@ export function SalonAttendance({ orgId, flash, initialDay }: { orgId: string; f
         <>
           {dayData?.holiday && dayData.day === day && (
             <div className="flex items-start gap-3 rounded-2xl border border-[#d5ddeb] dark:border-slate-700 bg-[#f4f6fa] dark:bg-slate-900 px-4 py-3">
-              <CalendarHeart size={20} className="text-[#1D5BEA] shrink-0 mt-0.5" />
+              <CalendarHeart size={20} className="text-[#008069] shrink-0 mt-0.5" />
               <div className="min-w-0 text-[14px] text-[#4a5672] dark:text-slate-300">
                 <p className="font-bold text-[#0E1B3D] dark:text-white">Shop holiday: {dayData.holiday.name} ({dayData.holiday.label})</p>
                 <p>The shop is closed: no bookings are taken and nobody needs marking. Mark anyone who came in anyway.</p>
               </div>
-              <button type="button" onClick={() => setView('holidays')} className="ml-auto shrink-0 h-9 px-2.5 rounded-lg text-[13.5px] font-semibold text-[#1D5BEA] hover:bg-[#eef3fe] dark:hover:bg-blue-950/40 cursor-pointer">Holidays</button>
+              <button type="button" onClick={() => setView('holidays')} className="ml-auto shrink-0 h-9 px-2.5 rounded-lg text-[13.5px] font-semibold text-[#008069] hover:bg-[#e7f5f0] dark:hover:bg-emerald-950/40 cursor-pointer">Holidays</button>
             </div>
           )}
           {counts && (
@@ -253,7 +253,7 @@ export function SalonAttendance({ orgId, flash, initialDay }: { orgId: string; f
           )}
 
           <section className={card}>
-            {loading && !dayData ? <div className="flex justify-center py-14"><Loader2 className="animate-spin text-[#1D5BEA]" /></div>
+            {loading && !dayData ? <div className="flex justify-center py-14"><Loader2 className="animate-spin text-[#008069]" /></div>
               : !dayData?.rows.length ? <p className="px-5 py-12 text-center text-[15px] text-[#6B7894]">Add your team in Setup → Team, then mark who came in each day.</p>
               : (
                 <ul className={`divide-y divide-[#eef1f6] dark:divide-slate-800 ${loading ? 'opacity-60' : ''}`}>
@@ -285,7 +285,7 @@ export function SalonAttendance({ orgId, flash, initialDay }: { orgId: string; f
                               const on = current?.status === status
                               return (
                                 <button key={status} type="button" role="radio" aria-checked={on} disabled={busy} onClick={() => (on ? clear(row.staff_id) : mark(row.staff_id, status))}
-                                  className={`h-10 min-w-0 px-1.5 rounded-xl border text-[13.5px] font-semibold whitespace-nowrap cursor-pointer transition-colors disabled:cursor-wait ${on ? TONE[status].on : 'border-[#d5ddeb] dark:border-slate-700 bg-white dark:bg-[#0b141a] text-[#0E1B3D] dark:text-slate-200 hover:border-[#9db5ef]'}`}>
+                                  className={`h-10 min-w-0 px-1.5 rounded-xl border text-[13.5px] font-semibold whitespace-nowrap cursor-pointer transition-colors disabled:cursor-wait ${on ? TONE[status].on : 'border-[#d5ddeb] dark:border-slate-700 bg-white dark:bg-[#0b141a] text-[#0E1B3D] dark:text-slate-200 hover:border-[#8fcfbf]'}`}>
                                   {SHORT_LABEL[status]}
                                 </button>
                               )
@@ -331,14 +331,14 @@ export function SalonAttendance({ orgId, flash, initialDay }: { orgId: string; f
               </button>
             ))}
           </div>
-          {loading && !monthData ? <div className={`${card} flex justify-center py-14`}><Loader2 className="animate-spin text-[#1D5BEA]" /></div>
+          {loading && !monthData ? <div className={`${card} flex justify-center py-14`}><Loader2 className="animate-spin text-[#008069]" /></div>
             : monthData && (
               <div className={`space-y-4 ${loading ? 'opacity-60' : ''}`}>
                 {person
                   ? <PersonMonthView data={monthData} staffId={person} today={today} canMark={canMark} saving={saving} onOpenDay={(d) => { setDay(d); setView('day') }} onCancelLeave={cancelLeave} onAddLeave={() => setLeaveFor({ staffId: person })} />
                   : <EveryoneMonth data={monthData} today={today} onPick={setPerson} />}
                 {Object.keys(monthData.holidays || {}).length > 0 && (
-                  <p className="px-1 text-[13px] text-[#4a5672] dark:text-slate-300 flex items-start gap-1.5"><CalendarHeart size={15} className="text-[#1D5BEA] shrink-0 mt-px" /><span><span className="font-semibold">Holidays this month:</span> {holidayLine(monthData.holidays || {})}</span></p>
+                  <p className="px-1 text-[13px] text-[#4a5672] dark:text-slate-300 flex items-start gap-1.5"><CalendarHeart size={15} className="text-[#008069] shrink-0 mt-px" /><span><span className="font-semibold">Holidays this month:</span> {holidayLine(monthData.holidays || {})}</span></p>
                 )}
                 <Legend />
               </div>
@@ -450,10 +450,10 @@ function PersonMonthView({ data, staffId, today, canMark, saving, onOpenDay, onC
             const label = `${shortDate(d)}: ${m ? markLabel(m) : holiday ? `Holiday · ${holiday}` : isClosed ? 'Closed' : d > today ? 'Not yet' : 'Not marked'}`
             return (
               <button key={d} type="button" title={m?.note ? `${label} · ${m.note}` : label} aria-label={label} onClick={() => canMark && d <= addDays(today, 62) && onOpenDay(d)}
-                className={`relative aspect-square min-h-[36px] max-h-[60px] w-full rounded-lg border flex flex-col items-center justify-center gap-0.5 ${canMark ? 'cursor-pointer hover:border-[#9db5ef]' : 'cursor-default'} ${d === today ? 'border-[#1D5BEA]' : 'border-[#eef1f6] dark:border-slate-800'} ${isClosed && !m ? 'bg-[#f8fafc] dark:bg-slate-900/50' : 'bg-white dark:bg-[#0b141a]'}`}>
+                className={`relative aspect-square min-h-[36px] max-h-[60px] w-full rounded-lg border flex flex-col items-center justify-center gap-0.5 ${canMark ? 'cursor-pointer hover:border-[#8fcfbf]' : 'cursor-default'} ${d === today ? 'border-[#008069]' : 'border-[#eef1f6] dark:border-slate-800'} ${isClosed && !m ? 'bg-[#f8fafc] dark:bg-slate-900/50' : 'bg-white dark:bg-[#0b141a]'}`}>
                 <span className={`text-[12.5px] leading-none font-semibold ${d > today ? 'text-[#a3adc2]' : 'text-[#0E1B3D] dark:text-slate-200'}`}>{Number(d.slice(8))}</span>
                 {m ? <span className={`text-[10.5px] leading-none font-extrabold rounded px-1 py-[2px] ${TONE[m.status].soft}`}>{STATUS_INFO[m.status].short}</span>
-                  : holiday ? <CalendarHeart size={12} className="text-[#1D5BEA]" aria-hidden />
+                  : holiday ? <CalendarHeart size={12} className="text-[#008069]" aria-hidden />
                   : <span className="text-[10.5px] leading-none text-transparent select-none">·</span>}
               </button>
             )
@@ -464,9 +464,9 @@ function PersonMonthView({ data, staffId, today, canMark, saving, onOpenDay, onC
 
       <section className={card}>
         <div className="px-4 @xl:px-5 py-3.5 border-b border-[#eef1f6] dark:border-slate-800 flex items-center gap-2">
-          <CalendarRange size={18} className="text-[#1D5BEA] shrink-0" />
+          <CalendarRange size={18} className="text-[#008069] shrink-0" />
           <h3 className="text-[16px] font-extrabold text-[#0E1B3D] dark:text-white">Leave this month</h3>
-          {canMark && <button type="button" onClick={onAddLeave} className="ml-auto inline-flex items-center gap-1 h-9 px-3 rounded-xl text-[14px] font-semibold text-[#1D5BEA] hover:bg-[#eef3fe] dark:hover:bg-blue-950/40 cursor-pointer"><Plus size={16} /> Add</button>}
+          {canMark && <button type="button" onClick={onAddLeave} className="ml-auto inline-flex items-center gap-1 h-9 px-3 rounded-xl text-[14px] font-semibold text-[#008069] hover:bg-[#e7f5f0] dark:hover:bg-emerald-950/40 cursor-pointer"><Plus size={16} /> Add</button>}
         </div>
         {!spans.length ? <p className="px-5 py-6 text-[14px] text-[#6B7894]">No leave this month.</p> : (
           <ul className="divide-y divide-[#eef1f6] dark:divide-slate-800">
@@ -517,7 +517,7 @@ function LeaveSheet({ orgId, team, staffId, closedWeekdays, holidays, startDay, 
     }
   }
 
-  const chip = (on: boolean) => `h-10 px-3.5 rounded-xl border text-[14px] font-semibold cursor-pointer ${on ? 'border-[#1D5BEA] bg-[#eef3fe] text-[#1D5BEA] dark:bg-blue-950/40 dark:text-blue-300' : 'border-[#d5ddeb] dark:border-slate-700 text-[#0E1B3D] dark:text-slate-200'}`
+  const chip = (on: boolean) => `h-10 px-3.5 rounded-xl border text-[14px] font-semibold cursor-pointer ${on ? 'border-[#008069] bg-[#e7f5f0] text-[#008069] dark:bg-emerald-950/40 dark:text-emerald-300' : 'border-[#d5ddeb] dark:border-slate-700 text-[#0E1B3D] dark:text-slate-200'}`
   return (
     <Modal title="Add leave" subtitle="Mark days off in one go" icon={<CalendarOff size={20} />} onClose={onClose}
       footer={<>

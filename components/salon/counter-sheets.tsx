@@ -108,7 +108,7 @@ export function CustomerFields({ orgId, value, onChange, onRepeat, optional }: {
     const last = picked?.contact_id === value.contact_id ? picked.last_visit : null
     return (
       <div className="space-y-2">
-        <div className="flex items-center gap-3 rounded-2xl border border-[#cfdcfb] dark:border-blue-900/60 bg-[#f5f8ff] dark:bg-blue-950/20 p-3">
+        <div className="flex items-center gap-3 rounded-2xl border border-[#c9e9df] dark:border-emerald-900/60 bg-[#f2faf7] dark:bg-emerald-950/20 p-3">
           <Avatar name={value.name || 'Customer'} size={44} />
           <div className="min-w-0 flex-1">
             <p className="text-[16px] font-bold text-[#0E1B3D] dark:text-white truncate">{value.name || 'Customer'}</p>
@@ -116,11 +116,11 @@ export function CustomerFields({ orgId, value, onChange, onRepeat, optional }: {
             {last && <p className="text-[12.5px] text-[#6B7894] dark:text-slate-400 truncate">Last: {formatIstDay(last.date)} · {last.services.join(', ') || 'visit'} · {formatRupees(last.total)}</p>}
           </div>
           <button type="button" onClick={() => { setPicked(null); onChange({ contact_id: null, name: '', phone: '' }) }} aria-label="Change customer"
-            className="shrink-0 inline-flex items-center gap-1 h-10 px-3 rounded-xl text-[14px] font-semibold text-[#1D5BEA] dark:text-blue-300 hover:bg-white dark:hover:bg-slate-800 cursor-pointer"><X size={16} /> <span className="hidden min-[400px]:inline">Change</span></button>
+            className="shrink-0 inline-flex items-center gap-1 h-10 px-3 rounded-xl text-[14px] font-semibold text-[#008069] dark:text-emerald-300 hover:bg-white dark:hover:bg-slate-800 cursor-pointer"><X size={16} /> <span className="hidden min-[400px]:inline">Change</span></button>
         </div>
         {onRepeat && last && last.service_ids.length > 0 && (
-          <button type="button" onClick={() => onRepeat(last.service_ids, last.staff_ids)} className="w-full sm:w-auto inline-flex items-center justify-center gap-2 min-h-10 px-3.5 py-2 rounded-xl border border-[#d5ddeb] dark:border-slate-700 text-[14px] font-semibold text-[#0E1B3D] dark:text-slate-100 hover:border-[#9db5ef] hover:bg-[#f8fafc] dark:hover:bg-slate-800 cursor-pointer text-left">
-            <RotateCcw size={16} className="shrink-0 text-[#1D5BEA]" /> <span className="min-w-0">Same as last time: <span className="font-normal text-[#4a5672] dark:text-slate-300">{last.services.join(', ')}</span></span>
+          <button type="button" onClick={() => onRepeat(last.service_ids, last.staff_ids)} className="w-full sm:w-auto inline-flex items-center justify-center gap-2 min-h-10 px-3.5 py-2 rounded-xl border border-[#d5ddeb] dark:border-slate-700 text-[14px] font-semibold text-[#0E1B3D] dark:text-slate-100 hover:border-[#8fcfbf] hover:bg-[#f8fafc] dark:hover:bg-slate-800 cursor-pointer text-left">
+            <RotateCcw size={16} className="shrink-0 text-[#008069]" /> <span className="min-w-0">Same as last time: <span className="font-normal text-[#4a5672] dark:text-slate-300">{last.services.join(', ')}</span></span>
           </button>
         )}
       </div>
@@ -153,13 +153,13 @@ export function CustomerFields({ orgId, value, onChange, onRepeat, optional }: {
           <ul className="divide-y divide-[#eef1f6] dark:divide-slate-800 max-h-60 overflow-y-auto">
             {matches.slice(0, 6).map((match) => (
               <li key={match.contact_id}>
-                <button type="button" onClick={() => pick(match)} className="w-full flex items-center gap-3 px-3.5 py-2.5 text-left hover:bg-[#f5f8ff] dark:hover:bg-blue-950/20 cursor-pointer">
+                <button type="button" onClick={() => pick(match)} className="w-full flex items-center gap-3 px-3.5 py-2.5 text-left hover:bg-[#f2faf7] dark:hover:bg-emerald-950/20 cursor-pointer">
                   <Avatar name={match.name} size={36} />
                   <span className="min-w-0 flex-1">
                     <span className="block text-[15px] font-semibold text-[#0E1B3D] dark:text-white truncate">{match.name}</span>
                     <span className="block text-[13px] text-[#6B7894] truncate">{match.phone || 'No number'}{match.last_visit ? ` · last ${formatIstDay(match.last_visit.date)}` : ''}</span>
                   </span>
-                  {match.visits > 0 && <span className="shrink-0 inline-flex items-center h-6 px-2 rounded-md bg-[#eef3fe] dark:bg-blue-950/40 text-[12px] font-bold text-[#1D5BEA] dark:text-blue-300">{match.visits} visit{match.visits === 1 ? '' : 's'}</span>}
+                  {match.visits > 0 && <span className="shrink-0 inline-flex items-center h-6 px-2 rounded-md bg-[#e7f5f0] dark:bg-emerald-950/40 text-[12px] font-bold text-[#008069] dark:text-emerald-300">{match.visits} visit{match.visits === 1 ? '' : 's'}</span>}
                 </button>
               </li>
             ))}
@@ -178,7 +178,7 @@ const MAX_QUANTITY = 99
 
 /** A − count + control, 1 to 99. */
 function QtyStepper({ value, onChange, label }: { value: number; onChange: (next: number) => void; label: string }) {
-  const step = 'h-9 w-9 rounded-full flex items-center justify-center text-[#1D5BEA] dark:text-blue-300 hover:bg-[#eef3fe] dark:hover:bg-blue-950/40 cursor-pointer disabled:text-[#c0c8d8] disabled:hover:bg-transparent disabled:cursor-not-allowed'
+  const step = 'h-9 w-9 rounded-full flex items-center justify-center text-[#008069] dark:text-emerald-300 hover:bg-[#e7f5f0] dark:hover:bg-emerald-950/40 cursor-pointer disabled:text-[#c0c8d8] disabled:hover:bg-transparent disabled:cursor-not-allowed'
   return (
     <span className="inline-flex items-center rounded-full border border-[#d5ddeb] dark:border-slate-600 bg-white dark:bg-slate-900">
       <button type="button" aria-label={`One less ${label}`} disabled={value <= 1} onClick={() => onChange(value - 1)} className={step}><Minus size={17} strokeWidth={2.5} /></button>
@@ -213,7 +213,7 @@ export function ServicePicker({ services, selected, onChange, order, forBill, co
             <div role="radiogroup" aria-label="Category" className="flex gap-1.5 overflow-x-auto -mx-1 px-1 pb-1 [scrollbar-width:none]">
               {categories.map((c) => (
                 <button key={c} type="button" role="radio" aria-checked={category === c} onClick={() => setCategory(c)}
-                  className={`shrink-0 h-9 px-3.5 rounded-full border text-[13.5px] font-semibold whitespace-nowrap cursor-pointer transition-colors ${category === c ? 'border-[#0E1B3D] bg-[#0E1B3D] text-white dark:border-white dark:bg-white dark:text-[#0E1B3D]' : 'border-[#d5ddeb] dark:border-slate-700 text-[#4a5672] dark:text-slate-300 hover:border-[#9db5ef]'}`}>{c}</button>
+                  className={`shrink-0 h-9 px-3.5 rounded-full border text-[13.5px] font-semibold whitespace-nowrap cursor-pointer transition-colors ${category === c ? 'border-[#0E1B3D] bg-[#0E1B3D] text-white dark:border-white dark:bg-white dark:text-[#0E1B3D]' : 'border-[#d5ddeb] dark:border-slate-700 text-[#4a5672] dark:text-slate-300 hover:border-[#8fcfbf]'}`}>{c}</button>
               ))}
             </div>
           )}
@@ -225,12 +225,12 @@ export function ServicePicker({ services, selected, onChange, order, forBill, co
           const counting = on && Boolean(onCount)
           const count = counting ? Math.min(MAX_QUANTITY, Math.max(1, counts?.[service.id] || 1)) : 1
           return (
-            <div key={service.id} className={`rounded-xl border transition-colors ${on ? 'border-[#1D5BEA] bg-[#eef3fe] dark:bg-blue-950/40' : 'border-[#e3e8f2] dark:border-slate-700 hover:border-[#9db5ef] hover:bg-[#f8fafc] dark:hover:bg-slate-800/60'}`}>
+            <div key={service.id} className={`rounded-xl border transition-colors ${on ? 'border-[#008069] bg-[#e7f5f0] dark:bg-emerald-950/40' : 'border-[#e3e8f2] dark:border-slate-700 hover:border-[#8fcfbf] hover:bg-[#f8fafc] dark:hover:bg-slate-800/60'}`}>
               <button type="button" aria-pressed={on} onClick={() => onChange(on ? selected.filter((id) => id !== service.id) : [...selected, service.id])}
                 className="w-full min-h-[56px] px-3 py-2 flex items-center gap-3 text-left cursor-pointer">
-                <span className={`h-6 w-6 shrink-0 rounded-md border-2 flex items-center justify-center ${on ? 'bg-[#1D5BEA] border-[#1D5BEA] text-white' : 'border-[#c0c8d8] dark:border-slate-600'}`}>{on && <Check size={14} strokeWidth={3} />}</span>
+                <span className={`h-6 w-6 shrink-0 rounded-md border-2 flex items-center justify-center ${on ? 'bg-[#008069] border-[#008069] text-white' : 'border-[#c0c8d8] dark:border-slate-600'}`}>{on && <Check size={14} strokeWidth={3} />}</span>
                 <span className="min-w-0 flex-1">
-                  <span className={`block text-[14.5px] font-semibold leading-snug break-words ${on ? 'text-[#1D5BEA] dark:text-blue-200' : 'text-[#0E1B3D] dark:text-white'}`}>{service.name}</span>
+                  <span className={`block text-[14.5px] font-semibold leading-snug break-words ${on ? 'text-[#008069] dark:text-emerald-200' : 'text-[#0E1B3D] dark:text-white'}`}>{service.name}</span>
                   {(() => {
                     // Minutes only for a service that takes time (and not on a walk-in shop's bills)
                     const line = [showTime && service.takes_time !== false ? `${service.duration_minutes} min` : '', category === 'All' && categories.length > 2 ? service.category || 'General' : ''].filter(Boolean).join(' · ')
@@ -272,7 +272,7 @@ export function WhoDidIt({ setup, lines, value, onChange, planned }: { setup: Sa
     onChange(next)
   }
   const many = lines.length > 1
-  const chip = (on: boolean) => `shrink-0 inline-flex items-center gap-1.5 h-10 pl-1.5 pr-3 rounded-xl border text-[14px] font-semibold whitespace-nowrap cursor-pointer transition-colors ${on ? 'border-[#1D5BEA] bg-[#eef3fe] text-[#1D5BEA] dark:bg-blue-950/40 dark:text-blue-200' : 'border-[#d5ddeb] dark:border-slate-700 text-[#0E1B3D] dark:text-slate-200 hover:border-[#9db5ef]'}`
+  const chip = (on: boolean) => `shrink-0 inline-flex items-center gap-1.5 h-10 pl-1.5 pr-3 rounded-xl border text-[14px] font-semibold whitespace-nowrap cursor-pointer transition-colors ${on ? 'border-[#008069] bg-[#e7f5f0] text-[#008069] dark:bg-emerald-950/40 dark:text-emerald-200' : 'border-[#d5ddeb] dark:border-slate-700 text-[#0E1B3D] dark:text-slate-200 hover:border-[#8fcfbf]'}`
   return (
     <div role="group" aria-label={planned ? 'Who will do it' : 'Who did it'} className="space-y-2 min-w-0">
       <p className={sectionTitle}>{many ? (planned ? 'Who will do each service' : 'Who did each service') : (planned ? 'Who will do it' : 'Who did it')}</p>
@@ -344,7 +344,7 @@ export function DayAndTime({ orgId, setup, date, time, minutes, serviceIds, staf
   const closed = isClosedOn(date, hours)
   const chosenSlot = slots.find((s) => s.time === time)
   const days = Array.from({ length: 7 }, (_, i) => addDays(today, i))
-  const dayChip = (on: boolean) => `shrink-0 flex flex-col items-center justify-center w-[64px] h-[58px] rounded-xl border cursor-pointer transition-colors ${on ? 'border-[#0E1B3D] bg-[#0E1B3D] text-white dark:border-white dark:bg-white dark:text-[#0E1B3D]' : 'border-[#d5ddeb] dark:border-slate-700 text-[#0E1B3D] dark:text-slate-200 hover:border-[#9db5ef]'}`
+  const dayChip = (on: boolean) => `shrink-0 flex flex-col items-center justify-center w-[64px] h-[58px] rounded-xl border cursor-pointer transition-colors ${on ? 'border-[#0E1B3D] bg-[#0E1B3D] text-white dark:border-white dark:bg-white dark:text-[#0E1B3D]' : 'border-[#d5ddeb] dark:border-slate-700 text-[#0E1B3D] dark:text-slate-200 hover:border-[#8fcfbf]'}`
 
   return (
     <div className="space-y-4 min-w-0">
@@ -385,7 +385,7 @@ export function DayAndTime({ orgId, setup, date, time, minutes, serviceIds, staf
                 const on = time === slot.time
                 return (
                   <button key={slot.time} type="button" aria-pressed={on} onClick={() => { onTime(slot.time); setOther(false) }} title={slot.free ? undefined : 'Already busy then'}
-                    className={`h-10 rounded-lg border text-[13.5px] font-semibold cursor-pointer transition-colors ${on ? 'border-[#1D5BEA] bg-[#1D5BEA] text-white' : slot.free ? 'border-[#d5ddeb] dark:border-slate-700 text-[#0E1B3D] dark:text-slate-200 hover:border-[#9db5ef]' : 'border-dashed border-[#e3e8f2] dark:border-slate-800 text-[#a3adc2] dark:text-slate-600 line-through'}`}>
+                    className={`h-10 rounded-lg border text-[13.5px] font-semibold cursor-pointer transition-colors ${on ? 'border-[#008069] bg-[#008069] text-white' : slot.free ? 'border-[#d5ddeb] dark:border-slate-700 text-[#0E1B3D] dark:text-slate-200 hover:border-[#8fcfbf]' : 'border-dashed border-[#e3e8f2] dark:border-slate-800 text-[#a3adc2] dark:text-slate-600 line-through'}`}>
                     {formatIstTime(fromIst(date, slot.time)!)}
                   </button>
                 )
@@ -397,7 +397,7 @@ export function DayAndTime({ orgId, setup, date, time, minutes, serviceIds, staf
         {chosenSlot && chosenSlot.free && chosenSlot.late && <p className="text-[13.5px] font-medium text-[#4a5672] dark:text-slate-300">This visit ends after closing time. You can still book it.</p>}
         {other || (time && !chosenSlot)
           ? <input type="time" aria-label="Exact time" value={time} onChange={(e) => onTime(e.target.value)} className={`${input} w-40`} />
-          : <button type="button" onClick={() => setOther(true)} className="text-[13.5px] font-semibold text-[#1D5BEA] dark:text-blue-300 hover:underline cursor-pointer">Another time</button>}
+          : <button type="button" onClick={() => setOther(true)} className="text-[13.5px] font-semibold text-[#008069] dark:text-emerald-300 hover:underline cursor-pointer">Another time</button>}
       </div>
     </div>
   )
@@ -476,7 +476,7 @@ export function BookingSheet({ orgId, setup, draft, onClose, onBooked }: {
         <DayAndTime orgId={orgId} setup={setup} date={date} time={time} minutes={minutes} serviceIds={serviceIds} staffIds={serviceIds.map((id) => lineStaff[id] || null)} onDate={setDate} onTime={setTime} />
         {customer.phone.trim() && (
           <label className="flex items-center justify-between gap-4 rounded-2xl bg-[#f4f6fa] dark:bg-slate-900/40 px-4 py-3 text-[15px] text-[#0E1B3D] dark:text-white">
-            <span className="flex items-center gap-3 min-w-0"><span className="h-9 w-9 shrink-0 rounded-xl bg-[#1D5BEA] text-white flex items-center justify-center"><MessageCircle size={18} /></span><span className="min-w-0"><strong>Send confirmation on WhatsApp</strong><span className="block text-[13px] text-[#4a5672] dark:text-slate-400">With the day, time and services</span></span></span>
+            <span className="flex items-center gap-3 min-w-0"><span className="h-9 w-9 shrink-0 rounded-xl bg-[#008069] text-white flex items-center justify-center"><MessageCircle size={18} /></span><span className="min-w-0"><strong>Send confirmation on WhatsApp</strong><span className="block text-[13px] text-[#4a5672] dark:text-slate-400">With the day, time and services</span></span></span>
             <Toggle checked={sendWhatsApp} onChange={setSendWhatsApp} label="Send confirmation on WhatsApp" />
           </label>
         )}
@@ -603,7 +603,7 @@ export function BillSheet({ orgId, setup, target, onClose, onBilled }: {
           </div>
           <button type="button" onClick={onClose} className={`${secondaryButton} max-sm:hidden`}>Cancel</button>
           <button type="button" onClick={submit} disabled={saving || !lines.length}
-            className="inline-flex items-center justify-center gap-2 h-12 px-5 flex-1 sm:flex-none sm:min-w-[220px] rounded-xl bg-[#1D5BEA] hover:bg-[#174bc4] text-white text-[16px] font-bold shadow-sm shadow-[#1D5BEA]/20 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed">
+            className="inline-flex items-center justify-center gap-2 h-12 px-5 flex-1 sm:flex-none sm:min-w-[220px] rounded-xl bg-[#008069] hover:bg-[#006d5b] text-white text-[16px] font-bold shadow-sm shadow-[#008069]/20 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed">
             {saving ? <Loader2 size={18} className="animate-spin" /> : <Receipt size={18} />} {payment ? 'Bill & mark paid' : 'Bill, pay later'}
           </button>
         </div>
@@ -626,7 +626,7 @@ export function BillSheet({ orgId, setup, target, onClose, onBilled }: {
                   {target.appointment.services.map((s, i) => <span key={i} className="inline-flex items-center h-8 px-3 rounded-lg bg-[#f4f6fa] dark:bg-slate-800 text-[13.5px] font-semibold text-[#0E1B3D] dark:text-slate-200">{s.name}</span>)}
                 </div>
                 {!addMore
-                  ? <button type="button" onClick={() => setAddMore(true)} className="w-full inline-flex items-center justify-center gap-2 h-11 rounded-xl border-2 border-dashed border-[#d5ddeb] dark:border-slate-700 text-[15px] font-semibold text-[#4a5672] dark:text-slate-300 hover:border-[#9db5ef] hover:text-[#1D5BEA] cursor-pointer"><Plus size={18} /> Add another service</button>
+                  ? <button type="button" onClick={() => setAddMore(true)} className="w-full inline-flex items-center justify-center gap-2 h-11 rounded-xl border-2 border-dashed border-[#d5ddeb] dark:border-slate-700 text-[15px] font-semibold text-[#4a5672] dark:text-slate-300 hover:border-[#8fcfbf] hover:text-[#008069] cursor-pointer"><Plus size={18} /> Add another service</button>
                   : <div className="pt-1"><ServicePicker forBill services={setup.services} order={setup.settings.service_categories} selected={extra} onChange={setExtra} /></div>}
               </>
             )}
@@ -655,8 +655,8 @@ export function BillSheet({ orgId, setup, target, onClose, onBilled }: {
                 const on = payment === value
                 return (
                   <button key={label} type="button" aria-pressed={on} onClick={() => setPayment(value)}
-                    className={`relative h-[68px] rounded-2xl border-2 flex flex-col items-center justify-center gap-1 text-[14.5px] font-bold cursor-pointer transition-colors ${on ? 'border-[#1D5BEA] bg-[#eef3fe] text-[#1D5BEA] dark:bg-blue-950/40 dark:text-blue-200' : 'border-[#e3e8f2] dark:border-slate-700 text-[#0E1B3D] dark:text-slate-200 hover:border-[#9db5ef]'}`}>
-                    {on && <span className="absolute top-1.5 right-1.5 h-5 w-5 rounded-full bg-[#1D5BEA] text-white flex items-center justify-center"><Check size={13} strokeWidth={3} /></span>}
+                    className={`relative h-[68px] rounded-2xl border-2 flex flex-col items-center justify-center gap-1 text-[14.5px] font-bold cursor-pointer transition-colors ${on ? 'border-[#008069] bg-[#e7f5f0] text-[#008069] dark:bg-emerald-950/40 dark:text-emerald-200' : 'border-[#e3e8f2] dark:border-slate-700 text-[#0E1B3D] dark:text-slate-200 hover:border-[#8fcfbf]'}`}>
+                    {on && <span className="absolute top-1.5 right-1.5 h-5 w-5 rounded-full bg-[#008069] text-white flex items-center justify-center"><Check size={13} strokeWidth={3} /></span>}
                     <Icon size={22} /> {label}
                   </button>
                 )
@@ -665,7 +665,7 @@ export function BillSheet({ orgId, setup, target, onClose, onBilled }: {
           </section>
           {phone && (
             <label className="flex items-center justify-between gap-4 rounded-2xl bg-[#f4f6fa] dark:bg-slate-900/40 px-4 py-3 text-[15px] text-[#0E1B3D] dark:text-white">
-              <span className="flex items-center gap-3 min-w-0"><span className="h-9 w-9 shrink-0 rounded-xl bg-[#1D5BEA] text-white flex items-center justify-center"><MessageCircle size={18} /></span><span className="min-w-0"><strong>Send the bill on WhatsApp</strong><span className="block text-[13px] text-[#4a5672] dark:text-slate-400 truncate">To {phone}</span></span></span>
+              <span className="flex items-center gap-3 min-w-0"><span className="h-9 w-9 shrink-0 rounded-xl bg-[#008069] text-white flex items-center justify-center"><MessageCircle size={18} /></span><span className="min-w-0"><strong>Send the bill on WhatsApp</strong><span className="block text-[13px] text-[#4a5672] dark:text-slate-400 truncate">To {phone}</span></span></span>
               <Toggle checked={sendWhatsApp} onChange={setSendWhatsApp} label="Send the bill on WhatsApp" />
             </label>
           )}
@@ -684,7 +684,7 @@ export function ResultSheet({ result, onClose, onCopied, onNext }: { result: any
   const phone = String(invoice?.customer_phone || '').replace(/\D/g, '')
   const shareText = `Your bill ${invoice?.number} from ${invoice?.business?.name || 'us'}: ${formatRupees(Number(invoice?.total))}. ${link}`
   const paid = invoice?.status === 'paid'
-  const tile = 'flex flex-col items-center justify-center gap-1.5 h-[80px] rounded-2xl border border-[#e3e8f2] dark:border-slate-700 text-[14px] font-bold text-[#0E1B3D] dark:text-white hover:border-[#9db5ef] hover:bg-[#f8fafc] dark:hover:bg-slate-800 transition-colors cursor-pointer'
+  const tile = 'flex flex-col items-center justify-center gap-1.5 h-[80px] rounded-2xl border border-[#e3e8f2] dark:border-slate-700 text-[14px] font-bold text-[#0E1B3D] dark:text-white hover:border-[#8fcfbf] hover:bg-[#f8fafc] dark:hover:bg-slate-800 transition-colors cursor-pointer'
   return (
     <Modal title="Billed" subtitle={`${invoice?.number} · ${invoice?.customer_name}`} onClose={onClose}
       footer={<>
@@ -693,8 +693,8 @@ export function ResultSheet({ result, onClose, onCopied, onNext }: { result: any
       </>}>
       <div className="text-center pt-1 pb-2">
         <span className="relative mx-auto h-[72px] w-[72px] flex items-center justify-center">
-          <span aria-hidden className="absolute inset-0 rounded-full bg-[#1D5BEA]/10" />
-          <span className="relative h-14 w-14 rounded-full bg-[#1D5BEA] text-white flex items-center justify-center shadow-lg shadow-[#1D5BEA]/20"><Check size={30} strokeWidth={3} /></span>
+          <span aria-hidden className="absolute inset-0 rounded-full bg-[#008069]/10" />
+          <span className="relative h-14 w-14 rounded-full bg-[#008069] text-white flex items-center justify-center shadow-lg shadow-[#008069]/20"><Check size={30} strokeWidth={3} /></span>
         </span>
         <p className="text-[34px] font-extrabold tracking-tight text-[#0E1B3D] dark:text-white mt-3 leading-none">{formatRupees(Number(invoice?.total))}</p>
         <p className={`mt-2 inline-flex items-center gap-1.5 h-7 px-3 rounded-full text-[13.5px] font-bold ${paid ? 'bg-[#f4f6fa] text-[#0E1B3D] dark:bg-slate-800 dark:text-slate-100' : 'bg-[#f4f6fa] text-[#4a5672] dark:bg-slate-800 dark:text-slate-300'}`}>
@@ -704,9 +704,9 @@ export function ResultSheet({ result, onClose, onCopied, onNext }: { result: any
         {result.whatsapp && !result.whatsapp.sent && <p className="mt-4 rounded-xl bg-[#f4f6fa] dark:bg-slate-800/60 text-[#4a5672] dark:text-slate-300 px-4 py-2.5 text-[14px] text-left">{result.whatsapp.windowClosed ? 'Not sent on WhatsApp: this customer hasn\'t messaged you in 24 hours, and that needs an approved bill template (Setup → Templates). Share the link below instead.' : result.whatsapp.error}</p>}
       </div>
       <div className={`grid ${phone ? 'grid-cols-3' : 'grid-cols-2'} gap-2 mt-4`}>
-        <a href={link} target="_blank" rel="noopener noreferrer" className={tile}><ExternalLink size={20} className="text-[#1D5BEA]" /> Open bill</a>
+        <a href={link} target="_blank" rel="noopener noreferrer" className={tile}><ExternalLink size={20} className="text-[#008069]" /> Open bill</a>
         <button type="button" onClick={() => { navigator.clipboard?.writeText(link).then(onCopied).catch(() => {}) }} className={tile}><Copy size={20} className="text-[#4a5672] dark:text-slate-300" /> Copy link</button>
-        {phone && <a href={`https://wa.me/${phone}?text=${encodeURIComponent(shareText)}`} target="_blank" rel="noopener noreferrer" className={tile}><MessageCircle size={20} className="text-[#1D5BEA]" /> WhatsApp</a>}
+        {phone && <a href={`https://wa.me/${phone}?text=${encodeURIComponent(shareText)}`} target="_blank" rel="noopener noreferrer" className={tile}><MessageCircle size={20} className="text-[#008069]" /> WhatsApp</a>}
       </div>
     </Modal>
   )

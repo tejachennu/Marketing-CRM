@@ -21,7 +21,7 @@ function Bars({ rows, currency }: { rows: { label: string; count: number; value:
             <span className="shrink-0 text-[#4a5672] dark:text-slate-300 tabular-nums"><span className="font-bold text-[#0E1B3D] dark:text-white">{money(row.value, currency, true)}</span> · {row.count}</span>
           </div>
           <div className="mt-1 h-2 rounded-full bg-[#eef1f6] dark:bg-slate-800 overflow-hidden">
-            <div className="h-full rounded-full bg-[#1D5BEA]" style={{ width: `${Math.max(row.value || row.count ? 3 : 0, Math.round(((row.value || row.count) / top) * 100))}%` }} />
+            <div className="h-full rounded-full bg-[#008069]" style={{ width: `${Math.max(row.value || row.count ? 3 : 0, Math.round(((row.value || row.count) / top) * 100))}%` }} />
           </div>
         </li>
       ))}
@@ -68,7 +68,7 @@ export function PipelineReports({ data, range, onRangeChange }: { data: Pipeline
       </div>
 
       {error && <div className={`${card} p-4 text-[15px] text-[#b91c1c]`}>{error}</div>}
-      {!report && loading && <div className="py-16 flex justify-center"><Loader2 className="animate-spin text-[#1D5BEA]" size={28} /></div>}
+      {!report && loading && <div className="py-16 flex justify-center"><Loader2 className="animate-spin text-[#008069]" size={28} /></div>}
 
       {report && (
         <div className={`space-y-4 transition-opacity ${loading ? 'opacity-60' : ''}`}>

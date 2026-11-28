@@ -24,8 +24,8 @@ interface Teammate {
 type Toast = { tone: 'success' | 'error'; text: string } | null
 
 const card = 'bg-white dark:bg-[#111b21] rounded-2xl border border-[#e3e8f2] dark:border-slate-800'
-const input = 'w-full h-11 px-3.5 rounded-xl border border-[#d5ddeb] dark:border-slate-700 bg-white dark:bg-[#0b141a] text-[15px] text-[#0E1B3D] dark:text-white placeholder:text-[#8a94a8] focus:outline-none focus:border-[#1D5BEA] focus:ring-2 focus:ring-[#1D5BEA]/15'
-const primary = 'inline-flex items-center justify-center gap-2 h-11 px-5 rounded-xl bg-[#1D5BEA] hover:bg-[#174bc4] text-white text-[15px] font-bold transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed'
+const input = 'w-full h-11 px-3.5 rounded-xl border border-[#d5ddeb] dark:border-slate-700 bg-white dark:bg-[#0b141a] text-[15px] text-[#0E1B3D] dark:text-white placeholder:text-[#8a94a8] focus:outline-none focus:border-[#008069] focus:ring-2 focus:ring-[#008069]/15'
+const primary = 'inline-flex items-center justify-center gap-2 h-11 px-5 rounded-xl bg-[#008069] hover:bg-[#006d5b] text-white text-[15px] font-bold transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed'
 
 function initials(name: string) {
   const parts = name.replace(/[^\p{L}\s]/gu, ' ').trim().split(/\s+/).filter(Boolean)
@@ -216,7 +216,7 @@ export function TeamManager({ embedded = false }: { embedded?: boolean }) {
   }
 
   if (loading) {
-    return <div className={`${embedded ? 'py-16' : 'flex-1'} flex items-center justify-center`}><Loader2 className="animate-spin text-[#1D5BEA]" size={28} /></div>
+    return <div className={`${embedded ? 'py-16' : 'flex-1'} flex items-center justify-center`}><Loader2 className="animate-spin text-[#008069]" size={28} /></div>
   }
   if (loadError) {
     return <div className="p-6"><div className={`${card} p-6 text-[15px] text-[#b91c1c]`}>{loadError}</div></div>
@@ -243,7 +243,7 @@ export function TeamManager({ embedded = false }: { embedded?: boolean }) {
         </div>
 
         {toast && (
-          <div role="status" className={`flex items-start gap-2.5 rounded-xl px-4 py-3 text-[14px] font-medium ${toast.tone === 'success' ? 'bg-[#eef3fe] text-[#174bc4]' : 'bg-[#fdf0f0] text-[#b91c1c]'}`}>
+          <div role="status" className={`flex items-start gap-2.5 rounded-xl px-4 py-3 text-[14px] font-medium ${toast.tone === 'success' ? 'bg-[#e7f5f0] text-[#006d5b]' : 'bg-[#fdf0f0] text-[#b91c1c]'}`}>
             {toast.tone === 'success' ? <Check size={18} className="mt-0.5 shrink-0" /> : <X size={18} className="mt-0.5 shrink-0" />}
             <span>{toast.text}</span>
           </div>
@@ -268,7 +268,7 @@ export function TeamManager({ embedded = false }: { embedded?: boolean }) {
         {/* Members */}
         <div className={`${card} overflow-visible`}>
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 px-4 sm:px-5 py-4 border-b border-[#eef1f6] dark:border-slate-800">
-            <h2 className="text-[17px] font-bold text-[#0E1B3D] dark:text-white flex items-center gap-2"><Users size={18} className="text-[#1D5BEA]" /> Members</h2>
+            <h2 className="text-[17px] font-bold text-[#0E1B3D] dark:text-white flex items-center gap-2"><Users size={18} className="text-[#008069]" /> Members</h2>
             <label className="relative sm:w-72">
               <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#8a94a8]" />
               <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search by name or email" className={`${input} h-10 pl-9 text-[14px]`} aria-label="Search the team" />
@@ -292,7 +292,7 @@ export function TeamManager({ embedded = false }: { embedded?: boolean }) {
                   <li key={member.id} className="px-4 sm:px-5 py-4 flex flex-col lg:flex-row lg:items-center gap-3 lg:gap-6">
                     {/* Who */}
                     <div className="flex items-center gap-3 min-w-0 lg:w-[34%]">
-                      <div className="h-10 w-10 shrink-0 rounded-full bg-[#eef3fe] dark:bg-slate-800 text-[#1D5BEA] dark:text-blue-300 flex items-center justify-center text-[14px] font-bold">{initials(name)}</div>
+                      <div className="h-10 w-10 shrink-0 rounded-full bg-[#e7f5f0] dark:bg-slate-800 text-[#008069] dark:text-emerald-300 flex items-center justify-center text-[14px] font-bold">{initials(name)}</div>
                       <div className="min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">
                           <span className="text-[15px] font-bold text-[#0E1B3D] dark:text-white truncate">{name}</span>
@@ -311,7 +311,7 @@ export function TeamManager({ embedded = false }: { embedded?: boolean }) {
                           value={assignableRoleOf(member)}
                           disabled={busy}
                           onChange={(e) => changeRole(member, e.target.value as AssignableRole)}
-                          className="h-9 pl-3 pr-8 rounded-lg border border-[#d5ddeb] dark:border-slate-700 bg-white dark:bg-[#0b141a] text-[14px] font-semibold text-[#0E1B3D] dark:text-white cursor-pointer focus:outline-none focus:border-[#1D5BEA]"
+                          className="h-9 pl-3 pr-8 rounded-lg border border-[#d5ddeb] dark:border-slate-700 bg-white dark:bg-[#0b141a] text-[14px] font-semibold text-[#0E1B3D] dark:text-white cursor-pointer focus:outline-none focus:border-[#008069]"
                         >
                           {ASSIGNABLE_ROLES.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
                         </select>
@@ -347,7 +347,7 @@ export function TeamManager({ embedded = false }: { embedded?: boolean }) {
                         </>
                       ) : (
                         <span className="flex items-center gap-1.5">
-                          {isViewer(member) ? <Eye size={15} className="text-[#6B7894]" /> : <ShieldCheck size={15} className="text-[#1D5BEA]" />}
+                          {isViewer(member) ? <Eye size={15} className="text-[#6B7894]" /> : <ShieldCheck size={15} className="text-[#008069]" />}
                           {getRoleDisplay(member.role).description}
                         </span>
                       )}
@@ -413,8 +413,8 @@ export function TeamManager({ embedded = false }: { embedded?: boolean }) {
                       const optional = !allowed && role.label === 'Agent' && can({ ...role.subject, see_all: true }, capability.permission)
                       return (
                         <td key={role.label} className="px-3 py-3 text-center">
-                          {allowed ? <Check size={18} className="inline text-[#1D5BEA]" aria-label="Yes" />
-                            : optional ? <span className="text-[12px] font-semibold text-[#1D5BEA]">If allowed</span>
+                          {allowed ? <Check size={18} className="inline text-[#008069]" aria-label="Yes" />
+                            : optional ? <span className="text-[12px] font-semibold text-[#008069]">If allowed</span>
                             : <span className="text-[#c3cad8]" aria-label="No">—</span>}
                         </td>
                       )
@@ -453,8 +453,8 @@ export function TeamManager({ embedded = false }: { embedded?: boolean }) {
                 <legend className="block text-[14px] font-semibold text-[#0E1B3D] dark:text-white mb-1.5">Role</legend>
                 <div className="space-y-2">
                   {ASSIGNABLE_ROLES.map((role) => (
-                    <label key={role.value} className={`flex items-start gap-3 rounded-xl border px-3.5 py-3 cursor-pointer transition-colors ${invite.role === role.value ? 'border-[#1D5BEA] bg-[#eef3fe] dark:bg-blue-950/30' : 'border-[#e3e8f2] dark:border-slate-700 hover:border-[#b9c7e4]'}`}>
-                      <input type="radio" name="role" value={role.value} checked={invite.role === role.value} onChange={() => setInvite({ ...invite, role: role.value })} className="mt-1 accent-[#1D5BEA]" />
+                    <label key={role.value} className={`flex items-start gap-3 rounded-xl border px-3.5 py-3 cursor-pointer transition-colors ${invite.role === role.value ? 'border-[#008069] bg-[#e7f5f0] dark:bg-emerald-950/30' : 'border-[#e3e8f2] dark:border-slate-700 hover:border-[#b9c7e4]'}`}>
+                      <input type="radio" name="role" value={role.value} checked={invite.role === role.value} onChange={() => setInvite({ ...invite, role: role.value })} className="mt-1 accent-[#008069]" />
                       <span>
                         <span className="block text-[15px] font-bold text-[#0E1B3D] dark:text-white">{role.label}</span>
                         <span className="block text-[13.5px] text-[#4a5672] dark:text-slate-400 leading-snug">{role.description}</span>

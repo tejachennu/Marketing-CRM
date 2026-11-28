@@ -38,7 +38,7 @@ function Stars({ rating, size = 14 }: { rating: number; size?: number }) {
   )
 }
 
-const chip = (on: boolean) => `inline-flex items-center gap-1 h-9 px-3 rounded-xl border text-[13.5px] font-semibold whitespace-nowrap cursor-pointer transition-colors ${on ? 'border-[#1D5BEA] bg-[#eef3fe] text-[#1D5BEA] dark:bg-blue-950/40 dark:text-blue-300' : 'border-[#d5ddeb] dark:border-slate-700 text-[#4a5672] dark:text-slate-300 hover:border-[#9db5ef]'}`
+const chip = (on: boolean) => `inline-flex items-center gap-1 h-9 px-3 rounded-xl border text-[13.5px] font-semibold whitespace-nowrap cursor-pointer transition-colors ${on ? 'border-[#008069] bg-[#e7f5f0] text-[#008069] dark:bg-emerald-950/40 dark:text-emerald-300' : 'border-[#d5ddeb] dark:border-slate-700 text-[#4a5672] dark:text-slate-300 hover:border-[#8fcfbf]'}`
 
 export function SalonReviews({ orgId, flash, range, onRangeChange }: { orgId: string; flash: Flash; range: DateRange; onRangeChange: (range: DateRange) => void }) {
   const [reviews, setReviews] = useState<Review[]>([])
@@ -146,9 +146,9 @@ export function SalonReviews({ orgId, flash, range, onRangeChange }: { orgId: st
                 {summary.distribution.map((row) => (
                   <li key={row.stars}>
                     <button type="button" onClick={() => focus({ show: show === row.stars ? 'all' : (row.stars as Show) })} aria-pressed={show === row.stars} aria-label={`${row.stars} stars: ${row.count}`}
-                      className={`w-full flex items-center gap-2 h-7 px-1.5 rounded-lg cursor-pointer hover:bg-[#f4f6fa] dark:hover:bg-slate-800 ${show === row.stars ? 'bg-[#eef3fe] dark:bg-blue-950/40' : ''}`}>
+                      className={`w-full flex items-center gap-2 h-7 px-1.5 rounded-lg cursor-pointer hover:bg-[#f4f6fa] dark:hover:bg-slate-800 ${show === row.stars ? 'bg-[#e7f5f0] dark:bg-emerald-950/40' : ''}`}>
                       <span className="w-7 shrink-0 text-[13px] font-bold text-[#4a5672] dark:text-slate-300 inline-flex items-center gap-0.5">{row.stars}<Star size={11} className="fill-[#0E1B3D] text-[#0E1B3D] dark:fill-slate-100 dark:text-slate-100" /></span>
-                      <span className="flex-1 h-2.5 rounded-full bg-[#eef1f6] dark:bg-slate-800 overflow-hidden"><span className={`block h-full rounded-full bg-[#1D5BEA]`} style={{ width: `${Math.round((row.count / most) * 100)}%` }} /></span>
+                      <span className="flex-1 h-2.5 rounded-full bg-[#eef1f6] dark:bg-slate-800 overflow-hidden"><span className={`block h-full rounded-full bg-[#008069]`} style={{ width: `${Math.round((row.count / most) * 100)}%` }} /></span>
                       <span className="w-8 shrink-0 text-right text-[13px] font-semibold text-[#6B7894]">{row.count}</span>
                     </button>
                   </li>
@@ -160,7 +160,7 @@ export function SalonReviews({ orgId, flash, range, onRangeChange }: { orgId: st
                 <p className="text-[13px] font-bold text-[#6B7894]">Mentioned most</p>
                 <div className="mt-2 flex flex-wrap gap-1.5">
                   {summary.tags.map((t) => (
-                    <button key={t.tag} type="button" onClick={() => { setQuery(t.tag); focus({}) }} className="inline-flex items-center gap-1.5 h-8 px-2.5 rounded-lg bg-[#f4f6fa] dark:bg-slate-800 text-[13px] font-semibold text-[#0E1B3D] dark:text-slate-200 hover:bg-[#eef3fe] dark:hover:bg-blue-950/40 cursor-pointer">
+                    <button key={t.tag} type="button" onClick={() => { setQuery(t.tag); focus({}) }} className="inline-flex items-center gap-1.5 h-8 px-2.5 rounded-lg bg-[#f4f6fa] dark:bg-slate-800 text-[13px] font-semibold text-[#0E1B3D] dark:text-slate-200 hover:bg-[#e7f5f0] dark:hover:bg-emerald-950/40 cursor-pointer">
                       {t.tag} <span className="text-[#8a94a8]">{t.count}</span>
                     </button>
                   ))}
@@ -170,13 +170,13 @@ export function SalonReviews({ orgId, flash, range, onRangeChange }: { orgId: st
           </section>
 
           <section className={card}>
-            <div className="px-4 @xl:px-5 py-3.5 border-b border-[#eef1f6] dark:border-slate-800 flex items-center gap-2"><Users size={18} className="text-[#1D5BEA]" /><h2 className="text-[16px] font-extrabold text-[#0E1B3D] dark:text-white">Team ratings</h2></div>
+            <div className="px-4 @xl:px-5 py-3.5 border-b border-[#eef1f6] dark:border-slate-800 flex items-center gap-2"><Users size={18} className="text-[#008069]" /><h2 className="text-[16px] font-extrabold text-[#0E1B3D] dark:text-white">Team ratings</h2></div>
             {summary.staff.length === 0 ? <p className="px-5 py-8 text-center text-[14px] text-[#6B7894]">No team member was named on these bills.</p> : (
               <ul className="divide-y divide-[#eef1f6] dark:divide-slate-800 max-h-[264px] overflow-y-auto">
                 {summary.staff.map((member) => (
                   <li key={member.id}>
                     <button type="button" onClick={() => focus({ person: person === member.id ? '' : member.id })} aria-pressed={person === member.id}
-                      className={`w-full px-4 @xl:px-5 py-2.5 flex items-center gap-3 text-left cursor-pointer hover:bg-[#f8fafc] dark:hover:bg-slate-900/50 ${person === member.id ? 'bg-[#eef3fe] dark:bg-blue-950/40' : ''}`}>
+                      className={`w-full px-4 @xl:px-5 py-2.5 flex items-center gap-3 text-left cursor-pointer hover:bg-[#f8fafc] dark:hover:bg-slate-900/50 ${person === member.id ? 'bg-[#e7f5f0] dark:bg-emerald-950/40' : ''}`}>
                       <Avatar name={member.name} size={34} />
                       <span className="flex-1 min-w-0 text-[15px] font-bold text-[#0E1B3D] dark:text-white truncate">{member.name}</span>
                       <span className="hidden min-[360px]:inline-flex"><Stars rating={member.average} size={13} /></span>
@@ -193,11 +193,11 @@ export function SalonReviews({ orgId, flash, range, onRangeChange }: { orgId: st
       <section ref={listRef} className={`${card} scroll-mt-4`}>
         <div className="px-4 @xl:px-5 py-4 border-b border-[#eef1f6] dark:border-slate-800 space-y-3">
           <div className="flex flex-col @xl:flex-row @xl:items-center gap-3">
-            <h2 className="flex items-center gap-2 text-[18px] font-extrabold text-[#0E1B3D] dark:text-white"><MessageSquareText size={19} className="text-[#1D5BEA]" /> Customer reviews {loaded && <span className="text-[14px] font-semibold text-[#8a94a8]">{filtered ? `${shown.length} of ${reviews.length}` : reviews.length}</span>}</h2>
+            <h2 className="flex items-center gap-2 text-[18px] font-extrabold text-[#0E1B3D] dark:text-white"><MessageSquareText size={19} className="text-[#008069]" /> Customer reviews {loaded && <span className="text-[14px] font-semibold text-[#8a94a8]">{filtered ? `${shown.length} of ${reviews.length}` : reviews.length}</span>}</h2>
             <div className="@xl:ml-auto flex flex-col @xl:flex-row gap-2">
               {staff.length > 0 && (
                 <select value={person} onChange={(e) => setPerson(e.target.value)} aria-label="Served by"
-                  className="h-11 px-3 rounded-xl border border-[#d5ddeb] dark:border-slate-700 bg-white dark:bg-[#0b141a] text-base @xl:text-[14.5px] text-[#0E1B3D] dark:text-white focus:outline-none focus:border-[#1D5BEA] focus:ring-2 focus:ring-[#1D5BEA]/15 cursor-pointer">
+                  className="h-11 px-3 rounded-xl border border-[#d5ddeb] dark:border-slate-700 bg-white dark:bg-[#0b141a] text-base @xl:text-[14.5px] text-[#0E1B3D] dark:text-white focus:outline-none focus:border-[#008069] focus:ring-2 focus:ring-[#008069]/15 cursor-pointer">
                   <option value="">Whole team</option>
                   {staff.map((member) => <option key={member.id} value={member.id}>{member.name}</option>)}
                 </select>
@@ -205,7 +205,7 @@ export function SalonReviews({ orgId, flash, range, onRangeChange }: { orgId: st
               <label className="relative block @xl:w-60">
                 <Search size={17} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#8a94a8]" />
                 <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Name, phone or words" aria-label="Search reviews"
-                  className="w-full h-11 pl-9 pr-3 rounded-xl border border-[#d5ddeb] dark:border-slate-700 bg-white dark:bg-[#0b141a] text-base @xl:text-[14.5px] text-[#0E1B3D] dark:text-white placeholder:text-[#8a94a8] focus:outline-none focus:border-[#1D5BEA] focus:ring-2 focus:ring-[#1D5BEA]/15" />
+                  className="w-full h-11 pl-9 pr-3 rounded-xl border border-[#d5ddeb] dark:border-slate-700 bg-white dark:bg-[#0b141a] text-base @xl:text-[14.5px] text-[#0E1B3D] dark:text-white placeholder:text-[#8a94a8] focus:outline-none focus:border-[#008069] focus:ring-2 focus:ring-[#008069]/15" />
               </label>
             </div>
           </div>
@@ -219,7 +219,7 @@ export function SalonReviews({ orgId, flash, range, onRangeChange }: { orgId: st
           </div>
         </div>
 
-        {!loaded ? <div className="flex justify-center py-14"><Loader2 className="animate-spin text-[#1D5BEA]" /></div>
+        {!loaded ? <div className="flex justify-center py-14"><Loader2 className="animate-spin text-[#008069]" /></div>
           : reviews.length === 0 ? (
             <div className="px-5 py-14 text-center">
               <Star size={30} className="mx-auto text-[#a3adc2]" />
@@ -230,7 +230,7 @@ export function SalonReviews({ orgId, flash, range, onRangeChange }: { orgId: st
           : shown.length === 0 ? (
             <div className="px-5 py-12 text-center">
               <p className="text-[15px] text-[#6B7894]">No reviews match.</p>
-              <button type="button" onClick={() => { setShow('all'); setPerson(''); setQuery('') }} className="mt-2 h-10 px-4 rounded-xl text-[14.5px] font-semibold text-[#1D5BEA] hover:bg-[#eef3fe] dark:hover:bg-blue-950/40 cursor-pointer">Show all reviews</button>
+              <button type="button" onClick={() => { setShow('all'); setPerson(''); setQuery('') }} className="mt-2 h-10 px-4 rounded-xl text-[14.5px] font-semibold text-[#008069] hover:bg-[#e7f5f0] dark:hover:bg-emerald-950/40 cursor-pointer">Show all reviews</button>
             </div>
           )
           : (
@@ -245,14 +245,14 @@ export function SalonReviews({ orgId, flash, range, onRangeChange }: { orgId: st
                       <div className="flex-1 min-w-0">
                         <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
                           <p className="text-[15.5px] font-bold text-[#0E1B3D] dark:text-white">{review.customer_name || 'Customer'}</p>
-                          {review.customer_phone && <a href={`tel:${review.customer_phone}`} className="text-[13.5px] font-semibold text-[#1D5BEA] hover:underline">{review.customer_phone}</a>}
+                          {review.customer_phone && <a href={`tel:${review.customer_phone}`} className="text-[13.5px] font-semibold text-[#008069] hover:underline">{review.customer_phone}</a>}
                           <span className="@xl:ml-auto text-[12.5px] text-[#8a94a8]">{formatIstDay(istDate(review.created_at), today)}, {formatIstTime(review.created_at)}</span>
                         </div>
                         <div className="mt-1 flex flex-wrap items-center gap-x-2.5 gap-y-1">
                           <Stars rating={review.rating} size={16} />
                           <span className={`text-[13.5px] font-bold text-[#4a5672] dark:text-slate-300`}>{LABELS[review.rating]}</span>
                           <span className="inline-flex items-center h-5 px-1.5 rounded-md bg-[#f4f6fa] dark:bg-slate-800 text-[11.5px] font-bold text-[#6B7894] dark:text-slate-400">{review.source === 'form' ? 'Form' : 'Chat'}</span>
-                          {review.invoice && <a href={`/i/${review.invoice.public_token}`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-[13px] font-semibold text-[#4a5672] dark:text-slate-300 hover:text-[#1D5BEA]">{review.invoice.number} <ExternalLink size={12} /></a>}
+                          {review.invoice && <a href={`/i/${review.invoice.public_token}`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-[13px] font-semibold text-[#4a5672] dark:text-slate-300 hover:text-[#008069]">{review.invoice.number} <ExternalLink size={12} /></a>}
                         </div>
                         {review.tags.length > 0 && (
                           <div className="mt-2 flex flex-wrap gap-1.5">

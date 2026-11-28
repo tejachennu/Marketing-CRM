@@ -38,7 +38,7 @@ export function InvoiceSettingsCard({ orgId, showToast }: { orgId: string; showT
   return (
     <section className={`${cardClass} p-4 sm:p-5 space-y-4`} aria-labelledby="invoice-settings-title">
       <div className="flex items-start gap-3">
-        <FileText size={20} className="text-[#1D5BEA] shrink-0 mt-0.5" />
+        <FileText size={20} className="text-[#008069] shrink-0 mt-0.5" />
         <div>
           <h2 id="invoice-settings-title" className="text-sm font-bold text-slate-900 dark:text-white">GST invoices</h2>
           <p className="text-xs text-slate-500 dark:text-slate-400">Every order gets an invoice when it is shipped or delivered (or when you tap Invoice on the order). The customer sees it in My orders. Prices on your store include GST. Without a GSTIN the invoice is a plain bill with no GST.</p>

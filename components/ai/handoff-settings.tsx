@@ -11,7 +11,7 @@ import { DEFAULT_HANDOFF, DEFAULT_HANDOFF_TEXT, type HandoffSettings } from '@/l
 import { DEFAULT_STYLE, PERSON_BUTTON, TONE_LABELS, type ReplyStyle, type Tone } from '@/lib/ai/reply-format'
 
 const card = 'bg-white dark:bg-[#111b21] rounded-2xl border border-[#e3e8f2] dark:border-[#202d36] p-5 sm:p-6'
-const input = 'w-full px-3.5 py-2.5 bg-white dark:bg-[#1f2c34] border border-[#d5ddeb] dark:border-[#2a3942] rounded-lg text-[13px] text-[#0E1B3D] dark:text-white placeholder:text-[#8a94a8] focus:outline-none focus:border-[#1D5BEA] focus:ring-2 focus:ring-[#1D5BEA]/20'
+const input = 'w-full px-3.5 py-2.5 bg-white dark:bg-[#1f2c34] border border-[#d5ddeb] dark:border-[#2a3942] rounded-lg text-[13px] text-[#0E1B3D] dark:text-white placeholder:text-[#8a94a8] focus:outline-none focus:border-[#008069] focus:ring-2 focus:ring-[#008069]/20'
 
 function Switch({ on, onChange, label, help }: { on: boolean; onChange: (v: boolean) => void; label: string; help: string }) {
   return (
@@ -26,7 +26,7 @@ function Switch({ on, onChange, label, help }: { on: boolean; onChange: (v: bool
         aria-checked={on}
         aria-label={label}
         onClick={() => onChange(!on)}
-        className={`relative mt-0.5 h-6 w-11 shrink-0 rounded-full transition-colors ${on ? 'bg-[#1D5BEA]' : 'bg-[#d5ddeb] dark:bg-[#2a3942]'}`}
+        className={`relative mt-0.5 h-6 w-11 shrink-0 rounded-full transition-colors ${on ? 'bg-[#008069]' : 'bg-[#d5ddeb] dark:bg-[#2a3942]'}`}
       >
         <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all ${on ? 'left-[22px]' : 'left-0.5'}`} />
       </button>
@@ -75,7 +75,7 @@ export function HandoffSettingsCard({ organizationId, canEdit }: { organizationI
     <section className={card} aria-labelledby="handoff-title">
       <div className="flex flex-wrap items-start justify-between gap-3 mb-3">
         <div className="flex items-start gap-3 min-w-0">
-          <span className="h-9 w-9 shrink-0 rounded-xl bg-[#eef1f6] dark:bg-[#1f2c34] text-[#1D5BEA] flex items-center justify-center"><UserRound size={17} /></span>
+          <span className="h-9 w-9 shrink-0 rounded-xl bg-[#eef1f6] dark:bg-[#1f2c34] text-[#008069] flex items-center justify-center"><UserRound size={17} /></span>
           <div className="min-w-0">
             <h3 id="handoff-title" className="text-sm font-bold text-[#0E1B3D] dark:text-white">How the AI replies, and when it hands a chat to your team</h3>
             <p className="text-[12px] text-[#6B7894] dark:text-[#8696a0] mt-0.5">
@@ -84,7 +84,7 @@ export function HandoffSettingsCard({ organizationId, canEdit }: { organizationI
           </div>
         </div>
         {canEdit && (
-          <button type="button" onClick={save} disabled={saving || loading} className="inline-flex items-center gap-1.5 h-9 px-4 rounded-lg bg-[#1D5BEA] hover:bg-[#174bc4] disabled:opacity-50 text-white text-xs font-bold">
+          <button type="button" onClick={save} disabled={saving || loading} className="inline-flex items-center gap-1.5 h-9 px-4 rounded-lg bg-[#008069] hover:bg-[#006d5b] disabled:opacity-50 text-white text-xs font-bold">
             {saving && <Loader2 size={13} className="animate-spin" />} Save
           </button>
         )}
@@ -118,7 +118,7 @@ export function HandoffSettingsCard({ organizationId, canEdit }: { organizationI
           </div>
         </fieldset>
       )}
-      {note && <p role="status" className={`mt-3 text-[12px] font-semibold ${note.ok ? 'text-[#1D5BEA]' : 'text-[#b91c1c]'}`}>{note.text}</p>}
+      {note && <p role="status" className={`mt-3 text-[12px] font-semibold ${note.ok ? 'text-[#008069]' : 'text-[#b91c1c]'}`}>{note.text}</p>}
     </section>
   )
 }
@@ -133,7 +133,7 @@ function ReplyPreview({ style }: { style: ReplyStyle }) {
         <p className="text-[10px] font-bold uppercase tracking-wide text-[#6B7894] mb-2">WhatsApp</p>
         <div className="max-w-[260px] rounded-lg bg-white dark:bg-[#1f2c34] shadow-sm overflow-hidden">
           <p className="px-3 py-2 text-[12px] text-[#0E1B3D] dark:text-white">{style.tone === 'short' ? <>Hair cut is <b>₹300</b>.</> : words}</p>
-          {buttons.map((b) => <p key={b} className="border-t border-[#eef1f6] dark:border-[#2a3942] py-1.5 text-center text-[12px] font-semibold text-[#1D5BEA]">{b}</p>)}
+          {buttons.map((b) => <p key={b} className="border-t border-[#eef1f6] dark:border-[#2a3942] py-1.5 text-center text-[12px] font-semibold text-[#008069]">{b}</p>)}
         </div>
       </div>
       <div className="rounded-xl bg-[#f4f6fa] dark:bg-[#0b141a] p-3">

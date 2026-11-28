@@ -17,7 +17,7 @@ import { extractVariables, languageLabel, validateDraft, type TemplateDraft } fr
 import { api, card, Modal, primaryButton, secondaryButton } from './ui'
 
 type Flash = (tone: 'success' | 'error', text: string) => void
-const textField = 'w-full rounded-xl border border-[#d5ddeb] dark:border-slate-700 bg-white dark:bg-[#0b141a] text-base sm:text-[14.5px] text-[#0E1B3D] dark:text-white focus:outline-none focus:border-[#1D5BEA] focus:ring-2 focus:ring-[#1D5BEA]/15'
+const textField = 'w-full rounded-xl border border-[#d5ddeb] dark:border-slate-700 bg-white dark:bg-[#0b141a] text-base sm:text-[14.5px] text-[#0E1B3D] dark:text-white focus:outline-none focus:border-[#008069] focus:ring-2 focus:ring-[#008069]/15'
 const preview = (body: string, samples: Record<string, string>) => body.replace(/\{\{(\d+)\}\}/g, (_, n) => samples[n] || `{{${n}}}`)
 
 export function SalonTemplates({ orgId, flash, onSaved }: { orgId: string; flash: Flash; onSaved?: (choices: MessageTemplates) => void }) {
@@ -115,7 +115,7 @@ function ReviewDraft({ orgId, result, onClose, onSubmitted }: { orgId: string; r
               {draft.headerText && <p className="font-bold mb-1">{draft.headerText}</p>}
               <p className="whitespace-pre-line">{preview(draft.body, draft.samples)}</p>
               {draft.footer && <p className="mt-1 text-[12.5px] text-[#6B7894]">{draft.footer}</p>}
-              {draft.buttons.length > 0 && <div className="mt-2 -mx-3 border-t border-[#eef1f6] dark:border-slate-700">{draft.buttons.map((b, i) => <p key={i} className="px-3 py-2 text-center text-[14px] font-semibold text-[#1D5BEA] border-b last:border-b-0 border-[#eef1f6] dark:border-slate-700">{'text' in b ? b.text : 'Copy code'}</p>)}</div>}
+              {draft.buttons.length > 0 && <div className="mt-2 -mx-3 border-t border-[#eef1f6] dark:border-slate-700">{draft.buttons.map((b, i) => <p key={i} className="px-3 py-2 text-center text-[14px] font-semibold text-[#008069] border-b last:border-b-0 border-[#eef1f6] dark:border-slate-700">{'text' in b ? b.text : 'Copy code'}</p>)}</div>}
             </div>
           </div>
         </div>

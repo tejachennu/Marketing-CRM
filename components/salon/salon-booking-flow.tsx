@@ -109,7 +109,7 @@ export function BookingFlowSettingsSection({ orgId, setup, onChange, flash }: { 
           <details className="group rounded-2xl border border-[#e3e8f2] dark:border-slate-800">
             <summary className="flex items-center justify-between gap-3 px-4 py-3.5 cursor-pointer list-none [&::-webkit-details-marker]:hidden">
               <span><span className="block text-[15px] font-bold text-[#0E1B3D] dark:text-white">More settings</span><span className="block text-[13px] text-[#6B7894]">Words that start it, language, first message, how far ahead, more than one service</span></span>
-              <span className="text-[#1D5BEA] text-[13px] font-bold shrink-0 group-open:hidden">Show</span><span className="text-[#1D5BEA] text-[13px] font-bold shrink-0 hidden group-open:inline">Hide</span>
+              <span className="text-[#008069] text-[13px] font-bold shrink-0 group-open:hidden">Show</span><span className="text-[#008069] text-[13px] font-bold shrink-0 hidden group-open:inline">Hide</span>
             </summary>
             <div className="px-4 pb-4 space-y-5">
           <Field group label="Words that start it" hint="When a customer sends a short message with one of these words, the flow starts. Long messages still go to the WhatsApp assistant.">
@@ -126,7 +126,7 @@ export function BookingFlowSettingsSection({ orgId, setup, onChange, flash }: { 
               <button type="submit" disabled={!newWord.trim()} className={`${secondaryButton} shrink-0`}><Plus size={17} /> Add</button>
             </form>
             {flow.triggers.join() !== DEFAULT_TRIGGERS.join() && (
-              <button type="button" onClick={() => set({ triggers: DEFAULT_TRIGGERS })} className="mt-1.5 text-[13px] font-semibold text-[#1D5BEA] hover:underline cursor-pointer">Use the default words</button>
+              <button type="button" onClick={() => set({ triggers: DEFAULT_TRIGGERS })} className="mt-1.5 text-[13px] font-semibold text-[#008069] hover:underline cursor-pointer">Use the default words</button>
             )}
           </Field>
 

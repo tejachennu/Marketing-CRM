@@ -102,8 +102,8 @@ class MoreScreen extends StatelessWidget {
                 if (!app.whatsappOn && app.sharedWhatsApp)
                   _Row(
                     icon: Icons.chat_outlined,
-                    title: 'Your own WhatsApp comes with Growth',
-                    subtitle: "Your messages go from WAMA's number. Growth adds chats, AI replies and campaigns.",
+                    title: 'Your own WhatsApp comes with the Business plan',
+                    subtitle: "Your messages go from WAMA's number. Business (₹999) adds chats, AI replies and campaigns.",
                     onTap: () => open(const WhatsAppLockedScreen(feature: 'WhatsApp')),
                   )
                 else if (!app.whatsappOn)

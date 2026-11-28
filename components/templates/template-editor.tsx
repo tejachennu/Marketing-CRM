@@ -61,7 +61,7 @@ function MediaUpload({ orgId, accept, handle, preview, onUploaded }: { orgId: st
         <button type="button" onClick={() => fileRef.current?.click()} disabled={busy} className={smallButton}>
           {busy ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />} {handle ? 'Choose another file' : 'Choose file'}
         </button>
-        {handle && !busy && <span className="text-[12.5px] text-[#1D5BEA] font-semibold">Sample uploaded to Meta</span>}
+        {handle && !busy && <span className="text-[12.5px] text-[#008069] font-semibold">Sample uploaded to Meta</span>}
         {preview && !handle && <span className="text-[12.5px] text-[#65676b]">Current sample on Meta</span>}
       </div>
       {error && <p className="mt-1.5 text-[12.5px] text-[#e41e3f]">{error}</p>}
@@ -108,7 +108,7 @@ function RichField({ value, onChange, max, rows, placeholder, addVariable, disab
             )}
           </span>
           {addVariable && (
-            <button type="button" onClick={() => insert(addVariable())} disabled={disabled} className="ml-1 inline-flex items-center gap-1 h-8 px-2.5 rounded-md text-[13px] font-semibold text-[#0064e0] hover:bg-[#e7f0fd] dark:hover:bg-blue-950/40 cursor-pointer disabled:opacity-40">
+            <button type="button" onClick={() => insert(addVariable())} disabled={disabled} className="ml-1 inline-flex items-center gap-1 h-8 px-2.5 rounded-md text-[13px] font-semibold text-[#0064e0] hover:bg-[#e3f4ee] dark:hover:bg-emerald-950/40 cursor-pointer disabled:opacity-40">
               <Plus size={14} /> Add variable
             </button>
           )}
@@ -311,7 +311,7 @@ export function TemplateEditor({
               { value: 'ONE_TAP', title: 'One-tap autofill', text: 'The customer taps a button to fill the code in your app. Android only; falls back to copy code.' },
               { value: 'COPY_CODE', title: 'Copy code', text: 'The customer copies the code and pastes it into your app or website.' },
             ].map((option) => (
-              <label key={option.value} className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer ${draft.otp.type === option.value ? 'border-[#0064e0] bg-[#e7f0fd] dark:bg-blue-950/30' : 'border-[#dadde1] dark:border-slate-700'}`}>
+              <label key={option.value} className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer ${draft.otp.type === option.value ? 'border-[#0064e0] bg-[#e3f4ee] dark:bg-emerald-950/30' : 'border-[#dadde1] dark:border-slate-700'}`}>
                 <input type="radio" checked={draft.otp.type === option.value} onChange={() => set({ otp: { ...draft.otp, type: option.value as any } })} className="mt-1 accent-[#0064e0]" />
                 <span><span className="block text-[14px] font-semibold text-[#1c2b33] dark:text-white">{option.title}</span><span className="block text-[13px] text-[#65676b] dark:text-slate-400">{option.text}</span></span>
               </label>
@@ -376,7 +376,7 @@ export function TemplateEditor({
       <Section title="Variable type" description="Choose how variables look in your message: numbers like {{1}} or names like {{first_name}}.">
         <div className="flex gap-2">
           {(['POSITIONAL', 'NAMED'] as const).map((format) => (
-            <button key={format} type="button" disabled={mode === 'edit'} onClick={() => set({ parameterFormat: format })} className={`h-9 px-3.5 rounded-lg border text-[13.5px] font-semibold cursor-pointer disabled:cursor-not-allowed ${draft.parameterFormat === format ? 'border-[#0064e0] bg-[#e7f0fd] text-[#0064e0] dark:bg-blue-950/40' : 'border-[#ced0d4] dark:border-slate-700 text-[#1c2b33] dark:text-slate-200'}`}>
+            <button key={format} type="button" disabled={mode === 'edit'} onClick={() => set({ parameterFormat: format })} className={`h-9 px-3.5 rounded-lg border text-[13.5px] font-semibold cursor-pointer disabled:cursor-not-allowed ${draft.parameterFormat === format ? 'border-[#0064e0] bg-[#e3f4ee] text-[#0064e0] dark:bg-emerald-950/40' : 'border-[#ced0d4] dark:border-slate-700 text-[#1c2b33] dark:text-slate-200'}`}>
               {format === 'POSITIONAL' ? 'Number' : 'Name'}
             </button>
           ))}
@@ -405,7 +405,7 @@ export function TemplateEditor({
         <Section title="Header" optional={draft.type !== 'mpm'} description="Add a title, or choose the type of media you'll send with this header." error={errorsFor('header')}>
           <div className="flex flex-wrap gap-1.5 mb-3">
             {headerFormats.map((format) => (
-              <button key={format} type="button" onClick={() => set({ headerFormat: format, headerHandle: '', headerPreview: undefined })} className={`h-8 px-3 rounded-full border text-[13px] font-semibold cursor-pointer ${draft.headerFormat === format ? 'border-[#0064e0] bg-[#e7f0fd] text-[#0064e0] dark:bg-blue-950/40' : 'border-[#ced0d4] dark:border-slate-700 text-[#1c2b33] dark:text-slate-200 hover:bg-[#f5f6f7] dark:hover:bg-slate-800'}`}>
+              <button key={format} type="button" onClick={() => set({ headerFormat: format, headerHandle: '', headerPreview: undefined })} className={`h-8 px-3 rounded-full border text-[13px] font-semibold cursor-pointer ${draft.headerFormat === format ? 'border-[#0064e0] bg-[#e3f4ee] text-[#0064e0] dark:bg-emerald-950/40' : 'border-[#ced0d4] dark:border-slate-700 text-[#1c2b33] dark:text-slate-200 hover:bg-[#f5f6f7] dark:hover:bg-slate-800'}`}>
                 {format === 'NONE' ? 'None' : format.charAt(0) + format.slice(1).toLowerCase()}
               </button>
             ))}
@@ -477,7 +477,7 @@ export function TemplateEditor({
                 </div>
                 <div className="flex gap-1.5 mb-2">
                   {(['IMAGE', 'VIDEO'] as const).map((format) => (
-                    <button key={format} type="button" onClick={() => set({ cards: draft.cards.map((c) => ({ ...c, headerFormat: format, headerHandle: c.headerFormat === format ? c.headerHandle : '', headerPreview: c.headerFormat === format ? c.headerPreview : undefined })) })} className={`h-7 px-2.5 rounded-full border text-[12.5px] font-semibold cursor-pointer ${card.headerFormat === format ? 'border-[#0064e0] bg-[#e7f0fd] text-[#0064e0]' : 'border-[#ced0d4] text-[#1c2b33] dark:text-slate-200'}`}>{format === 'IMAGE' ? 'Image' : 'Video'}</button>
+                    <button key={format} type="button" onClick={() => set({ cards: draft.cards.map((c) => ({ ...c, headerFormat: format, headerHandle: c.headerFormat === format ? c.headerHandle : '', headerPreview: c.headerFormat === format ? c.headerPreview : undefined })) })} className={`h-7 px-2.5 rounded-full border text-[12.5px] font-semibold cursor-pointer ${card.headerFormat === format ? 'border-[#0064e0] bg-[#e3f4ee] text-[#0064e0]' : 'border-[#ced0d4] text-[#1c2b33] dark:text-slate-200'}`}>{format === 'IMAGE' ? 'Image' : 'Video'}</button>
                   ))}
                 </div>
                 <MediaUpload orgId={orgId} accept={card.headerFormat === 'IMAGE' ? 'image/jpeg,image/png' : 'video/mp4'} handle={card.headerHandle.startsWith('http') ? '' : card.headerHandle} preview={card.headerPreview} onUploaded={(handle, preview) => setCard(index, { headerHandle: handle, headerPreview: preview })} />

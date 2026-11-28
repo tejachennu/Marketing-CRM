@@ -150,7 +150,7 @@ export function PipelineApp() {
       </div>
     )
   }
-  if (!workspace || !data) return <div className="flex-1 flex items-center justify-center"><Loader2 className="animate-spin text-[#1D5BEA]" size={30} /></div>
+  if (!workspace || !data) return <div className="flex-1 flex items-center justify-center"><Loader2 className="animate-spin text-[#008069]" size={30} /></div>
 
   const { me, currency } = data
   const canWrite = !me.readOnly
@@ -172,7 +172,7 @@ export function PipelineApp() {
       <div className={`${tab === 'board' ? 'max-w-[1600px]' : 'max-w-6xl'} mx-auto px-3 min-[400px]:px-4 @xl:px-6 py-4 @xl:py-7 space-y-4 @xl:space-y-5`}>
         <header className="flex flex-col @4xl:flex-row @4xl:items-center justify-between gap-3 @xl:gap-4">
           <div className="flex items-center gap-3 min-w-0">
-            <span className="h-12 w-12 @xl:h-14 @xl:w-14 shrink-0 rounded-2xl bg-[#1D5BEA] text-white flex items-center justify-center shadow-sm"><TrendingUp size={24} /></span>
+            <span className="h-12 w-12 @xl:h-14 @xl:w-14 shrink-0 rounded-2xl bg-[#008069] text-white flex items-center justify-center shadow-sm"><TrendingUp size={24} /></span>
             <div className="min-w-0 flex-1">
               <h1 className="text-[21px] min-[400px]:text-[24px] @xl:text-[30px] font-extrabold tracking-tight text-[#0E1B3D] dark:text-white leading-tight truncate">Sales Pipeline</h1>
               <p className="text-[13.5px] @xl:text-[15px] text-[#4a5672] dark:text-slate-400 truncate">

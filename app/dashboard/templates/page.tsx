@@ -25,14 +25,14 @@ const secondary = 'inline-flex items-center justify-center gap-1.5 h-9 px-4 roun
 const select = 'h-9 px-3 text-[14px] rounded-lg bg-white dark:bg-slate-900 border border-[#ced0d4] dark:border-slate-700 text-[#1c2b33] dark:text-white focus:outline-none focus:border-[#0064e0]'
 
 const TONES: Record<string, string> = {
-  green: 'bg-[#eef3fe] text-[#174bc4] dark:bg-[#0E1B3D]/60 dark:text-[#9db5ef]',
+  green: 'bg-[#e7f5f0] text-[#006d5b] dark:bg-[#0E1B3D]/60 dark:text-[#8fcfbf]',
   yellow: 'bg-[#fef4d6] text-[#8a6100] dark:bg-amber-950/60 dark:text-amber-300',
   red: 'bg-[#fde8ea] text-[#c11231] dark:bg-rose-950/60 dark:text-rose-300',
   gray: 'bg-[#eceef1] text-[#4b4f56] dark:bg-slate-800 dark:text-slate-300',
-  blue: 'bg-[#e7f0fd] text-[#0064e0] dark:bg-blue-950/60 dark:text-blue-300',
+  blue: 'bg-[#e3f4ee] text-[#0064e0] dark:bg-emerald-950/60 dark:text-emerald-300',
 }
 const QUALITY: Record<string, { label: string; dot: string }> = {
-  GREEN: { label: 'High quality', dot: 'bg-[#1D5BEA]' },
+  GREEN: { label: 'High quality', dot: 'bg-[#008069]' },
   YELLOW: { label: 'Medium quality', dot: 'bg-[#f7b928]' },
   RED: { label: 'Low quality', dot: 'bg-[#e41e3f]' },
 }
@@ -267,7 +267,7 @@ export default function TemplatesPage() {
                 const Icon = CATEGORY_ICONS[value]
                 const active = draft.category === value
                 return (
-                  <button key={value} type="button" disabled={Boolean(lockedName) && !active} onClick={() => setDraft({ ...emptyDraft(value, TEMPLATE_TYPES[value][0].type), name: draft.name, language: draft.language })} className={`text-left p-3 disabled:opacity-40 disabled:cursor-not-allowed rounded-xl border-2 transition-colors cursor-pointer ${active ? 'border-[#0064e0] bg-[#e7f0fd] dark:bg-blue-950/30' : 'border-[#dadde1] dark:border-slate-700 hover:bg-[#f5f6f7] dark:hover:bg-slate-800/60'}`}>
+                  <button key={value} type="button" disabled={Boolean(lockedName) && !active} onClick={() => setDraft({ ...emptyDraft(value, TEMPLATE_TYPES[value][0].type), name: draft.name, language: draft.language })} className={`text-left p-3 disabled:opacity-40 disabled:cursor-not-allowed rounded-xl border-2 transition-colors cursor-pointer ${active ? 'border-[#0064e0] bg-[#e3f4ee] dark:bg-emerald-950/30' : 'border-[#dadde1] dark:border-slate-700 hover:bg-[#f5f6f7] dark:hover:bg-slate-800/60'}`}>
                     <span className="flex items-center gap-2 text-[15px] font-bold text-[#1c2b33] dark:text-white"><Icon size={17} className={active ? 'text-[#0064e0]' : 'text-[#65676b]'} /> {CATEGORY_LABELS[value].title}</span>
                     <span className="block text-[12.5px] text-[#65676b] dark:text-slate-400 mt-1 leading-snug">{CATEGORY_LABELS[value].description}</span>
                   </button>
@@ -276,7 +276,7 @@ export default function TemplatesPage() {
             </div>
             <div className="space-y-2">
               {types.map((option) => (
-                <label key={option.type} className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer ${draft.type === option.type ? 'border-[#0064e0] bg-[#f5f9ff] dark:bg-blue-950/20' : 'border-[#dadde1] dark:border-slate-700 hover:bg-[#f5f6f7] dark:hover:bg-slate-800/60'}`}>
+                <label key={option.type} className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer ${draft.type === option.type ? 'border-[#0064e0] bg-[#f2faf7] dark:bg-emerald-950/20' : 'border-[#dadde1] dark:border-slate-700 hover:bg-[#f5f6f7] dark:hover:bg-slate-800/60'}`}>
                   <input type="radio" disabled={Boolean(lockedName)} checked={draft.type === option.type} onChange={() => setDraft({ ...emptyDraft(draft.category, option.type as TemplateType), name: draft.name, language: draft.language })} className="mt-1 accent-[#0064e0]" />
                   <span>
                     <span className="block text-[14px] font-semibold text-[#1c2b33] dark:text-white">{option.title}</span>
@@ -286,7 +286,7 @@ export default function TemplatesPage() {
               ))}
             </div>
             {draft.category === 'UTILITY' && !lockedName && (
-              <div className="mt-3 rounded-lg bg-[#f5f9ff] dark:bg-blue-950/20 border border-[#cfe0fb] dark:border-blue-900 px-3 py-2.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div className="mt-3 rounded-lg bg-[#f2faf7] dark:bg-emerald-950/20 border border-[#c9e9df] dark:border-emerald-900 px-3 py-2.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                 <span className="text-[13px] text-[#1c2b33] dark:text-slate-200"><strong>Skip the review.</strong> Meta's template library has ready-made utility templates that are approved as soon as you create them.</span>
                 <button type="button" onClick={() => setView({ kind: 'library' })} className={`${secondary} shrink-0`}><BookOpen size={15} /> Browse library</button>
               </div>
@@ -464,7 +464,7 @@ export default function TemplatesPage() {
       </div>
 
       {notConnected && (
-        <div className="mb-4 rounded-xl border border-[#cfe0fb] bg-[#f5f9ff] dark:bg-blue-950/20 dark:border-blue-900 px-4 py-3 text-[13.5px] text-[#1c2b33] dark:text-blue-100 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+        <div className="mb-4 rounded-xl border border-[#c9e9df] bg-[#f2faf7] dark:bg-emerald-950/20 dark:border-emerald-900 px-4 py-3 text-[13.5px] text-[#1c2b33] dark:text-emerald-100 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
           <span className="flex items-start gap-2"><AlertCircle size={17} className="shrink-0 mt-0.5 text-[#0064e0]" /> {notConnected.message}</span>
           {notConnected.kind === 'meta' && <a href="/dashboard/settings" className={`${primary} shrink-0`}>Connect WhatsApp</a>}
         </div>
@@ -485,7 +485,7 @@ export default function TemplatesPage() {
           <ul className="space-y-1">
             {updates.map((update) => (
               <li key={`${update.id}-${update.at}`} className="text-[13px] text-[#1c2b33] dark:text-slate-200">
-                <strong>{update.name}</strong> ({languageLabel(update.language)}): {STATUS_INFO[update.from]?.label || update.from} → <span className={update.to === 'APPROVED' ? 'text-[#174bc4] font-semibold' : update.to === 'REJECTED' || update.to === 'DISABLED' ? 'text-[#c11231] font-semibold' : 'font-semibold'}>{STATUS_INFO[update.to]?.label || update.to}</span>
+                <strong>{update.name}</strong> ({languageLabel(update.language)}): {STATUS_INFO[update.from]?.label || update.from} → <span className={update.to === 'APPROVED' ? 'text-[#006d5b] font-semibold' : update.to === 'REJECTED' || update.to === 'DISABLED' ? 'text-[#c11231] font-semibold' : 'font-semibold'}>{STATUS_INFO[update.to]?.label || update.to}</span>
                 <span className="text-[#8a8d91]"> · {new Date(update.at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</span>
               </li>
             ))}
@@ -638,7 +638,7 @@ function MenuItem({ icon: Icon, label, onClick, danger }: { icon: any; label: st
 function Toast({ toast, onClose }: { toast: { kind: 'success' | 'error'; text: string }; onClose: () => void }) {
   return (
     <div role={toast.kind === 'error' ? 'alert' : 'status'} className={`fixed bottom-20 md:bottom-6 left-1/2 -translate-x-1/2 z-[60] w-[calc(100%-2rem)] max-w-md flex items-start gap-2.5 px-4 py-3 rounded-xl shadow-2xl text-[13.5px] font-medium ${toast.kind === 'error' ? 'bg-[#e41e3f] text-white' : 'bg-[#1c2b33] text-white'}`}>
-      {toast.kind === 'error' ? <AlertCircle size={17} className="shrink-0 mt-px" /> : <CheckCircle2 size={17} className="shrink-0 mt-px text-[#1D5BEA]" />}
+      {toast.kind === 'error' ? <AlertCircle size={17} className="shrink-0 mt-px" /> : <CheckCircle2 size={17} className="shrink-0 mt-px text-[#008069]" />}
       <span className="flex-1">{toast.text}</span>
       <button type="button" aria-label="Dismiss" onClick={onClose} className="cursor-pointer"><X size={15} /></button>
     </div>

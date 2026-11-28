@@ -29,7 +29,7 @@ export function ErrorScreen({ error, reset, home, homeLabel = 'Go to the start' 
         <p className="text-[19px] font-bold text-[#0E1B3D]">This page did not load properly</p>
         <p className="mt-2 text-[14.5px] leading-relaxed text-[#4a5672]">Please try again. If it keeps happening, check your internet and reload the page.</p>
         <div className="mt-6 grid gap-2">
-          <button type="button" onClick={() => { try { reset() } catch {} ; window.location.reload() }} className="h-11 rounded-xl bg-[#1D5BEA] hover:bg-[#174bc4] text-white text-[15px] font-bold cursor-pointer">Try again</button>
+          <button type="button" onClick={() => { try { reset() } catch {} ; window.location.reload() }} className="h-11 rounded-xl bg-[#008069] hover:bg-[#006d5b] text-white text-[15px] font-bold cursor-pointer">Try again</button>
           {home && <a href={home} className="h-11 rounded-xl border border-[#d5ddeb] text-[#0E1B3D] text-[15px] font-semibold inline-flex items-center justify-center">{homeLabel}</a>}
         </div>
         {error?.digest && <p className="mt-4 text-[12px] text-[#8a94a8]">Code: {error.digest}</p>}

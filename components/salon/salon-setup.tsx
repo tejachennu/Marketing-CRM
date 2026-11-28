@@ -105,8 +105,8 @@ function LogoPicker({ orgId, logo, onSaved, flash }: { orgId: string; logo: stri
   return (
     <div className="mb-5 flex items-center gap-4 rounded-2xl border border-[#e3e8f2] dark:border-slate-800 p-4">
       <button type="button" onClick={() => fileInput.current?.click()} disabled={busy !== null} aria-label={shown ? 'Change logo' : 'Upload logo'}
-        className="h-20 w-20 shrink-0 rounded-2xl border-2 border-dashed border-[#d5ddeb] dark:border-slate-700 bg-[#f8fafc] dark:bg-slate-900 flex items-center justify-center overflow-hidden hover:border-[#9db5ef] cursor-pointer disabled:cursor-wait">
-        {busy === 'upload' ? <Loader2 size={22} className="animate-spin text-[#1D5BEA]" />
+        className="h-20 w-20 shrink-0 rounded-2xl border-2 border-dashed border-[#d5ddeb] dark:border-slate-700 bg-[#f8fafc] dark:bg-slate-900 flex items-center justify-center overflow-hidden hover:border-[#8fcfbf] cursor-pointer disabled:cursor-wait">
+        {busy === 'upload' ? <Loader2 size={22} className="animate-spin text-[#008069]" />
           // eslint-disable-next-line @next/next/no-img-element
           : shown ? <img src={shown} alt="Your logo" className="max-h-full max-w-full object-contain p-1.5" />
           : <ImagePlus size={24} className="text-[#a3adc2]" />}
@@ -360,7 +360,7 @@ export function SalonSetupTab({ orgId, setup, onChange, flash, initialSection = 
       {setup.services.length === 0 && (
         <div className={`${card} p-5 @xl:p-8`}>
           <div className="text-center">
-            <div className="mx-auto h-14 w-14 rounded-2xl bg-[#1D5BEA] text-white flex items-center justify-center"><Sparkles size={26} /></div>
+            <div className="mx-auto h-14 w-14 rounded-2xl bg-[#008069] text-white flex items-center justify-center"><Sparkles size={26} /></div>
             <h2 className="text-[21px] @xl:text-[22px] font-extrabold text-[#0E1B3D] dark:text-white mt-4">What kind of business is this?</h2>
             <p className="text-[15px] text-[#4a5672] dark:text-slate-400 mt-1 max-w-lg mx-auto">Pick one to start with a ready list of services, prices and a small team. You can change everything afterwards.</p>
           </div>
@@ -370,8 +370,8 @@ export function SalonSetupTab({ orgId, setup, onChange, flash, initialSection = 
               const info = BUSINESS_TYPES[kind]
               return (
                 <button key={kind} type="button" onClick={() => addKit(kind)} disabled={busy !== null}
-                  className="flex @3xl:flex-col items-center @3xl:items-start gap-3 text-left rounded-2xl border border-[#e3e8f2] dark:border-slate-700 p-3.5 hover:border-[#1D5BEA] hover:bg-[#f5f8ff] dark:hover:bg-blue-950/20 cursor-pointer disabled:opacity-60 transition-colors">
-                  <span className="h-11 w-11 shrink-0 rounded-xl bg-[#eef3fe] dark:bg-blue-950/40 text-[#1D5BEA] dark:text-blue-300 flex items-center justify-center">{busy === `kit-${kind}` ? <Loader2 size={20} className="animate-spin" /> : <Icon size={21} />}</span>
+                  className="flex @3xl:flex-col items-center @3xl:items-start gap-3 text-left rounded-2xl border border-[#e3e8f2] dark:border-slate-700 p-3.5 hover:border-[#008069] hover:bg-[#f2faf7] dark:hover:bg-emerald-950/20 cursor-pointer disabled:opacity-60 transition-colors">
+                  <span className="h-11 w-11 shrink-0 rounded-xl bg-[#e7f5f0] dark:bg-emerald-950/40 text-[#008069] dark:text-emerald-300 flex items-center justify-center">{busy === `kit-${kind}` ? <Loader2 size={20} className="animate-spin" /> : <Icon size={21} />}</span>
                   <span className="min-w-0"><span className="block text-[15px] font-bold text-[#0E1B3D] dark:text-white">{info.label}</span><span className="block text-[13px] text-[#6B7894]">{info.kit ? info.hint : 'Start empty and add your own'}</span></span>
                 </button>
               )
@@ -385,7 +385,7 @@ export function SalonSetupTab({ orgId, setup, onChange, flash, initialSection = 
         {SECTIONS.filter(({ id }) => (setup.ownWhatsApp !== false || (id !== 'booking' && id !== 'templates')) && (takes || id !== 'booking'))
           .map((item) => ({ ...item, ...(takes ? {} : WALK_IN_WORDS[item.id]) })).map(({ id, label, hint, icon: Icon }) => (
           <button key={id} type="button" aria-current={section === id ? 'page' : undefined} onClick={() => setSection(id)}
-            className={`shrink-0 @4xl:w-full inline-flex items-center gap-2.5 h-11 @4xl:h-auto px-3.5 @4xl:px-3 @4xl:py-2.5 rounded-xl @4xl:rounded-2xl border text-left text-[14.5px] font-semibold whitespace-nowrap cursor-pointer transition-colors ${section === id ? 'border-[#0E1B3D] bg-[#0E1B3D] text-white dark:border-white dark:bg-white dark:text-[#0E1B3D]' : 'border-[#e3e8f2] dark:border-slate-800 bg-white dark:bg-[#111b21] text-[#0E1B3D] dark:text-slate-200 hover:border-[#9db5ef]'}`}>
+            className={`shrink-0 @4xl:w-full inline-flex items-center gap-2.5 h-11 @4xl:h-auto px-3.5 @4xl:px-3 @4xl:py-2.5 rounded-xl @4xl:rounded-2xl border text-left text-[14.5px] font-semibold whitespace-nowrap cursor-pointer transition-colors ${section === id ? 'border-[#0E1B3D] bg-[#0E1B3D] text-white dark:border-white dark:bg-white dark:text-[#0E1B3D]' : 'border-[#e3e8f2] dark:border-slate-800 bg-white dark:bg-[#111b21] text-[#0E1B3D] dark:text-slate-200 hover:border-[#8fcfbf]'}`}>
             <Icon size={18} className="shrink-0" />
             <span className="min-w-0"><span className="block">{label}</span><span className={`hidden @4xl:block text-[12.5px] font-normal truncate ${section === id ? 'opacity-75' : 'text-[#6B7894]'}`}>{hint}</span></span>
           </button>
@@ -394,7 +394,7 @@ export function SalonSetupTab({ orgId, setup, onChange, flash, initialSection = 
       <div className="min-w-0 space-y-4 @xl:space-y-5">
       {/* Services */}
       {section === 'services' && setup.services.length === 0 && (
-        <div className={`${card} px-5 py-10 text-center text-[15px] text-[#6B7894]`}>No services yet. Pick your kind of business above, or <button type="button" onClick={() => newService()} className="font-semibold text-[#1D5BEA] hover:underline cursor-pointer">add your own</button>, <button type="button" onClick={() => setCatalogOpen(true)} className="font-semibold text-[#1D5BEA] hover:underline cursor-pointer">pick from your catalog</button>, or <button type="button" onClick={() => setCategoriesOpen(true)} className="font-semibold text-[#1D5BEA] hover:underline cursor-pointer">create categories</button> first.</div>
+        <div className={`${card} px-5 py-10 text-center text-[15px] text-[#6B7894]`}>No services yet. Pick your kind of business above, or <button type="button" onClick={() => newService()} className="font-semibold text-[#008069] hover:underline cursor-pointer">add your own</button>, <button type="button" onClick={() => setCatalogOpen(true)} className="font-semibold text-[#008069] hover:underline cursor-pointer">pick from your catalog</button>, or <button type="button" onClick={() => setCategoriesOpen(true)} className="font-semibold text-[#008069] hover:underline cursor-pointer">create categories</button> first.</div>
       )}
       {(section === 'services' || section === 'team') && samples.services.length + samples.staff.length > 0 && (
         <div className={`${card} p-4 flex flex-col @xl:flex-row @xl:items-center gap-3 justify-between`}>
@@ -418,21 +418,21 @@ export function SalonSetupTab({ orgId, setup, onChange, flash, initialSection = 
               <div key={category} className="px-2 @xl:px-3 py-3">
                 <h3 className="px-2 pb-1.5 flex items-center gap-2 text-[12.5px] font-bold uppercase tracking-wide text-[#8a94a8]">{category} <span className="font-semibold normal-case tracking-normal">· {services.length}</span></h3>
                 {services.length === 0 && (
-                  <p className="px-2 py-1.5 text-[14px] text-[#6B7894]">No services in this category yet. <button type="button" onClick={() => newService(category)} className="font-semibold text-[#1D5BEA] hover:underline cursor-pointer">Add one</button></p>
+                  <p className="px-2 py-1.5 text-[14px] text-[#6B7894]">No services in this category yet. <button type="button" onClick={() => newService(category)} className="font-semibold text-[#008069] hover:underline cursor-pointer">Add one</button></p>
                 )}
                 <ul>
                   {services.map((service) => (
                     <li key={service.id} className="flex flex-wrap @xl:flex-nowrap items-center gap-x-3 gap-y-2 px-2 py-2.5 rounded-xl hover:bg-[#f8fafc] dark:hover:bg-slate-900/60">
                       {(service.image_url || service.source === 'catalog') && <ItemThumb url={service.image_url} size={42} />}
                       <button type="button" onClick={() => setServiceForm(service)} className="flex-1 min-w-0 text-left cursor-pointer group">
-                        <span className={`block text-[15.5px] font-semibold truncate group-hover:text-[#1D5BEA] ${service.active ? 'text-[#0E1B3D] dark:text-white' : 'text-[#8a94a8] line-through'}`}>{service.name}</span>
+                        <span className={`block text-[15.5px] font-semibold truncate group-hover:text-[#008069] ${service.active ? 'text-[#0E1B3D] dark:text-white' : 'text-[#8a94a8] line-through'}`}>{service.name}</span>
                         <span className="mt-1 flex flex-wrap gap-1.5">
                           {service.takes_time === false
                             ? <span className="inline-flex items-center gap-1 h-6 px-2 rounded-md bg-[#f4f6fa] dark:bg-slate-800 text-[12px] font-semibold text-[#4a5672] dark:text-slate-300"><ReceiptText size={12} /> Billing only</span>
                             : <span className="inline-flex items-center gap-1 h-6 px-2 rounded-md bg-[#f4f6fa] dark:bg-slate-800 text-[12px] font-semibold text-[#4a5672] dark:text-slate-300"><Clock3 size={12} /> {service.duration_minutes} min</span>}
                           <span className="inline-flex items-center h-6 px-2 rounded-md bg-[#f4f6fa] dark:bg-slate-800 text-[12px] font-semibold text-[#4a5672] dark:text-slate-300">GST {Number(service.tax_rate)}%</span>
                           {service.billable === false && <span className="inline-flex items-center gap-1 h-6 px-2 rounded-md bg-[#fdf0f0] dark:bg-red-950/30 text-[12px] font-semibold text-[#b91c1c] dark:text-red-300">Not on bills</span>}
-                          {service.source === 'catalog' && <span className="inline-flex items-center gap-1 h-6 px-2 rounded-md bg-[#eef3fe] dark:bg-blue-950/40 text-[12px] font-semibold text-[#1D5BEA] dark:text-blue-300"><Package size={12} /> Catalog</span>}
+                          {service.source === 'catalog' && <span className="inline-flex items-center gap-1 h-6 px-2 rounded-md bg-[#e7f5f0] dark:bg-emerald-950/40 text-[12px] font-semibold text-[#008069] dark:text-emerald-300"><Package size={12} /> Catalog</span>}
                           {service.sac_code && <span className="hidden @xl:inline-flex items-center h-6 px-2 rounded-md bg-[#f4f6fa] dark:bg-slate-800 text-[12px] font-semibold text-[#4a5672] dark:text-slate-300">SAC {service.sac_code}</span>}
                         </span>
                       </button>
@@ -461,7 +461,7 @@ export function SalonSetupTab({ orgId, setup, onChange, flash, initialSection = 
           <ul className="grid @xl:grid-cols-2 @4xl:grid-cols-3 gap-3 p-4">
             {setup.staff.map((member) => (
               <li key={member.id}>
-                <button type="button" onClick={() => setStaffForm(member)} className={`w-full text-left rounded-2xl border border-[#e3e8f2] dark:border-slate-700 p-4 hover:border-[#9db5ef] hover:shadow-sm transition cursor-pointer ${member.active ? '' : 'opacity-60'}`}>
+                <button type="button" onClick={() => setStaffForm(member)} className={`w-full text-left rounded-2xl border border-[#e3e8f2] dark:border-slate-700 p-4 hover:border-[#8fcfbf] hover:shadow-sm transition cursor-pointer ${member.active ? '' : 'opacity-60'}`}>
                   <span className="flex items-center gap-3">
                     <Avatar name={member.name} size={46} />
                     <span className="min-w-0">
@@ -508,7 +508,7 @@ export function SalonSetupTab({ orgId, setup, onChange, flash, initialSection = 
             <div className="@5xl:sticky @5xl:top-4">
               <p className="text-[12.5px] font-bold uppercase tracking-wide text-[#8a94a8] mb-2">How the top of your invoice looks</p>
               <div className="rounded-2xl border border-[#e3e8f2] dark:border-slate-700 bg-white dark:bg-[#0b141a] shadow-sm overflow-hidden">
-                <div className="h-1.5 bg-[#1D5BEA]" />
+                <div className="h-1.5 bg-[#008069]" />
                 <div className="p-5">
                   <div className="flex items-start justify-between gap-3">
                     {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -520,7 +520,7 @@ export function SalonSetupTab({ orgId, setup, onChange, flash, initialSection = 
                       {settings.gstin && <p className="text-[12.5px] text-[#4a5672] dark:text-slate-400 mt-1">GSTIN <strong className="text-[#0E1B3D] dark:text-white">{settings.gstin.toUpperCase()}</strong></p>}
                     </div>
                     <div className="text-right shrink-0">
-                      <p className="text-[10.5px] font-bold tracking-[0.14em] text-[#1D5BEA]">{settings.gstin ? 'TAX INVOICE' : 'BILL'}</p>
+                      <p className="text-[10.5px] font-bold tracking-[0.14em] text-[#008069]">{settings.gstin ? 'TAX INVOICE' : 'BILL'}</p>
                       <p className="text-[15px] font-extrabold text-[#0E1B3D] dark:text-white">{(settings.invoice_prefix || 'INV').toUpperCase().replace(/[^A-Z0-9/-]/g, '').slice(0, 12) || 'INV'}-0001</p>
                     </div>
                   </div>

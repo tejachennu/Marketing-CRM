@@ -30,7 +30,7 @@ const PURPOSE_HINTS: Record<MessagePurpose, string> = {
   feedback: 'Thank them for visiting and ask how it was, with a button to the short feedback form.',
 }
 
-const field = 'w-full rounded-xl border border-[#d5ddeb] dark:border-slate-700 bg-white dark:bg-[#0b141a] text-base sm:text-[15px] text-[#0E1B3D] dark:text-white placeholder:text-[#8a94a8] focus:outline-none focus:border-[#1D5BEA] focus:ring-2 focus:ring-[#1D5BEA]/15'
+const field = 'w-full rounded-xl border border-[#d5ddeb] dark:border-slate-700 bg-white dark:bg-[#0b141a] text-base sm:text-[15px] text-[#0E1B3D] dark:text-white placeholder:text-[#8a94a8] focus:outline-none focus:border-[#008069] focus:ring-2 focus:ring-[#008069]/15'
 
 export function AiTemplateForm({ orgId, purpose, onDraft, submitLabel = 'Write it with AI' }: { orgId: string; purpose?: MessagePurpose | null; onDraft: (result: AiDraftResult) => void; submitLabel?: string }) {
   const [description, setDescription] = useState(purpose ? PURPOSE_HINTS[purpose] : '')
@@ -59,7 +59,7 @@ export function AiTemplateForm({ orgId, purpose, onDraft, submitLabel = 'Write i
         <div className="flex flex-wrap gap-1.5">
           {IDEAS.map((idea) => (
             <button key={idea.label} type="button" onClick={() => { setDescription(idea.text); setCategory(idea.category) }}
-              className="inline-flex items-center h-8 px-3 rounded-full border border-[#d5ddeb] dark:border-slate-700 text-[13px] font-semibold text-[#4a5672] dark:text-slate-300 hover:border-[#9db5ef] hover:text-[#1D5BEA] cursor-pointer">{idea.label}</button>
+              className="inline-flex items-center h-8 px-3 rounded-full border border-[#d5ddeb] dark:border-slate-700 text-[13px] font-semibold text-[#4a5672] dark:text-slate-300 hover:border-[#8fcfbf] hover:text-[#008069] cursor-pointer">{idea.label}</button>
           ))}
         </div>
       )}

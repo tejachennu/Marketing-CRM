@@ -444,7 +444,7 @@ export function StoreSettings({ orgId, orgData, currency, whatsappConnected, onS
         </span>
         <span className="relative shrink-0">
           <input type="checkbox" role="switch" checked={form.enable_commerce} onChange={(event) => set({ enable_commerce: event.target.checked })} className="peer sr-only" />
-          <span className="block h-6 w-11 rounded-full bg-slate-300 dark:bg-slate-700 peer-checked:bg-[#1D5BEA] transition-colors peer-focus-visible:ring-2 peer-focus-visible:ring-[#1D5BEA]/40" />
+          <span className="block h-6 w-11 rounded-full bg-slate-300 dark:bg-slate-700 peer-checked:bg-[#008069] transition-colors peer-focus-visible:ring-2 peer-focus-visible:ring-[#008069]/40" />
           <span className="absolute top-0.5 left-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform peer-checked:translate-x-5" />
         </span>
       </label>
@@ -463,7 +463,7 @@ export function StoreSettings({ orgId, orgData, currency, whatsappConnected, onS
         </span>
         <span className="relative shrink-0">
           <input type="checkbox" role="switch" checked={assistantEditable ? form.commerce_ai_assistant : true} disabled={!assistantEditable} onChange={(event) => set({ commerce_ai_assistant: event.target.checked })} className="peer sr-only" />
-          <span className="block h-6 w-11 rounded-full bg-slate-300 dark:bg-slate-700 peer-checked:bg-[#1D5BEA] peer-disabled:opacity-60 transition-colors peer-focus-visible:ring-2 peer-focus-visible:ring-[#1D5BEA]/40" />
+          <span className="block h-6 w-11 rounded-full bg-slate-300 dark:bg-slate-700 peer-checked:bg-[#008069] peer-disabled:opacity-60 transition-colors peer-focus-visible:ring-2 peer-focus-visible:ring-[#008069]/40" />
           <span className="absolute top-0.5 left-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform peer-checked:translate-x-5" />
         </span>
       </label>
@@ -527,14 +527,14 @@ export function StoreSettings({ orgId, orgData, currency, whatsappConnected, onS
             )}
             {chosenCatalog && (
               <li className="flex items-start gap-2">
-                <CheckCircle2 size={15} className="shrink-0 mt-px text-[#1D5BEA]" />
+                <CheckCircle2 size={15} className="shrink-0 mt-px text-[#008069]" />
                 <span><strong className="font-semibold text-slate-900 dark:text-white">{chosenCatalog.name}</strong> has {chosenCatalog.product_count} product{chosenCatalog.product_count === 1 ? '' : 's'} on Meta.</span>
               </li>
             )}
             {chosenCatalog && catalogInfo.connectionKnown && (
               chosenCatalog.connected ? (
                 <li className="flex items-start gap-2">
-                  <CheckCircle2 size={15} className="shrink-0 mt-px text-[#1D5BEA]" /> It is connected to your WhatsApp account.
+                  <CheckCircle2 size={15} className="shrink-0 mt-px text-[#008069]" /> It is connected to your WhatsApp account.
                 </li>
               ) : (
                 <li className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-3 rounded-xl bg-[#fdf0f0] dark:bg-red-950/40 border border-[#f5c9c9] dark:border-red-900/60 text-[#b91c1c] dark:text-red-200">
@@ -551,7 +551,7 @@ export function StoreSettings({ orgId, orgData, currency, whatsappConnected, onS
             )}
             {isLinkedCatalog && catalogInfo.canEdit === true && (
               <li className="flex items-start gap-2">
-                <CheckCircle2 size={15} className="shrink-0 mt-px text-[#1D5BEA]" /> Products you add or change in the Products tab are sent to this catalog.
+                <CheckCircle2 size={15} className="shrink-0 mt-px text-[#008069]" /> Products you add or change in the Products tab are sent to this catalog.
               </li>
             )}
             {isLinkedCatalog && catalogInfo.canEdit === false && (
@@ -601,7 +601,7 @@ export function StoreSettings({ orgId, orgData, currency, whatsappConnected, onS
         {/* Catalog access: the WhatsApp signup does not include it, so it is granted separately */}
         {whatsappConnected && catalogInfo && catalogLoginConfigId && (
           catalogInfo.catalogConnection ? (
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-3 rounded-xl bg-[#eef3fe] dark:bg-[#0E1B3D]/30 border border-[#c5d5fa] dark:border-[#0E1B3D] text-xs text-[#0E1B3D] dark:text-[#dfe8fd]">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-3 rounded-xl bg-[#e7f5f0] dark:bg-[#0E1B3D]/30 border border-[#b8e2d6] dark:border-[#0E1B3D] text-xs text-[#0E1B3D] dark:text-[#d6efe7]">
               <span className="flex items-start gap-2"><CheckCircle2 size={15} className="shrink-0 mt-px" /> Your catalog is connected with Meta. Products are added, changed and deleted there from here.</span>
               <div className="flex gap-2 shrink-0">
                 <button type="button" onClick={connectCatalogAccess} disabled={isConnectingAccess} className={secondaryButton}>
@@ -667,7 +667,7 @@ export function StoreSettings({ orgId, orgData, currency, whatsappConnected, onS
 
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-3 rounded-xl bg-slate-50 dark:bg-slate-900/60">
           <p className="text-xs text-slate-600 dark:text-slate-300 flex items-start gap-2">
-            {cartOn === true ? <CheckCircle2 size={15} className="shrink-0 mt-px text-[#1D5BEA]" /> : <ShoppingBag size={15} className="shrink-0 mt-px text-slate-400" />}
+            {cartOn === true ? <CheckCircle2 size={15} className="shrink-0 mt-px text-[#008069]" /> : <ShoppingBag size={15} className="shrink-0 mt-px text-slate-400" />}
             <span>
               {cartOn === true
                 ? 'The cart and catalog buttons are showing on your WhatsApp number.'
@@ -780,7 +780,7 @@ export function StoreSettings({ orgId, orgData, currency, whatsappConnected, onS
           )}
         </div>
         <label className="flex items-start gap-2.5 p-3 rounded-xl bg-slate-50 dark:bg-slate-900/60 cursor-pointer">
-          <input type="checkbox" checked={form.commerce_enable_cod} onChange={(event) => set({ commerce_enable_cod: event.target.checked })} className="mt-0.5 h-4 w-4 rounded accent-[#1D5BEA]" />
+          <input type="checkbox" checked={form.commerce_enable_cod} onChange={(event) => set({ commerce_enable_cod: event.target.checked })} className="mt-0.5 h-4 w-4 rounded accent-[#008069]" />
           <span className="text-xs">
             <span className="block font-semibold text-slate-900 dark:text-white">Allow Cash on Delivery</span>
             <span className="block text-slate-500 dark:text-slate-400">Customers confirm the order with one tap and pay when it arrives.</span>

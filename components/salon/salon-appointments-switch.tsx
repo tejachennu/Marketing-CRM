@@ -52,7 +52,7 @@ export function AppointmentsSwitch({ orgId, setup, onChange, flash, canChange }:
             <span className="block text-[15px] font-bold text-[#0E1B3D] dark:text-white">We take appointments</span>
             <span className="block text-[13.5px] text-[#6B7894] dark:text-slate-400">{on ? 'On: customers book times at the counter, on your website and on WhatsApp.' : 'Off: Front Desk is for walk-in bills only. Nothing can be booked.'}</span>
           </span>
-          {busy ? <Loader2 size={22} className="animate-spin text-[#1D5BEA] shrink-0" /> : <Toggle checked={on} disabled={!canChange} onChange={save} label="We take appointments" />}
+          {busy ? <Loader2 size={22} className="animate-spin text-[#008069] shrink-0" /> : <Toggle checked={on} disabled={!canChange} onChange={save} label="We take appointments" />}
         </div>
         {!canChange && <p className="text-[13px] text-[#6B7894] dark:text-slate-400">Only the owner or an admin can change this.</p>}
 

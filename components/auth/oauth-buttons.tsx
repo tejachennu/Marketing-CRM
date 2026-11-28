@@ -54,7 +54,7 @@ export function OAuthButtons({ plan, onError }: { plan?: string | null; onError?
     }
   }
 
-  const button = 'w-full h-12 rounded-xl border border-[#d5ddeb] dark:border-slate-700 bg-white dark:bg-[#0b141a] text-[15px] font-semibold text-[#0E1B3D] dark:text-white inline-flex items-center justify-center gap-2.5 hover:border-[#1D5BEA] transition-colors cursor-pointer disabled:opacity-60'
+  const button = 'w-full h-12 rounded-xl border border-[#d5ddeb] dark:border-slate-700 bg-white dark:bg-[#0b141a] text-[15px] font-semibold text-[#0E1B3D] dark:text-white inline-flex items-center justify-center gap-2.5 hover:border-[#008069] transition-colors cursor-pointer disabled:opacity-60'
   return (
     <div className="space-y-2.5">
       {providers.includes('google') && (

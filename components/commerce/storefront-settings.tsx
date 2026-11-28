@@ -9,7 +9,7 @@ import { MAX_PAGE_TEXT, STORE_PAGES, STORE_PAGE_TITLES, starterPage, type StoreP
 import { OnlinePayments } from '@/components/payments/online-payments'
 import { cardClass, hintClass, inputClass, labelClass, primaryButton, secondaryButton, textareaClass, type ShowToast } from './ui'
 
-const COLOURS = ['#1D5BEA', '#0E1B3D', '#008069', '#B45309', '#BE185D', '#6D28D9', '#0F766E', '#B91C1C']
+const COLOURS = ['#008069', '#0E1B3D', '#008069', '#B45309', '#BE185D', '#6D28D9', '#0F766E', '#B91C1C']
 const MAX_BANNERS = 8
 
 interface Banner { image: string; title: string; text: string; button: string; category: string; link: string }
@@ -54,7 +54,7 @@ function PictureButton({ value, onChange, label, wide, showToast }: { value: str
         }}
       />
       <div className="min-w-0 text-[12px] text-slate-500">
-        <button type="button" onClick={() => file.current?.click()} className="font-semibold text-[#1D5BEA] hover:underline cursor-pointer">{value ? 'Change picture' : 'Upload picture'}</button>
+        <button type="button" onClick={() => file.current?.click()} className="font-semibold text-[#008069] hover:underline cursor-pointer">{value ? 'Change picture' : 'Upload picture'}</button>
         {value && <button type="button" onClick={() => onChange('')} className="ml-3 font-semibold text-slate-500 hover:text-[#b91c1c] cursor-pointer">Remove</button>}
       </div>
     </div>
@@ -94,11 +94,11 @@ function RazorpayConnect({ orgId, payment, onPayment, showToast, canManage = tru
           return (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               <label className="flex items-start gap-2.5 p-3 rounded-xl border-2 border-slate-200 dark:border-slate-700 text-[13px] cursor-pointer">
-                <input type="checkbox" checked={cod} onChange={(e) => pick(e.target.checked, now)} className="mt-0.5 h-4 w-4 accent-[#1D5BEA]" />
+                <input type="checkbox" checked={cod} onChange={(e) => pick(e.target.checked, now)} className="mt-0.5 h-4 w-4 accent-[#008069]" />
                 <span><span className="block font-bold">Cash on delivery</span><span className="block text-slate-500">Pay when the order arrives, or at pick up</span></span>
               </label>
               <label className={`flex items-start gap-2.5 p-3 rounded-xl border-2 border-slate-200 dark:border-slate-700 text-[13px] ${connected ? 'cursor-pointer' : 'opacity-50 cursor-not-allowed'}`}>
-                <input type="checkbox" checked={now} disabled={!connected} onChange={(e) => pick(cod, e.target.checked)} className="mt-0.5 h-4 w-4 accent-[#1D5BEA]" />
+                <input type="checkbox" checked={now} disabled={!connected} onChange={(e) => pick(cod, e.target.checked)} className="mt-0.5 h-4 w-4 accent-[#008069]" />
                 <span><span className="block font-bold">Pay now</span><span className="block text-slate-500">{connected ? (gateway === 'stripe' ? 'Card, Apple Pay or Google Pay with Stripe' : 'UPI, card or net banking with Razorpay') : 'Connect Razorpay or Stripe above first'}</span></span>
               </label>
             </div>
@@ -192,8 +192,8 @@ export function StoreAddress({ orgId, canManage, showToast, kind = 'store', ourL
   const heading = 'text-sm font-bold text-slate-900 dark:text-white'
   const sub = 'text-xs text-slate-500 dark:text-slate-400'
   const option = (value: 'ours' | 'own', title: string, text: string, onPick: () => void) => (
-    <label className={`flex gap-3 p-3 rounded-xl border cursor-pointer ${choice === value ? 'border-[#1D5BEA] bg-[#f4f6fa] dark:bg-slate-900/60' : 'border-[#e3e8f2] dark:border-slate-700'}`}>
-      <input type="radio" name="store-address" checked={choice === value} onChange={onPick} disabled={!canManage || busy} className="mt-1 accent-[#1D5BEA]" />
+    <label className={`flex gap-3 p-3 rounded-xl border cursor-pointer ${choice === value ? 'border-[#008069] bg-[#f4f6fa] dark:bg-slate-900/60' : 'border-[#e3e8f2] dark:border-slate-700'}`}>
+      <input type="radio" name="store-address" checked={choice === value} onChange={onPick} disabled={!canManage || busy} className="mt-1 accent-[#008069]" />
       <span className="min-w-0">
         <span className="block text-[13px] font-semibold text-slate-900 dark:text-white">{title}</span>
         <span className={`block ${sub} [overflow-wrap:anywhere]`}>{text}</span>
@@ -238,7 +238,7 @@ export function StoreAddress({ orgId, canManage, showToast, kind = 'store', ourL
             <div className="rounded-xl border border-[#e3e8f2] dark:border-slate-700 p-3 space-y-3">
               <div className="flex flex-wrap items-center gap-2">
                 <span className="text-[13px] font-semibold text-slate-900 dark:text-white break-all">{info.domain}</span>
-                <span className={`inline-flex items-center gap-1 h-6 px-2 rounded-full text-[11px] font-bold ${connected ? 'bg-[#eef1f6] text-[#1D5BEA]' : 'bg-[#fdf0f0] text-[#b91c1c]'}`}>
+                <span className={`inline-flex items-center gap-1 h-6 px-2 rounded-full text-[11px] font-bold ${connected ? 'bg-[#eef1f6] text-[#008069]' : 'bg-[#fdf0f0] text-[#b91c1c]'}`}>
                   {connected ? <Check size={12} /> : <Clock size={12} />} {connected ? 'Connected' : 'Waiting for your domain'}
                 </span>
               </div>
@@ -401,7 +401,7 @@ export function StorefrontSettings({ orgId, canManage, showToast }: { orgId: str
           </span>
           <span className="relative shrink-0">
             <input type="checkbox" role="switch" checked={settings.enabled} disabled={disabled || saving} onChange={(e) => toggleStore(e.target.checked)} className="peer sr-only" />
-            <span className="block h-6 w-11 rounded-full bg-slate-300 peer-checked:bg-[#1D5BEA] transition-colors" />
+            <span className="block h-6 w-11 rounded-full bg-slate-300 peer-checked:bg-[#008069] transition-colors" />
             <span className="absolute top-0.5 left-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform peer-checked:translate-x-5" />
           </span>
         </label>
@@ -428,7 +428,7 @@ export function StorefrontSettings({ orgId, canManage, showToast }: { orgId: str
 
       {canManage && suggested && (
         <section className={`${cardClass} p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center gap-3`}>
-          <Sparkles size={18} className="text-[#1D5BEA] shrink-0" />
+          <Sparkles size={18} className="text-[#008069] shrink-0" />
           <div className="min-w-0 flex-1">
             <p className={heading}>{prefilled ? 'Filled in from your business details' : 'Fill from your business details'}</p>
             <p className={sub}>
@@ -475,8 +475,8 @@ export function StorefrontSettings({ orgId, canManage, showToast }: { orgId: str
           <span className={labelClass}>How products are shown</span>
           <div className="grid grid-cols-1 min-[420px]:grid-cols-2 gap-2">
             {STORE_LAYOUTS.map((l) => (
-              <button key={l} type="button" disabled={disabled} onClick={() => set({ layout: l })} aria-pressed={(settings.layout || 'grid') === l} className={`text-left rounded-xl border p-3 cursor-pointer ${(settings.layout || 'grid') === l ? 'border-[#1D5BEA] bg-[#1D5BEA]/5' : 'border-slate-200 dark:border-slate-700'}`}>
-                <span className="flex items-center gap-1.5 text-[13.5px] font-bold text-slate-900 dark:text-white">{(settings.layout || 'grid') === l && <Check size={14} className="text-[#1D5BEA]" />}{STORE_LAYOUT_INFO[l].title}</span>
+              <button key={l} type="button" disabled={disabled} onClick={() => set({ layout: l })} aria-pressed={(settings.layout || 'grid') === l} className={`text-left rounded-xl border p-3 cursor-pointer ${(settings.layout || 'grid') === l ? 'border-[#008069] bg-[#008069]/5' : 'border-slate-200 dark:border-slate-700'}`}>
+                <span className="flex items-center gap-1.5 text-[13.5px] font-bold text-slate-900 dark:text-white">{(settings.layout || 'grid') === l && <Check size={14} className="text-[#008069]" />}{STORE_LAYOUT_INFO[l].title}</span>
                 <span className="block text-xs text-slate-500 mt-0.5">{STORE_LAYOUT_INFO[l].hint}</span>
               </button>
             ))}
@@ -547,10 +547,10 @@ export function StorefrontSettings({ orgId, canManage, showToast }: { orgId: str
         <h2 className={heading}>Ordering</h2>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
           <label className="flex items-center gap-2 p-3 rounded-xl bg-slate-50 dark:bg-slate-900/60 text-[13px] font-semibold cursor-pointer">
-            <input type="checkbox" checked={settings.pickup} disabled={disabled} onChange={(e) => set({ pickup: e.target.checked || !settings.delivery })} className="h-4 w-4 accent-[#1D5BEA]" /> Customers can pick up
+            <input type="checkbox" checked={settings.pickup} disabled={disabled} onChange={(e) => set({ pickup: e.target.checked || !settings.delivery })} className="h-4 w-4 accent-[#008069]" /> Customers can pick up
           </label>
           <label className="flex items-center gap-2 p-3 rounded-xl bg-slate-50 dark:bg-slate-900/60 text-[13px] font-semibold cursor-pointer">
-            <input type="checkbox" checked={settings.delivery} disabled={disabled} onChange={(e) => set({ delivery: e.target.checked || !settings.pickup })} className="h-4 w-4 accent-[#1D5BEA]" /> You deliver
+            <input type="checkbox" checked={settings.delivery} disabled={disabled} onChange={(e) => set({ delivery: e.target.checked || !settings.pickup })} className="h-4 w-4 accent-[#008069]" /> You deliver
           </label>
         </div>
         {settings.delivery && (
@@ -575,15 +575,15 @@ export function StorefrontSettings({ orgId, canManage, showToast }: { orgId: str
             <input type="number" min={0} value={settings.min_order || ''} onChange={(e) => set({ min_order: Number(e.target.value) || 0 })} placeholder="No minimum" className={inputClass} />
           </div>
           <label className="flex items-center gap-2 text-[13px] font-semibold cursor-pointer sm:mt-6">
-            <input type="checkbox" checked={settings.show_out_of_stock} onChange={(e) => set({ show_out_of_stock: e.target.checked })} className="h-4 w-4 accent-[#1D5BEA]" /> Show out-of-stock products (greyed out)
+            <input type="checkbox" checked={settings.show_out_of_stock} onChange={(e) => set({ show_out_of_stock: e.target.checked })} className="h-4 w-4 accent-[#008069]" /> Show out-of-stock products (greyed out)
           </label>
         </div>
         <label className="flex items-start gap-2 text-[13px] font-semibold cursor-pointer">
-          <input type="checkbox" checked={settings.accounts !== false} onChange={(e) => set({ accounts: e.target.checked })} className="h-4 w-4 mt-0.5 accent-[#1D5BEA]" />
+          <input type="checkbox" checked={settings.accounts !== false} onChange={(e) => set({ accounts: e.target.checked })} className="h-4 w-4 mt-0.5 accent-[#008069]" />
           <span>Customers can sign in with Google<span className={`block font-normal ${hintClass}`}>They see their orders and where each one is, keep their cart on any phone, and check out faster. Anyone can still order without signing in, and track an order with its number.</span></span>
         </label>
         <label className="flex items-start gap-2 text-[13px] font-semibold cursor-pointer">
-          <input type="checkbox" checked={settings.chat === true} onChange={(e) => set({ chat: e.target.checked })} className="h-4 w-4 mt-0.5 accent-[#1D5BEA]" />
+          <input type="checkbox" checked={settings.chat === true} onChange={(e) => set({ chat: e.target.checked })} className="h-4 w-4 mt-0.5 accent-[#008069]" />
           <span>AI chat on your website<span className={`block font-normal ${hintClass}`}>A chat button on every page. It answers shoppers from your products and your Knowledge Base (Settings → Knowledge Base), shows products they can add to the cart, and sends them to your WhatsApp for anything else. Each answer uses a little of your AI wallet.</span></span>
         </label>
         {settings.chat === true && chatProblem && (
@@ -655,7 +655,7 @@ function PagesEditor({ settings, set, disabled, heading, sub }: { settings: any;
       <div className="flex flex-wrap gap-1.5" role="tablist" aria-label="Pages">
         {STORE_PAGES.map((k) => (
           <button key={k} type="button" role="tab" aria-selected={k === key} onClick={() => setKey(k)}
-            className={`h-8 px-3 rounded-full border text-xs font-semibold cursor-pointer ${k === key ? 'border-[#1D5BEA] bg-[#1D5BEA]/5 text-[#1D5BEA]' : 'border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300'}`}>
+            className={`h-8 px-3 rounded-full border text-xs font-semibold cursor-pointer ${k === key ? 'border-[#008069] bg-[#008069]/5 text-[#008069]' : 'border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300'}`}>
             {STORE_PAGE_TITLES[k]}{pages[k] ? ' ✓' : ''}
           </button>
         ))}
@@ -689,7 +689,7 @@ function InstagramCard({ value, disabled, onChange }: { value: { handle: string;
     <section className={`${cardClass} p-4 sm:p-5 space-y-3`}>
       <h2 className="text-sm font-bold text-slate-900 dark:text-white">Instagram on your store</h2>
       <label className="flex items-start gap-2 text-sm cursor-pointer">
-        <input type="checkbox" className="h-4 w-4 mt-0.5 accent-[#1D5BEA]" checked={value.live === true} disabled={disabled} onChange={(e) => onChange({ ...value, live: e.target.checked })} />
+        <input type="checkbox" className="h-4 w-4 mt-0.5 accent-[#008069]" checked={value.live === true} disabled={disabled} onChange={(e) => onChange({ ...value, live: e.target.checked })} />
         <span>Show my latest posts by themselves<span className={`block ${hintClass} mt-0`}>Needs Instagram connected (menu → Instagram). New posts appear within 30 minutes. The links below are used when this is off.</span></span>
       </label>
       <p className={`${hintClass} mt-0`}>Shown above the footer. On Instagram, open a post, tap ⋯ → Copy link, and paste it here. Up to {MAX_INSTAGRAM_POSTS} posts (6 show at a time).</p>
@@ -706,7 +706,7 @@ function InstagramCard({ value, disabled, onChange }: { value: { handle: string;
         <ul className="space-y-1.5">
           {value.posts.map((post, i) => (
             <li key={post} className="flex items-center gap-2 text-xs">
-              <a href={`https://www.instagram.com/${post}/`} target="_blank" rel="noreferrer" className="flex-1 min-w-0 truncate text-[#1D5BEA] hover:underline">instagram.com/{post}</a>
+              <a href={`https://www.instagram.com/${post}/`} target="_blank" rel="noreferrer" className="flex-1 min-w-0 truncate text-[#008069] hover:underline">instagram.com/{post}</a>
               <button type="button" aria-label="Move up" disabled={disabled || i === 0} onClick={() => { const next = [...value.posts]; [next[i - 1], next[i]] = [next[i], next[i - 1]]; onChange({ ...value, posts: next }) }} className="h-7 w-7 rounded-md border border-slate-200 dark:border-slate-700 flex items-center justify-center disabled:opacity-40 cursor-pointer"><ArrowUp size={12} /></button>
               <button type="button" aria-label="Remove" disabled={disabled} onClick={() => onChange({ ...value, posts: value.posts.filter((p) => p !== post) })} className="h-7 w-7 rounded-md border border-slate-200 dark:border-slate-700 flex items-center justify-center text-[#b91c1c] cursor-pointer"><Trash2 size={12} /></button>
             </li>

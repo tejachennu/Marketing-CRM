@@ -107,7 +107,7 @@ export function SalonApp() {
     return <div className="p-6"><div className={`${card} p-6 text-[15px] text-[#b91c1c]`}>{workspaceError || error}</div></div>
   }
   if (!workspace || !setup) {
-    return <div className="flex-1 flex items-center justify-center"><Loader2 className="animate-spin text-[#1D5BEA]" size={30} /></div>
+    return <div className="flex-1 flex items-center justify-center"><Loader2 className="animate-spin text-[#008069]" size={30} /></div>
   }
 
   // Without appointments, only the bill and feedback messages need a template

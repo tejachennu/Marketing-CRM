@@ -37,7 +37,7 @@ export function PipelineBoard({ data, deals, onOpen, onMove, onNew, truncated }:
             onDragOver={(e) => { if (dragging) { e.preventDefault(); setOver(stage.id) } }}
             onDragLeave={() => setOver((current) => (current === stage.id ? null : current))}
             onDrop={(e) => { e.preventDefault(); drop(stage.id) }}
-            className={`snap-start shrink-0 w-[84%] min-[480px]:w-[300px] @4xl:w-[280px] rounded-2xl border transition-colors flex flex-col max-h-[calc(100dvh-260px)] min-h-[200px] ${over === stage.id ? 'border-[#1D5BEA] bg-[#eef3fe] dark:bg-blue-950/20' : 'border-[#e3e8f2] dark:border-slate-800 bg-[#eef1f6]/70 dark:bg-slate-900/40'}`}>
+            className={`snap-start shrink-0 w-[84%] min-[480px]:w-[300px] @4xl:w-[280px] rounded-2xl border transition-colors flex flex-col max-h-[calc(100dvh-260px)] min-h-[200px] ${over === stage.id ? 'border-[#008069] bg-[#e7f5f0] dark:bg-emerald-950/20' : 'border-[#e3e8f2] dark:border-slate-800 bg-[#eef1f6]/70 dark:bg-slate-900/40'}`}>
             <header className="flex items-center gap-2 px-3 pt-3 pb-2">
               <div className="min-w-0 flex-1">
                 <h3 className="flex items-center gap-2 text-[14.5px] font-bold text-[#0E1B3D] dark:text-white">
@@ -52,7 +52,7 @@ export function PipelineBoard({ data, deals, onOpen, onMove, onNew, truncated }:
               {leads.length === 0 && <p className="px-2 py-6 text-center text-[13px] text-[#8a94a8]">{canWrite ? 'Drag a deal here' : 'No deals'}</p>}
               {leads.map((deal) => (
                 <article key={deal.id} draggable={canWrite} onDragStart={(e) => { setDragging(deal.id); e.dataTransfer.effectAllowed = 'move' }} onDragEnd={() => { setDragging(null); setOver(null) }}
-                  className={`${card} p-3 cursor-pointer hover:border-[#9db5ef] transition-colors ${dragging === deal.id ? 'opacity-50' : ''}`}
+                  className={`${card} p-3 cursor-pointer hover:border-[#8fcfbf] transition-colors ${dragging === deal.id ? 'opacity-50' : ''}`}
                   onClick={() => onOpen(deal.id)} onKeyDown={(e) => { if (e.key === 'Enter') onOpen(deal.id) }} tabIndex={0} role="button" aria-label={`Open ${deal.title || 'deal'}`}>
                   <p className="text-[14.5px] font-bold text-[#0E1B3D] dark:text-white leading-snug line-clamp-2 [overflow-wrap:anywhere]">{deal.title || 'Untitled deal'}</p>
                   <p className="text-[13px] text-[#6B7894] dark:text-slate-400 truncate">{[deal.contact?.name, deal.contact?.company].filter(Boolean).join(' · ') || 'No contact'}</p>

@@ -119,7 +119,7 @@ export function SalonInvoices({ orgId, canWrite, canVoid, flash, range, onRangeC
 
       <section className={card}>
         <div className="px-4 @xl:px-5 py-4 border-b border-[#eef1f6] dark:border-slate-800 flex flex-col @4xl:flex-row @4xl:items-center gap-3">
-          <h2 className="flex items-center gap-2 text-[18px] font-extrabold text-[#0E1B3D] dark:text-white"><ReceiptText size={19} className="text-[#1D5BEA]" /> Invoices</h2>
+          <h2 className="flex items-center gap-2 text-[18px] font-extrabold text-[#0E1B3D] dark:text-white"><ReceiptText size={19} className="text-[#008069]" /> Invoices</h2>
           <div className="@4xl:ml-auto flex flex-col @xl:flex-row gap-2">
             <div role="tablist" aria-label="Show" className="grid grid-cols-4 gap-1 rounded-xl bg-[#eef1f6] dark:bg-slate-900 p-1">
               {FILTERS.map(({ id, label }) => (
@@ -132,11 +132,11 @@ export function SalonInvoices({ orgId, canWrite, canVoid, flash, range, onRangeC
             <label className="relative block @xl:w-60">
               <Search size={17} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#8a94a8]" />
               <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Name, number or phone" aria-label="Search invoices"
-                className="w-full h-11 pl-9 pr-3 rounded-xl border border-[#d5ddeb] dark:border-slate-700 bg-white dark:bg-[#0b141a] text-base @xl:text-[14.5px] text-[#0E1B3D] dark:text-white placeholder:text-[#8a94a8] focus:outline-none focus:border-[#1D5BEA] focus:ring-2 focus:ring-[#1D5BEA]/15" />
+                className="w-full h-11 pl-9 pr-3 rounded-xl border border-[#d5ddeb] dark:border-slate-700 bg-white dark:bg-[#0b141a] text-base @xl:text-[14.5px] text-[#0E1B3D] dark:text-white placeholder:text-[#8a94a8] focus:outline-none focus:border-[#008069] focus:ring-2 focus:ring-[#008069]/15" />
             </label>
           </div>
         </div>
-        {!loaded ? <div className="flex justify-center py-14"><Loader2 className="animate-spin text-[#1D5BEA]" /></div>
+        {!loaded ? <div className="flex justify-center py-14"><Loader2 className="animate-spin text-[#008069]" /></div>
           : invoices.length === 0 ? (
             <div className="px-5 py-14 text-center">
               <ReceiptText size={30} className="mx-auto text-[#a3adc2]" />

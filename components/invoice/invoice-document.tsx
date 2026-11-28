@@ -100,7 +100,7 @@ const PRINT_CSS = `@page { size: A4; margin: 10mm 12mm }
 const label = 'text-[11px] font-semibold uppercase tracking-[0.08em] text-[#6B7894]'
 
 const STAMPS: Record<InvoiceStamp, { text: string; className: string; Icon: typeof Ban }> = {
-  paid: { text: 'Paid', className: 'border-[#1D5BEA] text-[#1D5BEA] bg-white', Icon: CheckCircle2 },
+  paid: { text: 'Paid', className: 'border-[#008069] text-[#008069] bg-white', Icon: CheckCircle2 },
   unpaid: { text: 'Not paid', className: 'border-[#b91c1c] text-[#b91c1c] bg-[#fdf0f0]', Icon: Clock3 },
   cancelled: { text: 'Cancelled', className: 'border-[#b91c1c] text-[#b91c1c] bg-[#fdf0f0]', Icon: Ban },
 }
@@ -333,7 +333,7 @@ export function InvoiceDocument({ view }: { view: InvoiceView }) {
               <ul className="mt-2 divide-y divide-[#eef1f6] rounded-xl border border-[#e3e8f2]">
                 {view.related.items.map((item) => (
                   <li key={item.href} className="flex flex-wrap items-baseline gap-x-4 gap-y-0.5 px-4 py-2.5 text-[13.5px]">
-                    <a href={item.href} className="font-semibold text-[#1D5BEA] hover:text-[#174bc4] hover:underline">{item.label}</a>
+                    <a href={item.href} className="font-semibold text-[#008069] hover:text-[#006d5b] hover:underline">{item.label}</a>
                     <span className="text-[#6B7894]">{item.date}</span>
                     <span className="ml-auto whitespace-nowrap font-semibold tabular-nums">− {item.amount}</span>
                   </li>

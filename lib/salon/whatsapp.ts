@@ -161,7 +161,7 @@ export function windowIsClosed(lastAt: string | null | undefined, now = Date.now
 export async function sendToCustomer(db: any, organizationId: string, phone: string, message: { text?: string; payload?: unknown; logBody: string }, template?: TemplateFallback): Promise<SendOutcome & { viaTemplate?: boolean }> {
   // Starter: the business has no WhatsApp of its own; WAMA's number sends the approved message for it
   if (await usesSharedNumber(db, organizationId)) {
-    if (!template) return { sent: false, error: "On your plan, WAMA's number sends booking messages only. Connect your own WhatsApp (Growth or Pro) to chat with customers." }
+    if (!template) return { sent: false, error: "On your plan, WAMA's number sends booking messages only. Connect your own WhatsApp (Business plan or bigger) to chat with customers." }
     const shared = await sendShared(db, organizationId, phone, template.purpose, template.values)
     return shared.sent ? { sent: true, viaTemplate: true } : { sent: false, error: shared.error }
   }

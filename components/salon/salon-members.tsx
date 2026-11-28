@@ -27,7 +27,7 @@ const errorBox = 'rounded-xl bg-[#fdf0f0] dark:bg-red-950/30 text-[#b91c1c] dark
 function StateChip({ state }: { state: CardState }) {
   const attention = state === 'expiring' || state === 'expired'
   return (
-    <span className={`inline-flex items-center h-6 px-2.5 rounded-full text-[12px] font-bold whitespace-nowrap ${attention ? 'bg-[#fdf0f0] text-[#b91c1c]' : state === 'cancelled' ? 'bg-[#eef1f6] text-[#6B7894]' : 'bg-[#eef3fe] text-[#1D5BEA]'}`}>
+    <span className={`inline-flex items-center h-6 px-2.5 rounded-full text-[12px] font-bold whitespace-nowrap ${attention ? 'bg-[#fdf0f0] text-[#b91c1c]' : state === 'cancelled' ? 'bg-[#eef1f6] text-[#6B7894]' : 'bg-[#e7f5f0] text-[#008069]'}`}>
       {CARD_STATE_WORDS[state]}
     </span>
   )
@@ -141,7 +141,7 @@ function CardList({ orgId, reload, onOpen, noPlans, canManage, onAddPlan }: { or
         <p className="py-14 text-center text-[#6B7894] inline-flex w-full justify-center items-center gap-2"><Loader2 size={16} className="animate-spin" /> Loading cards…</p>
       ) : cards.length === 0 ? (
         <div className={`${card} p-8 text-center`}>
-          <span className="mx-auto h-14 w-14 rounded-full bg-[#eef3fe] text-[#1D5BEA] flex items-center justify-center"><IdCard size={26} /></span>
+          <span className="mx-auto h-14 w-14 rounded-full bg-[#e7f5f0] text-[#008069] flex items-center justify-center"><IdCard size={26} /></span>
           <p className="mt-3 font-bold text-[#0E1B3D] dark:text-white">{q || state ? 'No cards match' : 'No membership cards yet'}</p>
           <p className="mt-1 text-[14px] text-[#6B7894]">{noPlans ? 'Start by adding a plan, like Gold: ₹5,000 for ₹6,000 to spend, valid one year.' : 'Sell a membership and its card shows up here.'}</p>
           {noPlans && canManage && <button type="button" onClick={onAddPlan} className={`${primaryButton} mt-4`}><Plus size={17} /> Add a plan</button>}
@@ -152,7 +152,7 @@ function CardList({ orgId, reload, onOpen, noPlans, canManage, onAddPlan }: { or
             const st = cardState(c)
             return (
               <li key={c.id}>
-                <button type="button" onClick={() => onOpen(c.id)} className={`${card} w-full text-left p-3.5 flex items-center gap-3 hover:border-[#9db5ef] cursor-pointer`}>
+                <button type="button" onClick={() => onOpen(c.id)} className={`${card} w-full text-left p-3.5 flex items-center gap-3 hover:border-[#8fcfbf] cursor-pointer`}>
                   <span style={{ background: c.plan?.colour || PLAN_COLOURS[0] }} className="h-11 w-11 rounded-xl text-white flex items-center justify-center shrink-0"><IdCard size={20} /></span>
                   <span className="min-w-0 flex-1">
                     <span className="flex items-center justify-between gap-2">
@@ -221,10 +221,10 @@ function CardSheet({ orgId, cardId, canManage, canWrite, flash, onClose, onChang
             </div>
             <div className={`${card} p-4 space-y-2.5`}>
               <p className={sectionTitle}>Left on the card</p>
-              {(Number(c.plan?.credit) > 0 || Number(c.credit_balance) > 0) && <div className="flex justify-between gap-2 text-[15px]"><span className="inline-flex items-center gap-2"><Wallet size={16} className="text-[#1D5BEA]" /> Credit</span><b>{formatRupees(Number(c.credit_balance) || 0)}</b></div>}
+              {(Number(c.plan?.credit) > 0 || Number(c.credit_balance) > 0) && <div className="flex justify-between gap-2 text-[15px]"><span className="inline-flex items-center gap-2"><Wallet size={16} className="text-[#008069]" /> Credit</span><b>{formatRupees(Number(c.credit_balance) || 0)}</b></div>}
               {(c.sessions || []).map((s: any) => (
                 <div key={s.service_id} className="flex justify-between gap-2 text-[15px]">
-                  <span className="inline-flex items-center gap-2 min-w-0"><Ticket size={16} className="text-[#1D5BEA] shrink-0" /> <span className="truncate">{s.name}</span></span>
+                  <span className="inline-flex items-center gap-2 min-w-0"><Ticket size={16} className="text-[#008069] shrink-0" /> <span className="truncate">{s.name}</span></span>
                   <span className="inline-flex items-center gap-1.5 shrink-0">
                     {canManage && live && <button type="button" disabled={busy || s.total <= s.used} onClick={() => post({ type: 'adjust', card_id: c.id, change: { type: 'sessions', service_id: s.service_id, count: -1 } }, 'Session taken off.')} aria-label={`One less ${s.name}`} className="h-7 w-7 rounded-lg border border-[#d5ddeb] flex items-center justify-center cursor-pointer disabled:opacity-40"><Minus size={13} /></button>}
                     <b>{Math.max(0, s.total - s.used)} of {s.total}</b>
@@ -232,7 +232,7 @@ function CardSheet({ orgId, cardId, canManage, canWrite, flash, onClose, onChang
                   </span>
                 </div>
               ))}
-              {Number(c.plan?.discount_percent) > 0 && <div className="flex justify-between gap-2 text-[15px]"><span className="inline-flex items-center gap-2"><BadgePercent size={16} className="text-[#1D5BEA]" /> Discount on services</span><b>{Number(c.plan.discount_percent)}% off</b></div>}
+              {Number(c.plan?.discount_percent) > 0 && <div className="flex justify-between gap-2 text-[15px]"><span className="inline-flex items-center gap-2"><BadgePercent size={16} className="text-[#008069]" /> Discount on services</span><b>{Number(c.plan.discount_percent)}% off</b></div>}
             </div>
             {canWrite && (
               <div className="flex flex-wrap gap-2">
@@ -322,7 +322,7 @@ function SellSheet({ orgId, plans, onClose, onSold }: { orgId: string; plans: an
           <div className="grid gap-2 sm:grid-cols-2">
             {plans.map((p) => (
               <button key={p.id} type="button" onClick={() => setPlanId(p.id)} aria-pressed={planId === p.id}
-                className={`text-left rounded-2xl border-2 p-3.5 cursor-pointer transition-colors ${planId === p.id ? 'border-[#1D5BEA] bg-[#eef3fe] dark:bg-blue-950/30' : 'border-[#e3e8f2] dark:border-slate-700 hover:border-[#9db5ef]'}`}>
+                className={`text-left rounded-2xl border-2 p-3.5 cursor-pointer transition-colors ${planId === p.id ? 'border-[#008069] bg-[#e7f5f0] dark:bg-emerald-950/30' : 'border-[#e3e8f2] dark:border-slate-700 hover:border-[#8fcfbf]'}`}>
                 <span className="flex items-center justify-between gap-2">
                   <span className="inline-flex items-center gap-2 font-bold text-[#0E1B3D] dark:text-white min-w-0"><span style={{ background: p.colour || PLAN_COLOURS[0] }} className="h-3 w-3 rounded-full shrink-0" /><span className="truncate">{p.name}</span></span>
                   <span className="font-extrabold text-[#0E1B3D] dark:text-white shrink-0">{formatRupees(Number(p.price) || 0)}</span>
@@ -382,7 +382,7 @@ function PlanList({ orgId, setup, plans, onChanged, flash }: { orgId: string; se
                   <Toggle checked={p.active} onChange={() => toggle(p)} label={p.active ? 'On sale' : 'Off sale'} />
                 </div>
                 <ul className="mt-2 space-y-1 text-[14px] text-[#4a5672] dark:text-slate-300">
-                  {planBenefits({ ...p, credit: Number(p.credit), discount_percent: Number(p.discount_percent), validity_days: Number(p.validity_days) }).map((b) => <li key={b} className="flex gap-2"><Check size={15} className="shrink-0 mt-0.5 text-[#1D5BEA]" /> {b}</li>)}
+                  {planBenefits({ ...p, credit: Number(p.credit), discount_percent: Number(p.discount_percent), validity_days: Number(p.validity_days) }).map((b) => <li key={b} className="flex gap-2"><Check size={15} className="shrink-0 mt-0.5 text-[#008069]" /> {b}</li>)}
                 </ul>
                 <div className="mt-3 flex items-center justify-between gap-2">
                   <span className="text-[12.5px] text-[#6B7894]">{p.active ? 'On sale' : 'Off sale'}{Number(p.tax_rate) ? ` · GST ${Number(p.tax_rate)}%` : ''}</span>
@@ -466,7 +466,7 @@ function PlanSheet({ orgId, setup, plan, onClose, onSaved }: { orgId: string; se
                 <button type="button" onClick={() => setSessions(sessions.filter((_, j) => j !== i))} aria-label="Remove" className="h-11 w-11 shrink-0 rounded-xl border border-[#d5ddeb] dark:border-slate-700 flex items-center justify-center cursor-pointer"><X size={16} /></button>
               </div>
             ))}
-            <button type="button" onClick={() => setSessions([...sessions, { service_id: '', count: '4' }])} className="inline-flex items-center gap-1.5 text-[14px] font-semibold text-[#1D5BEA] cursor-pointer"><Plus size={16} /> Add free sessions of a service</button>
+            <button type="button" onClick={() => setSessions([...sessions, { service_id: '', count: '4' }])} className="inline-flex items-center gap-1.5 text-[14px] font-semibold text-[#008069] cursor-pointer"><Plus size={16} /> Add free sessions of a service</button>
           </div>
         </section>
         <div className="grid gap-3 sm:grid-cols-2">

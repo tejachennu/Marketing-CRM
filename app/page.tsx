@@ -7,7 +7,7 @@ import {
 import { MetaTechProviderBadge } from '@/components/landing/meta-tech-provider-badge'
 import { DemoForm, DesktopNav, LightMode, MobileMenu, PhoneChat, UseCases } from '@/components/landing/home-parts'
 import { BRAND, whatsappUs } from '@/lib/brand'
-import { PLANS } from '@/lib/plans'
+import { PLANS, POPULAR_PLAN } from '@/lib/plans'
 
 export const metadata: Metadata = {
   title: `${BRAND.company}: your digital marketing and AI partner`,
@@ -81,12 +81,13 @@ const HERO_CHAT = [
 
 const section = 'px-4 sm:px-6'
 const wrap = 'mx-auto max-w-6xl'
-const eyebrow = 'text-[13px] font-bold uppercase tracking-wider text-[#1D5BEA]'
+const eyebrow = 'text-[13px] font-bold uppercase tracking-wider text-[#008069]'
 const h2 = 'mt-2 text-[28px] sm:text-[38px] font-bold leading-[1.15] tracking-tight text-[#0E1B3D]'
 const lead = 'mt-3 text-[16px] sm:text-[17px] leading-relaxed text-[#4a5672]'
 
 export default function HomePage() {
-  const plans = PLANS.filter((p) => ['starter', 'growth', 'pro_1'].includes(p.id))
+  // The three main plans (owner's pricing sheet, 28 Nov 2026); Starter, Pro and Ads are on /pricing
+  const plans = PLANS.filter((p) => ['business', 'growth', 'content'].includes(p.id))
   return (
     <div className="min-h-screen bg-white text-[#0E1B3D] overflow-x-hidden">
       <LightMode />
@@ -95,13 +96,13 @@ export default function HomePage() {
       <header className="sticky top-0 z-40 border-b border-[#e3e8f2] bg-white/95 backdrop-blur">
         <div className={`${wrap} relative flex h-16 items-center justify-between gap-4 ${section}`}>
           <Link href="/" className="flex items-center gap-2.5 min-w-0" aria-label={`${BRAND.company} home`}>
-            <span className="h-9 w-9 shrink-0 rounded-lg bg-[#1D5BEA] text-white inline-flex items-center justify-center"><TrendingUp size={20} /></span>
+            <span className="h-9 w-9 shrink-0 rounded-lg bg-[#008069] text-white inline-flex items-center justify-center"><TrendingUp size={20} /></span>
             <span className="text-[18px] font-bold tracking-tight truncate">{BRAND.company}</span>
           </Link>
           <DesktopNav />
           <div className="flex items-center gap-2">
             <Link href="/login" className="hidden sm:inline-flex h-10 items-center rounded-lg px-4 text-[14.5px] font-semibold text-[#0E1B3D] hover:bg-[#f4f6fa]">Log in</Link>
-            <a href="#demo" className="hidden sm:inline-flex h-10 items-center rounded-lg bg-[#1D5BEA] hover:bg-[#174bc4] px-4 text-[14.5px] font-semibold text-white">Free growth plan</a>
+            <a href="#demo" className="hidden sm:inline-flex h-10 items-center rounded-lg bg-[#008069] hover:bg-[#006d5b] px-4 text-[14.5px] font-semibold text-white">Free growth plan</a>
             <MobileMenu />
           </div>
         </div>
@@ -113,21 +114,21 @@ export default function HomePage() {
           <div className={`${wrap} grid gap-12 lg:grid-cols-[1.15fr_1fr] items-center`}>
             <div>
               <p className="inline-flex items-center gap-2 rounded-full border border-[#d5ddeb] bg-white px-3 py-1 text-[13px] font-semibold text-[#4a5672]">
-                <Sparkles size={15} className="text-[#1D5BEA]" /> Digital marketing and AI solutions partner
+                <Sparkles size={15} className="text-[#008069]" /> Digital marketing and AI solutions partner
               </p>
               <h1 className="mt-5 text-[36px] sm:text-[52px] font-bold leading-[1.08] tracking-tight">
-                We grow your business. <span className="text-[#1D5BEA]">Strategy, ads, content and AI, all in one place.</span>
+                We grow your business. <span className="text-[#008069]">Strategy, ads, content and AI, all in one place.</span>
               </h1>
               <p className="mt-5 max-w-xl text-[17px] sm:text-[19px] leading-relaxed text-[#4a5672]">
                 We plan how you grow, run your ads, edit your videos and photos, and automate your WhatsApp with AI, so more people find you, message you and buy from you.
               </p>
               <div className="mt-8 flex flex-col sm:flex-row gap-3">
-                <a href="#demo" className="inline-flex h-12 items-center justify-center gap-2 rounded-lg bg-[#1D5BEA] hover:bg-[#174bc4] px-6 text-[16px] font-bold text-white">Get a free growth plan <ArrowRight size={18} /></a>
-                <a href={whatsappUs(`Hi, I want to grow my business with ${BRAND.company}.`)} target="_blank" rel="noopener noreferrer" className="inline-flex h-12 items-center justify-center gap-2 rounded-lg border border-[#d5ddeb] bg-white px-6 text-[16px] font-semibold text-[#0E1B3D] hover:border-[#1D5BEA]"><MessageCircle size={18} /> WhatsApp us</a>
+                <a href="#demo" className="inline-flex h-12 items-center justify-center gap-2 rounded-lg bg-[#008069] hover:bg-[#006d5b] px-6 text-[16px] font-bold text-white">Get a free growth plan <ArrowRight size={18} /></a>
+                <a href={whatsappUs(`Hi, I want to grow my business with ${BRAND.company}.`)} target="_blank" rel="noopener noreferrer" className="inline-flex h-12 items-center justify-center gap-2 rounded-lg border border-[#d5ddeb] bg-white px-6 text-[16px] font-semibold text-[#0E1B3D] hover:border-[#008069]"><MessageCircle size={18} /> WhatsApp us</a>
               </div>
               <ul className="mt-6 flex flex-wrap gap-x-5 gap-y-2 text-[14px] font-medium text-[#4a5672]">
                 {['Ads', 'Reels and videos', 'Photos and design', 'Automation', 'AI assistants'].map((t) => (
-                  <li key={t} className="inline-flex items-center gap-1.5"><Check size={16} className="text-[#1D5BEA]" /> {t}</li>
+                  <li key={t} className="inline-flex items-center gap-1.5"><Check size={16} className="text-[#008069]" /> {t}</li>
                 ))}
               </ul>
             </div>
@@ -149,7 +150,7 @@ export default function HomePage() {
             ].map(([n, t], i) => (
               <div key={n}>
                 <p className="text-[13px] font-bold text-[#8a94a8]">Step {i + 1}</p>
-                <p className="mt-0.5 text-[22px] sm:text-[26px] font-bold tracking-tight text-[#1D5BEA]">{n}</p>
+                <p className="mt-0.5 text-[22px] sm:text-[26px] font-bold tracking-tight text-[#008069]">{n}</p>
                 <p className="mt-1 text-[14.5px] text-[#4a5672]">{t}</p>
               </div>
             ))}
@@ -169,11 +170,11 @@ export default function HomePage() {
                 const Icon = s.icon
                 return (
                   <div key={s.title} className="rounded-2xl border border-[#e3e8f2] bg-white p-6 flex flex-col">
-                    <span className="h-11 w-11 rounded-xl bg-[#eef3fe] text-[#1D5BEA] inline-flex items-center justify-center"><Icon size={22} /></span>
+                    <span className="h-11 w-11 rounded-xl bg-[#e7f5f0] text-[#008069] inline-flex items-center justify-center"><Icon size={22} /></span>
                     <h3 className="mt-4 text-[19px] font-bold">{s.title}</h3>
                     <p className="mt-2 text-[15px] leading-relaxed text-[#4a5672]">{s.text}</p>
                     <ul className="mt-4 space-y-2 border-t border-[#eef1f6] pt-4">
-                      {s.points.map((p) => <li key={p} className="flex gap-2.5 text-[14.5px]"><Check size={16} className="mt-0.5 shrink-0 text-[#1D5BEA]" /> {p}</li>)}
+                      {s.points.map((p) => <li key={p} className="flex gap-2.5 text-[14.5px]"><Check size={16} className="mt-0.5 shrink-0 text-[#008069]" /> {p}</li>)}
                     </ul>
                   </div>
                 )
@@ -186,7 +187,7 @@ export default function HomePage() {
         <section id="how" className={`${section} py-16 sm:py-24 bg-[#0E1B3D] text-white scroll-mt-16`}>
           <div className={wrap}>
             <div className="max-w-2xl">
-              <p className="text-[13px] font-bold uppercase tracking-wider text-[#9db5ef]">How we work</p>
+              <p className="text-[13px] font-bold uppercase tracking-wider text-[#8fcfbf]">How we work</p>
               <h2 className="mt-2 text-[28px] sm:text-[38px] font-bold leading-[1.15] tracking-tight">A plan first. Then we do the work, and show you the results.</h2>
             </div>
             <ol className="mt-12 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
@@ -195,11 +196,11 @@ export default function HomePage() {
                 return (
                   <li key={s.title} className="rounded-2xl border border-white/10 bg-white/[0.04] p-6">
                     <div className="flex items-center justify-between">
-                      <Icon size={22} className="text-[#9db5ef]" />
-                      <span className="text-[13px] font-bold text-[#9db5ef]">0{i + 1}</span>
+                      <Icon size={22} className="text-[#8fcfbf]" />
+                      <span className="text-[13px] font-bold text-[#8fcfbf]">0{i + 1}</span>
                     </div>
                     <h3 className="mt-4 text-[18px] font-bold">{s.title}</h3>
-                    <p className="mt-1.5 text-[14.5px] leading-relaxed text-[#c5d5fa]">{s.text}</p>
+                    <p className="mt-1.5 text-[14.5px] leading-relaxed text-[#b8e2d6]">{s.text}</p>
                   </li>
                 )
               })}
@@ -231,20 +232,20 @@ export default function HomePage() {
                   'Official WhatsApp Business Platform, with Instagram too',
                   'AI replies in English, Telugu, Hindi and mixes',
                   'Works on the phone with our Android app',
-                ].map((t) => <li key={t} className="flex gap-3 text-[15.5px]"><Check size={18} className="mt-0.5 shrink-0 text-[#1D5BEA]" /> {t}</li>)}
+                ].map((t) => <li key={t} className="flex gap-3 text-[15.5px]"><Check size={18} className="mt-0.5 shrink-0 text-[#008069]" /> {t}</li>)}
               </ul>
               <div className="mt-6 flex flex-wrap items-center gap-3">
                 <MetaTechProviderBadge size="sm" />
-                <span className="inline-flex items-center gap-1.5 text-[13.5px] font-semibold text-[#4a5672]"><Languages size={16} className="text-[#1D5BEA]" /> 3 languages</span>
+                <span className="inline-flex items-center gap-1.5 text-[13.5px] font-semibold text-[#4a5672]"><Languages size={16} className="text-[#008069]" /> 3 languages</span>
               </div>
-              <Link href="/signup" className="mt-8 inline-flex h-11 items-center gap-2 rounded-lg bg-[#1D5BEA] hover:bg-[#174bc4] px-5 font-semibold text-white">Try the platform free for 14 days <ArrowRight size={17} /></Link>
+              <Link href="/signup" className="mt-8 inline-flex h-11 items-center gap-2 rounded-lg bg-[#008069] hover:bg-[#006d5b] px-5 font-semibold text-white">Try the platform free for 14 days <ArrowRight size={17} /></Link>
             </div>
             <div className="grid gap-4 grid-cols-1 min-[420px]:grid-cols-2">
               {PLATFORM.map((f) => {
                 const Icon = f.icon
                 return (
                   <div key={f.title} className="rounded-2xl border border-[#e3e8f2] bg-white p-5">
-                    <Icon size={20} className="text-[#1D5BEA]" />
+                    <Icon size={20} className="text-[#008069]" />
                     <p className="mt-3 font-bold">{f.title}</p>
                     <p className="mt-1 text-[14px] leading-relaxed text-[#4a5672]">{f.text}</p>
                   </div>
@@ -264,21 +265,24 @@ export default function HomePage() {
             </div>
             <div className="mt-10 grid gap-5 md:grid-cols-3">
               {plans.map((plan) => {
-                const featured = plan.id === 'pro_1'
+                const featured = plan.id === POPULAR_PLAN
                 return (
-                  <div key={plan.id} className={`relative rounded-2xl bg-white p-6 flex flex-col ${featured ? 'border-2 border-[#1D5BEA]' : 'border border-[#e3e8f2]'}`}>
-                    {featured && <span className="absolute -top-3 left-6 rounded-full bg-[#1D5BEA] px-3 py-0.5 text-[12px] font-bold text-white">With our marketing team</span>}
+                  <div key={plan.id} className={`relative rounded-2xl bg-white p-6 flex flex-col ${featured ? 'border-2 border-[#008069]' : 'border border-[#e3e8f2]'}`}>
+                    {featured && <span className="absolute -top-3 left-6 rounded-full bg-[#008069] px-3 py-0.5 text-[12px] font-bold text-white">Most popular</span>}
                     <h3 className="text-[19px] font-bold">{plan.name}</h3>
                     <p className="mt-1 text-[14px] text-[#6B7894] min-h-[42px]">{plan.tagline}</p>
                     <p className="mt-4"><span className="text-[34px] font-bold tracking-tight">{rupees(plan.amountPaise)}</span><span className="text-[#6B7894]"> / month</span></p>
                     <ul className="mt-5 space-y-2.5 flex-1">
-                      {(featured ? plan.features.slice(-6) : plan.features.slice(0, 6)).map((f) => <li key={f} className="flex gap-2.5 text-[14.5px]"><Check size={17} className="mt-0.5 shrink-0 text-[#1D5BEA]" /> {f}</li>)}
+                      {plan.features.slice(0, 6).map((f) => f.endsWith(':')
+                        ? <li key={f} className="text-[12px] font-bold uppercase tracking-wide text-[#8a94a8]">{f.slice(0, -1)}</li>
+                        : <li key={f} className="flex gap-2.5 text-[14.5px]"><Check size={17} className="mt-0.5 shrink-0 text-[#008069]" /> {f}</li>)}
                     </ul>
-                    <Link href={`/signup?plan=${plan.id}`} className={`mt-6 inline-flex h-11 items-center justify-center rounded-lg font-semibold ${featured ? 'bg-[#1D5BEA] hover:bg-[#174bc4] text-white' : 'border border-[#d5ddeb] text-[#0E1B3D] hover:border-[#1D5BEA]'}`}>Start free</Link>
+                    <Link href={`/signup?plan=${plan.id}`} className={`mt-6 inline-flex h-11 items-center justify-center rounded-lg font-semibold ${featured ? 'bg-[#008069] hover:bg-[#006d5b] text-white' : 'border border-[#d5ddeb] text-[#0E1B3D] hover:border-[#008069]'}`}>Start free</Link>
                   </div>
                 )
               })}
             </div>
+            <p className="mt-4 text-center text-[14.5px] text-[#4a5672]">Without your own WhatsApp from ₹300, and bigger plans with ads and videos. <Link href="/pricing" className="font-semibold text-[#008069] hover:underline">See all plans</Link></p>
             <div className="mt-6 rounded-2xl border border-[#e3e8f2] bg-[#f4f6fa] p-6 flex flex-col md:flex-row md:items-center gap-4 justify-between">
               <div>
                 <p className="text-[17px] font-bold">Want us to run your marketing?</p>
@@ -301,7 +305,7 @@ export default function HomePage() {
                 <details key={q} className="group py-4">
                   <summary className="flex cursor-pointer list-none items-center justify-between gap-4 text-[16.5px] font-semibold">
                     {q}
-                    <span className="h-7 w-7 shrink-0 rounded-full border border-[#d5ddeb] bg-white inline-flex items-center justify-center text-[#1D5BEA] transition-transform group-open:rotate-45" aria-hidden>+</span>
+                    <span className="h-7 w-7 shrink-0 rounded-full border border-[#d5ddeb] bg-white inline-flex items-center justify-center text-[#008069] transition-transform group-open:rotate-45" aria-hidden>+</span>
                   </summary>
                   <p className="mt-3 text-[15.5px] leading-relaxed text-[#4a5672]">{a}</p>
                 </details>
@@ -319,7 +323,7 @@ export default function HomePage() {
               <p className={lead}>A short call with our team. You get a clear plan: what to fix first, which ads to run, what content to make, and what to automate.</p>
               <ul className="mt-6 space-y-3">
                 {['A 20-minute call, free', 'A written growth plan for your business', 'No pressure to buy anything'].map((t) => (
-                  <li key={t} className="flex gap-3 text-[15.5px]"><Check size={18} className="mt-0.5 shrink-0 text-[#1D5BEA]" /> {t}</li>
+                  <li key={t} className="flex gap-3 text-[15.5px]"><Check size={18} className="mt-0.5 shrink-0 text-[#008069]" /> {t}</li>
                 ))}
               </ul>
               <div className="mt-8 flex flex-col sm:flex-row gap-3">
@@ -333,10 +337,10 @@ export default function HomePage() {
       </main>
 
       {/* Footer */}
-      <footer className={`${section} bg-[#0E1B3D] text-[#c5d5fa] py-12`}>
+      <footer className={`${section} bg-[#0E1B3D] text-[#b8e2d6] py-12`}>
         <div className={`${wrap} grid gap-8 sm:grid-cols-2 lg:grid-cols-4`}>
           <div className="lg:col-span-2">
-            <p className="flex items-center gap-2.5 text-white text-[18px] font-bold"><span className="h-9 w-9 rounded-lg bg-[#1D5BEA] inline-flex items-center justify-center"><TrendingUp size={20} /></span> {BRAND.company}</p>
+            <p className="flex items-center gap-2.5 text-white text-[18px] font-bold"><span className="h-9 w-9 rounded-lg bg-[#008069] inline-flex items-center justify-center"><TrendingUp size={20} /></span> {BRAND.company}</p>
             <p className="mt-3 max-w-sm text-[14.5px] leading-relaxed">Your digital marketing and AI solutions partner: growth strategy, ads, video and photo editing, workflow automation and AI assistants.</p>
             <MetaTechProviderBadge variant="dark" size="sm" className="mt-5" />
           </div>

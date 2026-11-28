@@ -553,7 +553,7 @@ export default function ContactsPage() {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
         <div className="flex flex-col items-center gap-3">
-          <Loader2 className="animate-spin text-[#1D5BEA]" size={36} />
+          <Loader2 className="animate-spin text-[#008069]" size={36} />
           <p className="text-sm text-slate-500 font-medium">Loading Contacts...</p>
         </div>
       </div>
@@ -583,7 +583,7 @@ export default function ContactsPage() {
             }}
             className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 px-3.5 py-2.5 rounded-lg flex items-center justify-center gap-2 text-xs font-bold shadow-sm transition-all cursor-pointer"
           >
-            <FileSpreadsheet size={16} className="text-[#1D5BEA] dark:text-[#5f86ee]" />
+            <FileSpreadsheet size={16} className="text-[#008069] dark:text-[#00a884]" />
             Import Excel / CSV
           </button>
           <button
@@ -601,7 +601,7 @@ export default function ContactsPage() {
               setModalTagInput('')
               setShowAddModal(true)
             }}
-            className="bg-[#1D5BEA] hover:bg-[#1D5BEA] text-white px-4 py-2.5 rounded-lg flex items-center justify-center gap-2 text-xs font-bold shadow-sm shadow-[#1D5BEA]/10 transition-all cursor-pointer"
+            className="bg-[#008069] hover:bg-[#008069] text-white px-4 py-2.5 rounded-lg flex items-center justify-center gap-2 text-xs font-bold shadow-sm shadow-[#008069]/10 transition-all cursor-pointer"
           >
             <Plus size={16} />
             Add Contact
@@ -618,7 +618,7 @@ export default function ContactsPage() {
             placeholder="Search by name, phone, email, company, or tag..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-9 pr-4 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 focus:border-[#1D5BEA] rounded-lg focus:outline-none focus:ring-1 focus:ring-[#1D5BEA] text-xs font-semibold placeholder-slate-400 dark:placeholder-slate-500 text-slate-900 dark:text-white transition-all"
+            className="w-full pl-9 pr-4 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 focus:border-[#008069] rounded-lg focus:outline-none focus:ring-1 focus:ring-[#008069] text-xs font-semibold placeholder-slate-400 dark:placeholder-slate-500 text-slate-900 dark:text-white transition-all"
           />
         </div>
 
@@ -634,7 +634,7 @@ export default function ContactsPage() {
               onClick={() => handleTagFilterChange(null)}
               className={`px-2.5 py-1 rounded-lg font-semibold text-xs transition-all shrink-0 cursor-pointer ${
                 !activeTagFilter
-                  ? 'bg-[#1D5BEA] text-white shadow-sm'
+                  ? 'bg-[#008069] text-white shadow-sm'
                   : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700'
               }`}
             >
@@ -649,11 +649,11 @@ export default function ContactsPage() {
                   onClick={() => handleTagFilterChange(isSelected ? null : tag)}
                   className={`px-2.5 py-1 rounded-lg font-semibold text-xs transition-all shrink-0 flex items-center gap-1.5 cursor-pointer ${
                     isSelected
-                      ? 'bg-[#1D5BEA] text-white shadow-sm'
+                      ? 'bg-[#008069] text-white shadow-sm'
                       : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700'
                   }`}
                 >
-                  <Tag size={11} className={isSelected ? 'text-white' : 'text-[#1D5BEA]'} />
+                  <Tag size={11} className={isSelected ? 'text-white' : 'text-[#008069]'} />
                   <span>{tag}</span>
                   {isSelected && <X size={12} className="hover:opacity-80 ml-0.5" />}
                 </button>
@@ -667,7 +667,7 @@ export default function ContactsPage() {
       <div className="bg-white dark:bg-slate-900 rounded-lg border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden relative">
         {loadingContacts && (
           <div className="absolute inset-0 bg-white/50 dark:bg-slate-950/50 backdrop-blur-[1px] z-10 flex items-center justify-center">
-            <Loader2 className="animate-spin text-[#1D5BEA]" size={24} />
+            <Loader2 className="animate-spin text-[#008069]" size={24} />
           </div>
         )}
 
@@ -705,13 +705,13 @@ export default function ContactsPage() {
                           className="flex items-center gap-3 cursor-pointer group/contact select-none"
                           title="Click to open chat in Inbox"
                         >
-                          <div className="h-8 w-8 rounded-full bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex items-center justify-center font-bold text-slate-600 dark:text-slate-300 text-xs shadow-sm select-none group-hover/contact:border-[#1D5BEA] group-hover/contact:text-[#1D5BEA] transition-colors">
+                          <div className="h-8 w-8 rounded-full bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex items-center justify-center font-bold text-slate-600 dark:text-slate-300 text-xs shadow-sm select-none group-hover/contact:border-[#008069] group-hover/contact:text-[#008069] transition-colors">
                             {avatarInitials}
                           </div>
                           <div>
-                            <p className="font-bold text-xs text-slate-900 dark:text-white group-hover/contact:text-[#1D5BEA] transition-colors">{contactName}</p>
+                            <p className="font-bold text-xs text-slate-900 dark:text-white group-hover/contact:text-[#008069] transition-colors">{contactName}</p>
                             {isBsuidContact && (
-                              <span className="inline-flex items-center gap-1 text-[10px] text-[#1D5BEA] dark:text-[#5f86ee] font-medium">
+                              <span className="inline-flex items-center gap-1 text-[10px] text-[#008069] dark:text-[#00a884] font-medium">
                                 <ShieldCheck size={9} />
                                 <span>Meta Privacy ID</span>
                               </span>
@@ -751,9 +751,9 @@ export default function ContactsPage() {
                           {contactTags.map((tag) => (
                             <span
                               key={tag}
-                              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-semibold bg-[#eef3fe] text-[#174bc4] dark:bg-[#0E1B3D]/40 dark:text-[#9db5ef] border border-[#c5d5fa]/70 dark:border-[#163d9c]/60 shadow-xs"
+                              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-semibold bg-[#e7f5f0] text-[#006d5b] dark:bg-[#0E1B3D]/40 dark:text-[#8fcfbf] border border-[#b8e2d6]/70 dark:border-[#00594a]/60 shadow-xs"
                             >
-                              <Tag size={10} className="text-[#1D5BEA] dark:text-[#5f86ee] shrink-0" />
+                              <Tag size={10} className="text-[#008069] dark:text-[#00a884] shrink-0" />
                               <span className="truncate max-w-[110px]">{tag}</span>
                               <button
                                 type="button"
@@ -762,7 +762,7 @@ export default function ContactsPage() {
                                   handleRemoveTagInline(contact.id, tag)
                                 }}
                                 disabled={busyTagContactId === contact.id}
-                                className="text-[#1D5BEA]/70 hover:text-rose-600 dark:text-[#5f86ee]/70 dark:hover:text-rose-400 transition-colors cursor-pointer rounded p-0.5 hover:bg-[#dfe8fd]/60 dark:hover:bg-[#0E1B3D]/60"
+                                className="text-[#008069]/70 hover:text-rose-600 dark:text-[#00a884]/70 dark:hover:text-rose-400 transition-colors cursor-pointer rounded p-0.5 hover:bg-[#d6efe7]/60 dark:hover:bg-[#0E1B3D]/60"
                                 title={`Delete tag "${tag}"`}
                               >
                                 <X size={10} />
@@ -771,7 +771,7 @@ export default function ContactsPage() {
                           ))}
 
                           {inlineTagContactId === contact.id ? (
-                            <div className="inline-flex items-center gap-1 bg-white dark:bg-slate-800 p-0.5 rounded border border-[#1D5BEA] shadow-sm">
+                            <div className="inline-flex items-center gap-1 bg-white dark:bg-slate-800 p-0.5 rounded border border-[#008069] shadow-sm">
                               <input
                                 type="text"
                                 value={inlineTagValue}
@@ -792,7 +792,7 @@ export default function ContactsPage() {
                               <button
                                 type="button"
                                 onClick={() => handleAddTagInline(contact.id, inlineTagValue)}
-                                className="p-1 text-[#1D5BEA] hover:text-[#174bc4] dark:text-[#5f86ee] cursor-pointer"
+                                className="p-1 text-[#008069] hover:text-[#006d5b] dark:text-[#00a884] cursor-pointer"
                                 title="Save tag"
                               >
                                 <Check size={12} />
@@ -816,7 +816,7 @@ export default function ContactsPage() {
                                 setInlineTagContactId(contact.id)
                                 setInlineTagValue('')
                               }}
-                              className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold text-slate-500 hover:text-[#1D5BEA] dark:text-slate-400 dark:hover:text-[#5f86ee] hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors border border-dashed border-slate-300 dark:border-slate-700 cursor-pointer"
+                              className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold text-slate-500 hover:text-[#008069] dark:text-slate-400 dark:hover:text-[#00a884] hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors border border-dashed border-slate-300 dark:border-slate-700 cursor-pointer"
                               title="Add tag to contact"
                             >
                               <Plus size={10} />
@@ -829,10 +829,10 @@ export default function ContactsPage() {
                         <div className="flex items-center justify-end gap-1.5">
                           <button
                             onClick={() => handleOpenChat(contact)}
-                            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-[#eef3fe] hover:bg-[#dfe8fd] text-[#174bc4] dark:bg-[#0E1B3D]/40 dark:hover:bg-[#0E1B3D]/60 dark:text-[#9db5ef] border border-[#c5d5fa]/80 dark:border-[#163d9c]/70 transition-all font-semibold text-xs shadow-xs cursor-pointer group"
+                            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-[#e7f5f0] hover:bg-[#d6efe7] text-[#006d5b] dark:bg-[#0E1B3D]/40 dark:hover:bg-[#0E1B3D]/60 dark:text-[#8fcfbf] border border-[#b8e2d6]/80 dark:border-[#00594a]/70 transition-all font-semibold text-xs shadow-xs cursor-pointer group"
                             title="Open WhatsApp Chat in Inbox"
                           >
-                            <MessageCircle size={13} className="text-[#1D5BEA] dark:text-[#5f86ee] group-hover:scale-110 transition-transform" />
+                            <MessageCircle size={13} className="text-[#008069] dark:text-[#00a884] group-hover:scale-110 transition-transform" />
                             <span>Chat</span>
                           </button>
                           <button
@@ -879,13 +879,13 @@ export default function ContactsPage() {
                       className="flex items-center gap-3 cursor-pointer group/mcontact select-none"
                       title="Click to open chat in Inbox"
                     >
-                      <div className="h-9 w-9 rounded-full bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex items-center justify-center font-bold text-slate-600 dark:text-slate-300 text-xs shadow-sm select-none group-hover/mcontact:border-[#1D5BEA]">
+                      <div className="h-9 w-9 rounded-full bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex items-center justify-center font-bold text-slate-600 dark:text-slate-300 text-xs shadow-sm select-none group-hover/mcontact:border-[#008069]">
                         {avatarInitials}
                       </div>
                       <div>
-                        <p className="font-bold text-xs text-slate-900 dark:text-white leading-tight group-hover/mcontact:text-[#1D5BEA] transition-colors">{contactName}</p>
+                        <p className="font-bold text-xs text-slate-900 dark:text-white leading-tight group-hover/mcontact:text-[#008069] transition-colors">{contactName}</p>
                         {isBsuidContact && (
-                          <span className="inline-flex items-center gap-1 text-[10px] text-[#1D5BEA] dark:text-[#5f86ee] font-medium">
+                          <span className="inline-flex items-center gap-1 text-[10px] text-[#008069] dark:text-[#00a884] font-medium">
                             <ShieldCheck size={9} />
                             <span>Meta Privacy ID</span>
                           </span>
@@ -898,10 +898,10 @@ export default function ContactsPage() {
                     <div className="flex items-center gap-1">
                       <button
                         onClick={() => handleOpenChat(contact)}
-                        className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-[#eef3fe] text-[#174bc4] dark:bg-[#0E1B3D]/40 dark:text-[#9db5ef] border border-[#c5d5fa]/80 dark:border-[#163d9c]/70 font-semibold text-xs shadow-xs cursor-pointer hover:bg-[#dfe8fd] dark:hover:bg-[#0E1B3D]/60 transition-colors"
+                        className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-[#e7f5f0] text-[#006d5b] dark:bg-[#0E1B3D]/40 dark:text-[#8fcfbf] border border-[#b8e2d6]/80 dark:border-[#00594a]/70 font-semibold text-xs shadow-xs cursor-pointer hover:bg-[#d6efe7] dark:hover:bg-[#0E1B3D]/60 transition-colors"
                         title="Open WhatsApp Chat in Inbox"
                       >
-                        <MessageCircle size={13} className="text-[#1D5BEA] dark:text-[#5f86ee]" />
+                        <MessageCircle size={13} className="text-[#008069] dark:text-[#00a884]" />
                         <span>Chat</span>
                       </button>
                       <button
@@ -939,15 +939,15 @@ export default function ContactsPage() {
                     {contactTags.map((tag) => (
                       <span
                         key={tag}
-                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-semibold bg-[#eef3fe] text-[#174bc4] dark:bg-[#0E1B3D]/40 dark:text-[#9db5ef] border border-[#c5d5fa]/70 dark:border-[#163d9c]/60"
+                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-semibold bg-[#e7f5f0] text-[#006d5b] dark:bg-[#0E1B3D]/40 dark:text-[#8fcfbf] border border-[#b8e2d6]/70 dark:border-[#00594a]/60"
                       >
-                        <Tag size={10} className="text-[#1D5BEA] dark:text-[#5f86ee] shrink-0" />
+                        <Tag size={10} className="text-[#008069] dark:text-[#00a884] shrink-0" />
                         <span>{tag}</span>
                         <button
                           type="button"
                           onClick={() => handleRemoveTagInline(contact.id, tag)}
                           disabled={busyTagContactId === contact.id}
-                          className="text-[#1D5BEA]/70 hover:text-rose-600 dark:text-[#5f86ee]/70 dark:hover:text-rose-400 cursor-pointer p-0.5 ml-0.5"
+                          className="text-[#008069]/70 hover:text-rose-600 dark:text-[#00a884]/70 dark:hover:text-rose-400 cursor-pointer p-0.5 ml-0.5"
                           title={`Delete tag "${tag}"`}
                         >
                           <X size={10} />
@@ -956,7 +956,7 @@ export default function ContactsPage() {
                     ))}
 
                     {inlineTagContactId === contact.id ? (
-                      <div className="inline-flex items-center gap-1 bg-white dark:bg-slate-800 p-0.5 rounded border border-[#1D5BEA]">
+                      <div className="inline-flex items-center gap-1 bg-white dark:bg-slate-800 p-0.5 rounded border border-[#008069]">
                         <input
                           type="text"
                           value={inlineTagValue}
@@ -977,7 +977,7 @@ export default function ContactsPage() {
                         <button
                           type="button"
                           onClick={() => handleAddTagInline(contact.id, inlineTagValue)}
-                          className="p-1 text-[#1D5BEA] hover:text-[#174bc4] cursor-pointer"
+                          className="p-1 text-[#008069] hover:text-[#006d5b] cursor-pointer"
                         >
                           <Check size={12} />
                         </button>
@@ -999,7 +999,7 @@ export default function ContactsPage() {
                           setInlineTagContactId(contact.id)
                           setInlineTagValue('')
                         }}
-                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold text-slate-500 hover:text-[#1D5BEA] dark:text-slate-400 dark:hover:text-[#5f86ee] hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors border border-dashed border-slate-300 dark:border-slate-700 cursor-pointer"
+                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold text-slate-500 hover:text-[#008069] dark:text-slate-400 dark:hover:text-[#00a884] hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors border border-dashed border-slate-300 dark:border-slate-700 cursor-pointer"
                       >
                         <Plus size={10} />
                         <span>Add Tag</span>
@@ -1072,7 +1072,7 @@ export default function ContactsPage() {
                     onChange={(e) =>
                       setNewContact({ ...newContact, first_name: e.target.value })
                     }
-                    className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-[#2a3942] focus:border-[#1D5BEA] rounded-xl focus:outline-none text-xs font-semibold transition-all text-slate-900 dark:text-white"
+                    className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-[#2a3942] focus:border-[#008069] rounded-xl focus:outline-none text-xs font-semibold transition-all text-slate-900 dark:text-white"
                     placeholder="John"
                   />
                 </div>
@@ -1086,7 +1086,7 @@ export default function ContactsPage() {
                     onChange={(e) =>
                       setNewContact({ ...newContact, last_name: e.target.value })
                     }
-                    className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-[#2a3942] focus:border-[#1D5BEA] rounded-xl focus:outline-none text-xs font-semibold transition-all text-slate-900 dark:text-white"
+                    className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-[#2a3942] focus:border-[#008069] rounded-xl focus:outline-none text-xs font-semibold transition-all text-slate-900 dark:text-white"
                     placeholder="Doe"
                   />
                 </div>
@@ -1120,7 +1120,7 @@ export default function ContactsPage() {
                   onChange={(e) =>
                     setNewContact({ ...newContact, email: e.target.value })
                   }
-                  className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-[#2a3942] focus:border-[#1D5BEA] rounded-xl focus:outline-none text-xs font-semibold transition-all text-slate-900 dark:text-white"
+                  className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-[#2a3942] focus:border-[#008069] rounded-xl focus:outline-none text-xs font-semibold transition-all text-slate-900 dark:text-white"
                   placeholder="john@example.com"
                 />
               </div>
@@ -1131,13 +1131,13 @@ export default function ContactsPage() {
                   <span>Tags & Segments</span>
                   <span className="text-[10px] font-normal lowercase text-slate-400">press enter or comma to add</span>
                 </label>
-                <div className="flex flex-wrap items-center gap-1.5 p-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-[#2a3942] rounded-xl min-h-[42px] focus-within:border-[#1D5BEA] transition-all">
+                <div className="flex flex-wrap items-center gap-1.5 p-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-[#2a3942] rounded-xl min-h-[42px] focus-within:border-[#008069] transition-all">
                   {newContact.tags.map((t) => (
                     <span
                       key={t}
-                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-semibold bg-[#eef3fe] text-[#174bc4] dark:bg-[#0E1B3D]/50 dark:text-[#9db5ef] border border-[#c5d5fa] dark:border-[#163d9c] shadow-xs"
+                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-semibold bg-[#e7f5f0] text-[#006d5b] dark:bg-[#0E1B3D]/50 dark:text-[#8fcfbf] border border-[#b8e2d6] dark:border-[#00594a] shadow-xs"
                     >
-                      <Tag size={11} className="text-[#1D5BEA] dark:text-[#5f86ee]" />
+                      <Tag size={11} className="text-[#008069] dark:text-[#00a884]" />
                       <span>{t}</span>
                       <button
                         type="button"
@@ -1145,7 +1145,7 @@ export default function ContactsPage() {
                           ...newContact,
                           tags: newContact.tags.filter(tag => tag !== t)
                         })}
-                        className="text-[#1D5BEA]/70 hover:text-rose-600 dark:text-[#5f86ee]/70 dark:hover:text-rose-400 transition-colors cursor-pointer ml-0.5"
+                        className="text-[#008069]/70 hover:text-rose-600 dark:text-[#00a884]/70 dark:hover:text-rose-400 transition-colors cursor-pointer ml-0.5"
                         title={`Remove tag "${t}"`}
                       >
                         <X size={12} />
@@ -1180,7 +1180,7 @@ export default function ContactsPage() {
                             setModalTagInput('')
                           }
                         }}
-                        className="px-2 py-1 bg-[#1D5BEA] hover:bg-[#1D5BEA] text-white rounded text-[10px] font-bold shrink-0 cursor-pointer"
+                        className="px-2 py-1 bg-[#008069] hover:bg-[#008069] text-white rounded text-[10px] font-bold shrink-0 cursor-pointer"
                       >
                         Add
                       </button>
@@ -1199,7 +1199,7 @@ export default function ContactsPage() {
                         onClick={() => {
                           setNewContact({ ...newContact, tags: [...newContact.tags, sug] })
                         }}
-                        className="px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 hover:bg-[#eef3fe] dark:hover:bg-[#0E1B3D]/40 hover:text-[#1D5BEA] dark:hover:text-[#5f86ee] text-slate-600 dark:text-slate-300 font-medium transition-colors text-[10px] border border-slate-200/60 dark:border-slate-700 cursor-pointer"
+                        className="px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 hover:bg-[#e7f5f0] dark:hover:bg-[#0E1B3D]/40 hover:text-[#008069] dark:hover:text-[#00a884] text-slate-600 dark:text-slate-300 font-medium transition-colors text-[10px] border border-slate-200/60 dark:border-slate-700 cursor-pointer"
                       >
                         + {sug}
                       </button>
@@ -1223,10 +1223,10 @@ export default function ContactsPage() {
                       const c = contacts.find(item => item.id === editingId)
                       if (c) handleOpenChat(c)
                     }}
-                    className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2.5 bg-[#eef3fe] hover:bg-[#dfe8fd] text-[#174bc4] dark:bg-[#0E1B3D]/40 dark:hover:bg-[#0E1B3D]/60 dark:text-[#9db5ef] border border-[#c5d5fa] dark:border-[#163d9c]/60 rounded-xl transition-colors text-xs font-bold cursor-pointer"
+                    className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2.5 bg-[#e7f5f0] hover:bg-[#d6efe7] text-[#006d5b] dark:bg-[#0E1B3D]/40 dark:hover:bg-[#0E1B3D]/60 dark:text-[#8fcfbf] border border-[#b8e2d6] dark:border-[#00594a]/60 rounded-xl transition-colors text-xs font-bold cursor-pointer"
                     title="Open WhatsApp Chat in Inbox"
                   >
-                    <MessageCircle size={14} className="text-[#1D5BEA]" />
+                    <MessageCircle size={14} className="text-[#008069]" />
                     <span>Open Chat</span>
                   </button>
                 )}
@@ -1240,7 +1240,7 @@ export default function ContactsPage() {
                 <button
                   onClick={handleAddContact}
                   disabled={saving || !newContact.phone_number.trim()}
-                  className="flex-1 px-4 py-2.5 bg-[#1D5BEA] hover:bg-[#1D5BEA] text-white rounded-xl transition-all shadow-md disabled:opacity-50 text-xs font-bold cursor-pointer"
+                  className="flex-1 px-4 py-2.5 bg-[#008069] hover:bg-[#008069] text-white rounded-xl transition-all shadow-md disabled:opacity-50 text-xs font-bold cursor-pointer"
                 >
                   {saving ? 'Saving...' : editingId ? 'Update' : 'Add Contact'}
                 </button>
@@ -1256,7 +1256,7 @@ export default function ContactsPage() {
           <div className="bg-white dark:bg-[#1f2c34] rounded-xl border border-slate-200 dark:border-[#2a3942] shadow-2xl max-w-2xl w-full p-6 animate-in zoom-in-95 duration-200 text-slate-900 dark:text-white max-h-[90vh] flex flex-col">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
               <div className="flex items-center gap-2.5">
-                <div className="p-2 bg-[#eef3fe] dark:bg-[#0E1B3D]/40 text-[#1D5BEA] dark:text-[#5f86ee] rounded-lg">
+                <div className="p-2 bg-[#e7f5f0] dark:bg-[#0E1B3D]/40 text-[#008069] dark:text-[#00a884] rounded-lg">
                   <FileSpreadsheet size={20} />
                 </div>
                 <div>
@@ -1284,7 +1284,7 @@ export default function ContactsPage() {
               {!importData.length ? (
                 <div
                   onClick={() => importFileInputRef.current?.click()}
-                  className="border-2 border-dashed border-slate-200 dark:border-[#3b4a54] hover:border-[#1D5BEA] dark:hover:border-[#1D5BEA] rounded-xl p-8 flex flex-col items-center justify-center gap-3 cursor-pointer bg-slate-50/50 dark:bg-[#111b21]/50 hover:bg-[#eef3fe]/20 transition-all group"
+                  className="border-2 border-dashed border-slate-200 dark:border-[#3b4a54] hover:border-[#008069] dark:hover:border-[#008069] rounded-xl p-8 flex flex-col items-center justify-center gap-3 cursor-pointer bg-slate-50/50 dark:bg-[#111b21]/50 hover:bg-[#e7f5f0]/20 transition-all group"
                 >
                   <input
                     ref={importFileInputRef}
@@ -1293,7 +1293,7 @@ export default function ContactsPage() {
                     onChange={handleImportFileUpload}
                     className="hidden"
                   />
-                  <div className="p-3 bg-white dark:bg-slate-800 rounded-full shadow-sm text-slate-400 group-hover:text-[#1D5BEA] transition-colors">
+                  <div className="p-3 bg-white dark:bg-slate-800 rounded-full shadow-sm text-slate-400 group-hover:text-[#008069] transition-colors">
                     <Upload size={24} />
                   </div>
                   <div className="text-center">
@@ -1308,14 +1308,14 @@ export default function ContactsPage() {
               ) : (
                 <div className="space-y-4">
                   {/* File Info Bar */}
-                  <div className="flex items-center justify-between bg-[#eef3fe] dark:bg-[#0E1B3D]/30 border border-[#c5d5fa] dark:border-[#163d9c]/50 p-3 rounded-xl">
+                  <div className="flex items-center justify-between bg-[#e7f5f0] dark:bg-[#0E1B3D]/30 border border-[#b8e2d6] dark:border-[#00594a]/50 p-3 rounded-xl">
                     <div className="flex items-center gap-2.5">
-                      <FileSpreadsheet size={18} className="text-[#1D5BEA] dark:text-[#5f86ee] shrink-0" />
+                      <FileSpreadsheet size={18} className="text-[#008069] dark:text-[#00a884] shrink-0" />
                       <div>
-                        <p className="text-xs font-bold text-[#0E1B3D] dark:text-[#c5d5fa] truncate max-w-xs">
+                        <p className="text-xs font-bold text-[#0E1B3D] dark:text-[#b8e2d6] truncate max-w-xs">
                           {importFile?.name}
                         </p>
-                        <p className="text-[10px] text-[#174bc4] dark:text-[#5f86ee] font-semibold">
+                        <p className="text-[10px] text-[#006d5b] dark:text-[#00a884] font-semibold">
                           {importData.length} records detected • {importHeaders.length} columns
                         </p>
                       </div>
@@ -1347,7 +1347,7 @@ export default function ContactsPage() {
                         <select
                           value={importColumnMapping.name}
                           onChange={(e) => setImportColumnMapping(prev => ({ ...prev, name: e.target.value }))}
-                          className="w-full px-2.5 py-1.5 bg-white dark:bg-[#1f2c34] border border-slate-200 dark:border-[#3b4a54] rounded-lg text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-[#1D5BEA] dark:text-white"
+                          className="w-full px-2.5 py-1.5 bg-white dark:bg-[#1f2c34] border border-slate-200 dark:border-[#3b4a54] rounded-lg text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-[#008069] dark:text-white"
                         >
                           <option value="">-- Do not map (Default to "Campaign Contact") --</option>
                           {importHeaders.map(h => (
@@ -1364,7 +1364,7 @@ export default function ContactsPage() {
                         <select
                           value={importColumnMapping.lastName}
                           onChange={(e) => setImportColumnMapping(prev => ({ ...prev, lastName: e.target.value }))}
-                          className="w-full px-2.5 py-1.5 bg-white dark:bg-[#1f2c34] border border-slate-200 dark:border-[#3b4a54] rounded-lg text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-[#1D5BEA] dark:text-white"
+                          className="w-full px-2.5 py-1.5 bg-white dark:bg-[#1f2c34] border border-slate-200 dark:border-[#3b4a54] rounded-lg text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-[#008069] dark:text-white"
                         >
                           <option value="">-- None / Split from full name --</option>
                           {importHeaders.map(h => (
@@ -1375,14 +1375,14 @@ export default function ContactsPage() {
 
                       {/* Phone Number Column */}
                       <div>
-                        <label className="block text-[10px] font-bold uppercase tracking-wider text-[#1D5BEA] dark:text-[#5f86ee] mb-1 flex items-center gap-1">
+                        <label className="block text-[10px] font-bold uppercase tracking-wider text-[#008069] dark:text-[#00a884] mb-1 flex items-center gap-1">
                           <span>Phone Number *</span>
                           <span className="text-[10px] font-normal text-slate-400">(Required)</span>
                         </label>
                         <select
                           value={importColumnMapping.phone}
                           onChange={(e) => setImportColumnMapping(prev => ({ ...prev, phone: e.target.value }))}
-                          className="w-full px-2.5 py-1.5 bg-white dark:bg-[#1f2c34] border border-[#9db5ef] dark:border-[#174bc4]/60 rounded-lg text-xs font-bold focus:outline-none focus:ring-1 focus:ring-[#1D5BEA] text-slate-900 dark:text-white"
+                          className="w-full px-2.5 py-1.5 bg-white dark:bg-[#1f2c34] border border-[#8fcfbf] dark:border-[#006d5b]/60 rounded-lg text-xs font-bold focus:outline-none focus:ring-1 focus:ring-[#008069] text-slate-900 dark:text-white"
                           required
                         >
                           <option value="">-- Select Phone Number Column --</option>
@@ -1400,7 +1400,7 @@ export default function ContactsPage() {
                         <select
                           value={importColumnMapping.email}
                           onChange={(e) => setImportColumnMapping(prev => ({ ...prev, email: e.target.value }))}
-                          className="w-full px-2.5 py-1.5 bg-white dark:bg-[#1f2c34] border border-slate-200 dark:border-[#3b4a54] rounded-lg text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-[#1D5BEA] dark:text-white"
+                          className="w-full px-2.5 py-1.5 bg-white dark:bg-[#1f2c34] border border-slate-200 dark:border-[#3b4a54] rounded-lg text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-[#008069] dark:text-white"
                         >
                           <option value="">-- Do not map --</option>
                           {importHeaders.map(h => (
@@ -1417,7 +1417,7 @@ export default function ContactsPage() {
                         <select
                           value={importColumnMapping.company}
                           onChange={(e) => setImportColumnMapping(prev => ({ ...prev, company: e.target.value }))}
-                          className="w-full px-2.5 py-1.5 bg-white dark:bg-[#1f2c34] border border-slate-200 dark:border-[#3b4a54] rounded-lg text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-[#1D5BEA] dark:text-white"
+                          className="w-full px-2.5 py-1.5 bg-white dark:bg-[#1f2c34] border border-slate-200 dark:border-[#3b4a54] rounded-lg text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-[#008069] dark:text-white"
                         >
                           <option value="">-- Do not map --</option>
                           {importHeaders.map(h => (
@@ -1434,7 +1434,7 @@ export default function ContactsPage() {
                         <select
                           value={importColumnMapping.tag}
                           onChange={(e) => setImportColumnMapping(prev => ({ ...prev, tag: e.target.value }))}
-                          className="w-full px-2.5 py-1.5 bg-white dark:bg-[#1f2c34] border border-slate-200 dark:border-[#3b4a54] rounded-lg text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-[#1D5BEA] dark:text-white"
+                          className="w-full px-2.5 py-1.5 bg-white dark:bg-[#1f2c34] border border-slate-200 dark:border-[#3b4a54] rounded-lg text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-[#008069] dark:text-white"
                         >
                           <option value="">-- Do not map --</option>
                           {importHeaders.map(h => (
@@ -1454,7 +1454,7 @@ export default function ContactsPage() {
                           value={importCustomTag}
                           onChange={(e) => setImportCustomTag(e.target.value)}
                           placeholder="e.g. Website-Lead, Event-2026"
-                          className="w-full px-2.5 py-1.5 bg-white dark:bg-[#1f2c34] border border-slate-200 dark:border-[#3b4a54] rounded-lg text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-[#1D5BEA] dark:text-white"
+                          className="w-full px-2.5 py-1.5 bg-white dark:bg-[#1f2c34] border border-slate-200 dark:border-[#3b4a54] rounded-lg text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-[#008069] dark:text-white"
                         />
                       </div>
                     </div>
@@ -1493,14 +1493,14 @@ export default function ContactsPage() {
                             return (
                               <tr key={idx} className="hover:bg-slate-50 dark:hover:bg-slate-800/50">
                                 <td className="px-3 py-2 text-slate-900 dark:text-white font-bold">{displayName}</td>
-                                <td className="px-3 py-2 font-mono text-[#1D5BEA] dark:text-[#5f86ee]">{phoneVal || '—'}</td>
+                                <td className="px-3 py-2 font-mono text-[#008069] dark:text-[#00a884]">{phoneVal || '—'}</td>
                                 <td className="px-3 py-2 text-slate-500 dark:text-slate-400">{emailVal || '—'}</td>
                                 <td className="px-3 py-2 text-slate-500 dark:text-slate-400">{compVal || '—'}</td>
                                 <td className="px-3 py-2">
                                   {tagsList.length > 0 ? (
                                     <div className="flex flex-wrap gap-1">
                                       {tagsList.map((t, ti) => (
-                                        <span key={ti} className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-[#eef3fe] text-[#174bc4] dark:bg-[#0E1B3D]/40 dark:text-[#9db5ef] border border-[#c5d5fa]/60 dark:border-[#163d9c]/60">
+                                        <span key={ti} className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-[#e7f5f0] text-[#006d5b] dark:bg-[#0E1B3D]/40 dark:text-[#8fcfbf] border border-[#b8e2d6]/60 dark:border-[#00594a]/60">
                                           {t}
                                         </span>
                                       ))}
@@ -1527,8 +1527,8 @@ export default function ContactsPage() {
               )}
 
               {importSuccess && (
-                <div className="p-3 bg-[#eef3fe] dark:bg-[#0E1B3D]/30 border border-[#c5d5fa] dark:border-[#163d9c] text-[#174bc4] dark:text-[#9db5ef] text-xs font-bold rounded-lg flex items-center gap-2">
-                  <CheckCircle2 size={16} className="shrink-0 text-[#1D5BEA] dark:text-[#5f86ee]" />
+                <div className="p-3 bg-[#e7f5f0] dark:bg-[#0E1B3D]/30 border border-[#b8e2d6] dark:border-[#00594a] text-[#006d5b] dark:text-[#8fcfbf] text-xs font-bold rounded-lg flex items-center gap-2">
+                  <CheckCircle2 size={16} className="shrink-0 text-[#008069] dark:text-[#00a884]" />
                   <span>{importSuccess}</span>
                 </div>
               )}
@@ -1549,7 +1549,7 @@ export default function ContactsPage() {
                   type="button"
                   onClick={handleExecuteImport}
                   disabled={isImporting || !importColumnMapping.phone}
-                  className="px-4 py-2 bg-[#1D5BEA] hover:bg-[#1D5BEA] text-white rounded-lg text-xs font-bold shadow-sm flex items-center gap-2 transition-all disabled:opacity-50 cursor-pointer"
+                  className="px-4 py-2 bg-[#008069] hover:bg-[#008069] text-white rounded-lg text-xs font-bold shadow-sm flex items-center gap-2 transition-all disabled:opacity-50 cursor-pointer"
                 >
                   {isImporting ? (
                     <>

@@ -29,8 +29,8 @@ interface Source {
 type Mode = 'website' | 'file' | 'text'
 
 const ICON: Record<SourceKind, typeof Globe> = { website: Globe, pdf: FileText, document: FileText, text: Type }
-const input = 'w-full px-3 py-2 bg-white dark:bg-[#1f2c34] border border-[#d5ddeb] dark:border-[#2a3942] rounded-lg text-[13px] text-[#0E1B3D] dark:text-white placeholder:text-[#8a94a8] focus:outline-none focus:border-[#1D5BEA] focus:ring-2 focus:ring-[#1D5BEA]/20'
-const blue = 'inline-flex items-center justify-center gap-1.5 h-9 px-4 rounded-lg bg-[#1D5BEA] hover:bg-[#174bc4] disabled:opacity-50 text-white text-xs font-bold'
+const input = 'w-full px-3 py-2 bg-white dark:bg-[#1f2c34] border border-[#d5ddeb] dark:border-[#2a3942] rounded-lg text-[13px] text-[#0E1B3D] dark:text-white placeholder:text-[#8a94a8] focus:outline-none focus:border-[#008069] focus:ring-2 focus:ring-[#008069]/20'
+const blue = 'inline-flex items-center justify-center gap-1.5 h-9 px-4 rounded-lg bg-[#008069] hover:bg-[#006d5b] disabled:opacity-50 text-white text-xs font-bold'
 const plain = 'inline-flex items-center justify-center gap-1.5 h-8 px-2.5 rounded-lg border border-[#d5ddeb] dark:border-[#2a3942] bg-white dark:bg-[#1f2c34] hover:bg-[#f4f6fa] text-[#4a5672] dark:text-white text-[11px] font-bold disabled:opacity-50'
 
 const when = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', timeZone: 'Asia/Kolkata' }) : '')
@@ -153,8 +153,8 @@ export function KnowledgeSources({ organizationId, canEdit }: { organizationId: 
               <form className="space-y-3" onSubmit={(e) => { e.preventDefault(); add({ kind: 'website', url, wholeSite }) }}>
                 <input aria-label="Website address" className={input} inputMode="url" placeholder="www.yourshop.com" value={url} onChange={(e) => setUrl(e.target.value)} />
                 <div className="flex flex-wrap gap-x-5 gap-y-2 text-[12px] text-[#0E1B3D] dark:text-white">
-                  <label className="inline-flex items-center gap-2 cursor-pointer"><input type="radio" name="site" checked={wholeSite} onChange={() => setWholeSite(true)} className="accent-[#1D5BEA]" /> Whole website (up to 25 pages)</label>
-                  <label className="inline-flex items-center gap-2 cursor-pointer"><input type="radio" name="site" checked={!wholeSite} onChange={() => setWholeSite(false)} className="accent-[#1D5BEA]" /> Only this page</label>
+                  <label className="inline-flex items-center gap-2 cursor-pointer"><input type="radio" name="site" checked={wholeSite} onChange={() => setWholeSite(true)} className="accent-[#008069]" /> Whole website (up to 25 pages)</label>
+                  <label className="inline-flex items-center gap-2 cursor-pointer"><input type="radio" name="site" checked={!wholeSite} onChange={() => setWholeSite(false)} className="accent-[#008069]" /> Only this page</label>
                 </div>
                 <button type="submit" className={blue} disabled={busy || !url.trim()}>{busy && <Loader2 size={13} className="animate-spin" />} Read website</button>
               </form>
@@ -193,7 +193,7 @@ export function KnowledgeSources({ organizationId, canEdit }: { organizationId: 
               return (
                 <li key={s.id} className="py-3">
                   <div className="flex flex-wrap items-start gap-3">
-                    <span className="h-8 w-8 shrink-0 rounded-lg bg-[#eef1f6] dark:bg-[#1f2c34] text-[#1D5BEA] flex items-center justify-center"><Icon size={15} /></span>
+                    <span className="h-8 w-8 shrink-0 rounded-lg bg-[#eef1f6] dark:bg-[#1f2c34] text-[#008069] flex items-center justify-center"><Icon size={15} /></span>
                     <div className="min-w-0 flex-1 basis-48">
                       <p className="text-[13px] font-semibold text-[#0E1B3D] dark:text-white break-words">{s.title}</p>
                       <p className="text-[11px] text-[#8a94a8] break-all">

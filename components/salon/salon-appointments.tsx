@@ -27,7 +27,7 @@ const errorBox = 'rounded-xl bg-[#fdf0f0] dark:bg-red-950/30 text-[#b91c1c] dark
 /** Colours by state: navy / blue / grey, red only for no-shows. */
 function tone(status: string) {
   switch (status) {
-    case 'arrived': case 'in_service': return 'bg-[#1D5BEA] text-white border-[#1D5BEA]'
+    case 'arrived': case 'in_service': return 'bg-[#008069] text-white border-[#008069]'
     case 'completed': return 'bg-[#eef1f6] text-[#4a5672] border-[#d5ddeb] dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700'
     case 'cancelled': return 'bg-white text-[#8a94a8] border-dashed border-[#d5ddeb] line-through dark:bg-transparent dark:border-slate-700'
     case 'no_show': return 'bg-[#fdf0f0] text-[#b91c1c] border-[#f3c7c7]'
@@ -100,11 +100,11 @@ export function SalonAppointments({ orgId, setup, canWrite, flash }: { orgId: st
           <div className="flex items-center gap-1.5">
             <button type="button" onClick={() => move(-1)} aria-label="Earlier" className="h-10 w-10 rounded-xl border border-[#d5ddeb] dark:border-slate-700 bg-white dark:bg-[#111b21] flex items-center justify-center cursor-pointer"><ChevronLeft size={18} /></button>
             <label className="relative h-10 px-3 rounded-xl border border-[#d5ddeb] dark:border-slate-700 bg-white dark:bg-[#111b21] inline-flex items-center gap-2 text-[14px] font-semibold text-[#0E1B3D] dark:text-white cursor-pointer">
-              <CalendarDays size={16} className="text-[#1D5BEA]" /> <span className="whitespace-nowrap">{heading}</span>
+              <CalendarDays size={16} className="text-[#008069]" /> <span className="whitespace-nowrap">{heading}</span>
               <input type="date" value={date} onChange={(e) => e.target.value && setDate(e.target.value)} aria-label="Pick a day" className="absolute inset-0 opacity-0 cursor-pointer" />
             </label>
             <button type="button" onClick={() => move(1)} aria-label="Later" className="h-10 w-10 rounded-xl border border-[#d5ddeb] dark:border-slate-700 bg-white dark:bg-[#111b21] flex items-center justify-center cursor-pointer"><ChevronRight size={18} /></button>
-            {date !== today && <button type="button" onClick={() => setDate(today)} className="h-10 px-3 rounded-xl text-[14px] font-semibold text-[#1D5BEA] cursor-pointer">Today</button>}
+            {date !== today && <button type="button" onClick={() => setDate(today)} className="h-10 px-3 rounded-xl text-[14px] font-semibold text-[#008069] cursor-pointer">Today</button>}
           </div>
         ) : (
           <div className="flex items-center gap-1.5 text-[14px]">
@@ -268,9 +268,9 @@ function WeekView({ days, today, appointments, staffName, onOpen, onDay: openDay
         const list = onDay(appointments, d)
         const live = list.filter((a) => a.status !== 'cancelled')
         return (
-          <section key={d} className={`${card} p-2.5 min-w-0 ${d === today ? 'ring-2 ring-[#1D5BEA]/40' : ''}`}>
+          <section key={d} className={`${card} p-2.5 min-w-0 ${d === today ? 'ring-2 ring-[#008069]/40' : ''}`}>
             <button type="button" onClick={() => openDay(d)} className="w-full flex items-center justify-between gap-2 px-1 pb-2 cursor-pointer">
-              <span className={`text-[13.5px] font-bold ${d === today ? 'text-[#1D5BEA]' : 'text-[#0E1B3D] dark:text-white'}`}>{formatIstDay(d, today)}</span>
+              <span className={`text-[13.5px] font-bold ${d === today ? 'text-[#008069]' : 'text-[#0E1B3D] dark:text-white'}`}>{formatIstDay(d, today)}</span>
               <span className="text-[12px] text-[#6B7894]">{live.length}</span>
             </button>
             {list.length === 0 ? <p className="px-1 pb-1 text-[12.5px] text-[#8a94a8]">Free</p> : (
@@ -283,7 +283,7 @@ function WeekView({ days, today, appointments, staffName, onOpen, onDay: openDay
                     </button>
                   </li>
                 ))}
-                {list.length > 8 && <li><button type="button" onClick={() => openDay(d)} className="w-full text-[12.5px] font-semibold text-[#1D5BEA] py-1 cursor-pointer">+{list.length - 8} more</button></li>}
+                {list.length > 8 && <li><button type="button" onClick={() => openDay(d)} className="w-full text-[12.5px] font-semibold text-[#008069] py-1 cursor-pointer">+{list.length - 8} more</button></li>}
               </ul>
             )}
           </section>
@@ -383,7 +383,7 @@ function AppointmentSheet({ orgId, setup, appointment, canWrite, staffName, flas
               </div>
             ))}
             <div className="flex justify-between pt-2 border-t border-dashed border-[#d5ddeb] dark:border-slate-700 font-bold text-[#0E1B3D] dark:text-white"><span>Value</span><span>{formatRupees(value)}</span></div>
-            {paymentNote(a) && <p className="text-[13.5px] font-bold text-[#1D5BEA] dark:text-blue-300">{paymentNote(a)} · taken off the bill</p>}
+            {paymentNote(a) && <p className="text-[13.5px] font-bold text-[#008069] dark:text-emerald-300">{paymentNote(a)} · taken off the bill</p>}
             {a.notes && <p className="text-[13.5px] text-[#4a5672] dark:text-slate-300 whitespace-pre-line"><b>Note:</b> {a.notes}</p>}
           </div>
 

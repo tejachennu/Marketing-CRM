@@ -12,7 +12,7 @@ export const metadata: Metadata = {
 
 const METHOD_TONE: Record<string, string> = {
   GET: 'bg-[#e8f7f1] text-[#047857]',
-  POST: 'bg-[#eef3fe] text-[#1D5BEA]',
+  POST: 'bg-[#e7f5f0] text-[#008069]',
   PATCH: 'bg-[#fff4e0] text-[#b45309]',
 }
 
@@ -71,7 +71,7 @@ function Endpoint({ endpoint, base }: { endpoint: EndpointDoc; base: string }) {
       {endpoint.body && <Params title="Body (JSON)" params={endpoint.body} />}
       <Code label="Example request">{curl(endpoint, base)}</Code>
       <Code label={`Response · ${endpoint.status}`}>{JSON.stringify(endpoint.responseExample, null, 2)}</Code>
-      {endpoint.errors && <p className="text-[13px] text-[#6B7894]">Errors: {endpoint.errors.map((code, i) => <span key={code}>{i > 0 && ', '}<a href="#errors" className="font-semibold text-[#1D5BEA] hover:underline"><code>{code}</code></a></span>)}</p>}
+      {endpoint.errors && <p className="text-[13px] text-[#6B7894]">Errors: {endpoint.errors.map((code, i) => <span key={code}>{i > 0 && ', '}<a href="#errors" className="font-semibold text-[#008069] hover:underline"><code>{code}</code></a></span>)}</p>}
     </article>
   )
 }
@@ -97,7 +97,7 @@ export default function DevelopersPage() {
           </Link>
           <div className="flex items-center gap-2">
             <a href="/api/v1/openapi.json" className="hidden sm:inline-flex items-center gap-1.5 h-10 px-3 rounded-xl border border-[#d5ddeb] text-[14px] font-semibold hover:bg-[#f4f6fa]"><FileJson size={16} /> OpenAPI</a>
-            <Link href="/dashboard/settings?tab=api" className="inline-flex items-center gap-1.5 h-10 px-3.5 rounded-xl bg-[#1D5BEA] hover:bg-[#174bc4] text-white text-[14px] font-bold"><KeyRound size={16} /> <span className="hidden min-[400px]:inline">Get an API key</span><span className="min-[400px]:hidden">API key</span></Link>
+            <Link href="/dashboard/settings?tab=api" className="inline-flex items-center gap-1.5 h-10 px-3.5 rounded-xl bg-[#008069] hover:bg-[#006d5b] text-white text-[14px] font-bold"><KeyRound size={16} /> <span className="hidden min-[400px]:inline">Get an API key</span><span className="min-[400px]:hidden">API key</span></Link>
           </div>
         </div>
       </header>
@@ -112,7 +112,7 @@ export default function DevelopersPage() {
 
         <main className="min-w-0 space-y-12">
           <section className="space-y-4">
-            <p className="inline-flex items-center h-7 px-2.5 rounded-full bg-[#eef3fe] text-[#1D5BEA] text-[12.5px] font-bold">REST · JSON · HTTPS</p>
+            <p className="inline-flex items-center h-7 px-2.5 rounded-full bg-[#e7f5f0] text-[#008069] text-[12.5px] font-bold">REST · JSON · HTTPS</p>
             <h1 className="text-[32px] sm:text-[42px] font-extrabold tracking-tight leading-tight">Connect your systems to WAMA CRM</h1>
             <P>Add contacts and enquiries from your website, send WhatsApp messages from your own software, take bookings from your app, and create bills from your till. Everything you do through the API shows up in WAMA CRM at once: contacts in Contacts, messages in the inbox, deals on the Sales Pipeline board, bookings and bills on the Front Desk counter.</P>
             <div className="rounded-2xl border border-[#e3e8f2] bg-white p-4 flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 min-w-0">
@@ -132,7 +132,7 @@ export default function DevelopersPage() {
             <ol className="space-y-5">
               <li className="space-y-2">
                 <p className="text-[15.5px] font-bold">1. Create an API key</p>
-                <P>An admin creates keys in <Link href="/dashboard/settings?tab=api" className="font-semibold text-[#1D5BEA] hover:underline">Settings → API</Link>. Name it after what will use it, and choose what it may do. The key is shown once: keep it somewhere safe, on your server only.</P>
+                <P>An admin creates keys in <Link href="/dashboard/settings?tab=api" className="font-semibold text-[#008069] hover:underline">Settings → API</Link>. Name it after what will use it, and choose what it may do. The key is shown once: keep it somewhere safe, on your server only.</P>
               </li>
               <li className="space-y-2">
                 <p className="text-[15.5px] font-bold">2. Check that it works</p>

@@ -63,7 +63,7 @@ export function PhoneField({ value, onChange, inputClassName, placeholder, ariaL
   return (
     <span className="flex min-w-0 gap-2">
       {/* The closed picker shows only the flag and code; the real (native) list opens on tap */}
-      <span className={`${inputClassName} relative w-[96px]! shrink-0 flex items-center gap-1 pl-2.5 pr-7 focus-within:border-[#1D5BEA] focus-within:ring-2 focus-within:ring-[#1D5BEA]/20`}>
+      <span className={`${inputClassName} relative w-[96px]! shrink-0 flex items-center gap-1 pl-2.5 pr-7 focus-within:border-[#008069] focus-within:ring-2 focus-within:ring-[#008069]/20`}>
         <span aria-hidden className="text-[17px] leading-none">{country.flag}</span>
         <span aria-hidden className="font-semibold tabular-nums">{country.dialCode}</span>
         <ChevronDown size={15} aria-hidden className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-[#8a94a8]" />

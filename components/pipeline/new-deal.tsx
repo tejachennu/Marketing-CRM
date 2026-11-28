@@ -94,8 +94,8 @@ export function NewDeal({ data, stageId, onClose, onCreated, flash }: {
         <div>
           <span className="block text-[14px] font-semibold text-[#0E1B3D] dark:text-white mb-1.5">Customer</span>
           {picked ? (
-            <div className="flex items-center gap-3 rounded-xl border border-[#1D5BEA] bg-[#eef3fe] dark:bg-blue-950/30 px-3.5 py-2.5">
-              <UserRound size={18} className="text-[#1D5BEA] shrink-0" />
+            <div className="flex items-center gap-3 rounded-xl border border-[#008069] bg-[#e7f5f0] dark:bg-emerald-950/30 px-3.5 py-2.5">
+              <UserRound size={18} className="text-[#008069] shrink-0" />
               <div className="min-w-0 flex-1">
                 <p className="text-[15px] font-bold text-[#0E1B3D] dark:text-white truncate">{picked.name}</p>
                 <p className="text-[13px] text-[#4a5672] dark:text-slate-300 truncate">{[picked.phone, picked.company].filter(Boolean).join(' · ')}</p>
@@ -120,7 +120,7 @@ export function NewDeal({ data, stageId, onClose, onCreated, flash }: {
                           <span className="block text-[15px] font-semibold text-[#0E1B3D] dark:text-white truncate">{m.name}</span>
                           <span className="block text-[13px] text-[#6B7894] truncate">{[m.phone, m.company].filter(Boolean).join(' · ')}</span>
                         </span>
-                        {m.exact && <span className="text-[12px] font-bold text-[#1D5BEA] shrink-0">This number</span>}
+                        {m.exact && <span className="text-[12px] font-bold text-[#008069] shrink-0">This number</span>}
                       </button>
                     </li>
                   ))}

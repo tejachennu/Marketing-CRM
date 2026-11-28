@@ -9,7 +9,7 @@ export function WamaMark({ size = 36, className = '' }: { size?: number; classNa
         <linearGradient id={`wama-${id}`} gradientUnits="userSpaceOnUse" x1="60" y1="40" x2="350" y2="360">
           <stop offset="0" stopColor="#25D366" />
           <stop offset="0.55" stopColor="#00A884" />
-          <stop offset="1" stopColor="#1D5BEA" />
+          <stop offset="1" stopColor="#008069" />
         </linearGradient>
       </defs>
       <path fill={`url(#wama-${id})`} d="M200 28 C302 28 380 102 380 196 C380 290 302 364 200 364 C171 364 144 358 120 347 L48 372 L70 304 C42 274 20 238 20 196 C20 102 98 28 200 28 Z" />
@@ -25,7 +25,7 @@ export function WamaLogo({ size = 36, tone = 'dark', className = '' }: { size?: 
     <span className={`inline-flex items-center gap-2.5 select-none ${className}`}>
       <WamaMark size={size} />
       <span className={`font-extrabold tracking-tight leading-none ${tone === 'light' ? 'text-white' : 'text-[#0E1B3D] dark:text-white'}`} style={{ fontSize: size * 0.62 }}>
-        WAMA <span className={tone === 'light' ? 'text-[#7CF0A8]' : 'text-[#1D5BEA] dark:text-[#7CF0A8]'}>CRM</span>
+        WAMA <span className={tone === 'light' ? 'text-[#7CF0A8]' : 'text-[#008069] dark:text-[#7CF0A8]'}>CRM</span>
       </span>
     </span>
   )

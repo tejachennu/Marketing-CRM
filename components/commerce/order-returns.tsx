@@ -89,7 +89,7 @@ export function OrderReturns({ orgId, orderId, currency, canEdit, onChanged, sho
               <input id="refund-reason" className={inputClass} maxLength={200} value={form.reason} onChange={(e) => setForm({ ...form, reason: e.target.value })} />
             </div>
             <label className="flex items-center gap-2 text-sm cursor-pointer">
-              <input type="checkbox" className="h-4 w-4 accent-[#1D5BEA]" checked={form.restock} onChange={(e) => setForm({ ...form, restock: e.target.checked })} />
+              <input type="checkbox" className="h-4 w-4 accent-[#008069]" checked={form.restock} onChange={(e) => setForm({ ...form, restock: e.target.checked })} />
               Put the sizes / colours back in stock (the items came back)
             </label>
             <div className="flex justify-end gap-2 pt-1">
@@ -130,14 +130,14 @@ export function ReturnsSettingsCard({ orgId, showToast }: { orgId: string; showT
   return (
     <section className={`${cardClass} p-4 sm:p-5 space-y-3`} aria-labelledby="returns-title">
       <div className="flex items-start gap-3">
-        <RotateCcw size={20} className="text-[#1D5BEA] shrink-0 mt-0.5" />
+        <RotateCcw size={20} className="text-[#008069] shrink-0 mt-0.5" />
         <div>
           <h2 id="returns-title" className="text-sm font-bold text-slate-900 dark:text-white">Returns</h2>
           <p className="text-xs text-slate-500 dark:text-slate-400">Customers ask in My orders; you accept or decline on the order and refund from there. Online payments go back through your Razorpay.</p>
         </div>
       </div>
       <label className="flex items-center gap-2 text-sm cursor-pointer">
-        <input type="checkbox" className="h-4 w-4 accent-[#1D5BEA]" checked={settings.on} onChange={(e) => setSettings({ ...settings, on: e.target.checked })} />
+        <input type="checkbox" className="h-4 w-4 accent-[#008069]" checked={settings.on} onChange={(e) => setSettings({ ...settings, on: e.target.checked })} />
         Customers can ask for a return
       </label>
       {settings.on && (

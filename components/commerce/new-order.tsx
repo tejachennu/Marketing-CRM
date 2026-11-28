@@ -16,7 +16,7 @@ interface Line {
 }
 
 const choice = (active: boolean) =>
-  `flex-1 min-w-0 h-10 px-3 rounded-lg border text-[13px] font-semibold cursor-pointer transition-colors ${active ? 'border-[#1D5BEA] bg-[#1D5BEA]/10 text-[#1D5BEA]' : 'border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800'}`
+  `flex-1 min-w-0 h-10 px-3 rounded-lg border text-[13px] font-semibold cursor-pointer transition-colors ${active ? 'border-[#008069] bg-[#008069]/10 text-[#008069]' : 'border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800'}`
 
 /** Add an order taken in the shop or on a phone call: who, what, how they get it, and how they pay. */
 export function NewOrderModal({ orgId, currency, onClose, onCreated, showToast }: { orgId: string; currency: string; onClose: () => void; onCreated: (order: any) => void; showToast: ShowToast }) {
@@ -145,7 +145,7 @@ export function NewOrderModal({ orgId, currency, onClose, onCreated, showToast }
                 </li>
               ))}
               <li>
-                <button type="button" onClick={addTyped} className="w-full px-3 py-2 text-left hover:bg-slate-50 dark:hover:bg-slate-800 cursor-pointer text-[#1D5BEA] font-semibold">
+                <button type="button" onClick={addTyped} className="w-full px-3 py-2 text-left hover:bg-slate-50 dark:hover:bg-slate-800 cursor-pointer text-[#008069] font-semibold">
                   + Add “{query.trim()}” as an item with its own price
                 </button>
               </li>

@@ -341,7 +341,7 @@ export default function SubmittedResponsesPage() {
   const getStatusBadge = (submission: Submission) => {
     if (submission.lead_id) {
       return (
-        <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-[#1D5BEA]/10 text-[#1D5BEA] dark:text-[#5f86ee] border border-[#1D5BEA]/20 whitespace-nowrap">
+        <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-[#008069]/10 text-[#008069] dark:text-[#00a884] border border-[#008069]/20 whitespace-nowrap">
           <CheckCircle2 className="w-3 h-3" />
           Lead Created
         </span>
@@ -371,7 +371,7 @@ export default function SubmittedResponsesPage() {
     }
     if (typeof val === 'boolean') {
       return val ? (
-        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-semibold bg-[#eef3fe] text-[#174bc4] dark:bg-[#0E1B3D]/40 dark:text-[#5f86ee] border border-[#c5d5fa] dark:border-[#163d9c]">
+        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-semibold bg-[#e7f5f0] text-[#006d5b] dark:bg-[#0E1B3D]/40 dark:text-[#00a884] border border-[#b8e2d6] dark:border-[#00594a]">
           ✓ True
         </span>
       ) : (
@@ -490,7 +490,7 @@ export default function SubmittedResponsesPage() {
             </Link>
             <div>
               <div className="flex items-center gap-2">
-                <span className="p-2 rounded-xl bg-[#1D5BEA]/10 text-[#1D5BEA] dark:text-[#5f86ee] border border-[#1D5BEA]/20 shadow-2xs">
+                <span className="p-2 rounded-xl bg-[#008069]/10 text-[#008069] dark:text-[#00a884] border border-[#008069]/20 shadow-2xs">
                   <FileSpreadsheet className="w-5 h-5" />
                 </span>
                 <h1 className="text-xl md:text-2xl font-bold tracking-tight">Submitted Responses</h1>
@@ -513,7 +513,7 @@ export default function SubmittedResponsesPage() {
             <button
               onClick={exportCSV}
               disabled={submissions.length === 0 || exporting}
-              className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-[#1D5BEA] text-white text-xs font-semibold hover:bg-[#174bc4] disabled:opacity-40 shadow-xs transition-all"
+              className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-[#008069] text-white text-xs font-semibold hover:bg-[#006d5b] disabled:opacity-40 shadow-xs transition-all"
             >
               {exporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
               <span>{exporting ? 'Exporting…' : 'Export Excel / CSV'}</span>
@@ -532,7 +532,7 @@ export default function SubmittedResponsesPage() {
                 value={globalSearch}
                 onChange={(e) => setGlobalSearch(e.target.value)}
                 placeholder="Search across all fields, phones, names, or inner variables..."
-                className="w-full pl-9 pr-3 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-[#0c1317] focus:outline-none focus:ring-2 focus:ring-[#1D5BEA] transition-all text-slate-900 dark:text-slate-100"
+                className="w-full pl-9 pr-3 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-[#0c1317] focus:outline-none focus:ring-2 focus:ring-[#008069] transition-all text-slate-900 dark:text-slate-100"
               />
             </div>
 
@@ -735,7 +735,7 @@ export default function SubmittedResponsesPage() {
           {/* Spreadsheet Ribbon / Top bar */}
           <div className="px-4 py-2.5 bg-slate-100/80 dark:bg-[#162026] border-b border-slate-300 dark:border-slate-700 flex flex-wrap items-center justify-between gap-3 text-xs">
             <div className="flex items-center gap-2">
-              <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-[#1D5BEA] text-white font-semibold text-xs shadow-xs">
+              <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-[#008069] text-white font-semibold text-xs shadow-xs">
                 <FileSpreadsheet className="w-3.5 h-3.5" />
                 <span>Responses Sheet</span>
               </div>
@@ -761,7 +761,7 @@ export default function SubmittedResponsesPage() {
 
           {loading ? (
             <div className="flex flex-col items-center justify-center py-28 text-slate-400 dark:text-slate-500">
-              <Loader2 className="w-8 h-8 animate-spin text-[#1D5BEA] mb-3" />
+              <Loader2 className="w-8 h-8 animate-spin text-[#008069] mb-3" />
               <p className="text-xs font-semibold">Loading spreadsheet rows...</p>
             </div>
           ) : displayedSubmissions.length === 0 ? (
@@ -969,7 +969,7 @@ export default function SubmittedResponsesPage() {
                       onClick={() => setPage(pageNum)}
                       className={`w-7 h-7 rounded-lg text-xs font-semibold transition-colors ${
                         pageNum === page
-                          ? 'bg-[#1D5BEA] text-white shadow-2xs'
+                          ? 'bg-[#008069] text-white shadow-2xs'
                           : 'text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-800'
                       }`}
                     >
@@ -1005,7 +1005,7 @@ export default function SubmittedResponsesPage() {
             {/* Modal Header */}
             <div className="sticky top-0 bg-white dark:bg-[#111b21] border-b border-slate-200 dark:border-slate-800 p-5 flex items-center justify-between z-10">
               <div className="flex items-center gap-2.5">
-                <span className="p-2 rounded-xl bg-[#1D5BEA]/10 text-[#1D5BEA] dark:text-[#5f86ee] border border-[#1D5BEA]/20">
+                <span className="p-2 rounded-xl bg-[#008069]/10 text-[#008069] dark:text-[#00a884] border border-[#008069]/20">
                   <FileSpreadsheet className="w-5 h-5" />
                 </span>
                 <div>
@@ -1061,8 +1061,8 @@ export default function SubmittedResponsesPage() {
                     <p className="text-[10px] text-slate-400 font-medium uppercase tracking-wider">Form Approval</p>
                     <div className="mt-1">
                       {selectedSubmission.flow_id ? (
-                        <span className="inline-flex items-center gap-1 text-[10px] font-bold text-[#174bc4] dark:text-[#9db5ef] bg-[#eef3fe] dark:bg-[#0E1B3D]/40 px-2 py-0.5 rounded-full border border-[#c5d5fa] dark:border-[#163d9c]">
-                          <CheckCircle2 className="w-3 h-3 text-[#1D5BEA] dark:text-[#5f86ee]" />
+                        <span className="inline-flex items-center gap-1 text-[10px] font-bold text-[#006d5b] dark:text-[#8fcfbf] bg-[#e7f5f0] dark:bg-[#0E1B3D]/40 px-2 py-0.5 rounded-full border border-[#b8e2d6] dark:border-[#00594a]">
+                          <CheckCircle2 className="w-3 h-3 text-[#008069] dark:text-[#00a884]" />
                           <span>Meta Approved</span>
                         </span>
                       ) : (
@@ -1115,7 +1115,7 @@ export default function SubmittedResponsesPage() {
                             <div className="pt-1">
                               {typeof value === 'boolean' ? (
                                 value ? (
-                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-semibold bg-[#eef3fe] text-[#174bc4] dark:bg-[#0E1B3D]/40 dark:text-[#5f86ee] border border-[#c5d5fa] dark:border-[#163d9c]">
+                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-semibold bg-[#e7f5f0] text-[#006d5b] dark:bg-[#0E1B3D]/40 dark:text-[#00a884] border border-[#b8e2d6] dark:border-[#00594a]">
                                     ✓ True / Opted In
                                   </span>
                                 ) : (
@@ -1153,7 +1153,7 @@ export default function SubmittedResponsesPage() {
                     }}
                     className="inline-flex items-center gap-1 text-[11px] font-semibold text-indigo-600 dark:text-indigo-400 hover:underline"
                   >
-                    {copiedPayload ? <Check className="w-3 h-3 text-[#1D5BEA]" /> : <Copy className="w-3 h-3" />}
+                    {copiedPayload ? <Check className="w-3 h-3 text-[#008069]" /> : <Copy className="w-3 h-3" />}
                     <span>{copiedPayload ? 'Copied' : 'Copy JSON'}</span>
                   </button>
                 </div>

@@ -810,7 +810,7 @@ export default function DashboardLayout({
   // "Upgrade" card, so people see what a bigger plan gives them.
   const planOff = (path: string): string | null => {
     if (!billing || billing.exempt || isPlatformAdmin || !billing.allows || !billing.limits) return null
-    const featureAt: [string, PlanFeature][] = [['/dashboard/tickets', 'tickets'], ['/dashboard/campaigns', 'campaigns'], ['/dashboard/templates', 'templates'], ['/dashboard/flows', 'flows'], ['/dashboard/playground', 'ai_replies']]
+    const featureAt: [string, PlanFeature][] = [['/dashboard/tickets', 'tickets'], ['/dashboard/campaigns', 'campaigns'], ['/dashboard/templates', 'templates'], ['/dashboard/flows', 'flows'], ['/dashboard/playground', 'ai_replies'], ['/dashboard/instagram', 'instagram']]
     if (path === '/dashboard' && !billing.allows.inbox) return FEATURE_NAMES.inbox
     for (const [base, feature] of featureAt) {
       if ((path === base || path.startsWith(`${base}/`)) && !billing.allows[feature]) return FEATURE_NAMES[feature]
@@ -952,7 +952,7 @@ export default function DashboardLayout({
           {!isSidebarCollapsed ? (
             <div className="flex items-center justify-between px-3.5 pb-3 border-b border-slate-100 dark:border-slate-800/70">
               <Link href="/dashboard" className="flex items-center gap-2.5 min-w-0 group">
-                <div className="h-9 w-9 rounded-xl bg-[#1D5BEA] flex items-center justify-center text-white shadow-xs shrink-0 group-hover:scale-105 transition-transform">
+                <div className="h-9 w-9 rounded-xl bg-[#008069] flex items-center justify-center text-white shadow-xs shrink-0 group-hover:scale-105 transition-transform">
                   <Megaphone size={18} className="fill-white/20" />
                 </div>
                 <div className="min-w-0 flex flex-col">
@@ -979,7 +979,7 @@ export default function DashboardLayout({
               <Link
                 href="/dashboard"
                 title="Marketing CRM"
-                className="h-9 w-9 rounded-xl bg-[#1D5BEA] flex items-center justify-center text-white shadow-xs shrink-0 hover:scale-105 transition-transform"
+                className="h-9 w-9 rounded-xl bg-[#008069] flex items-center justify-center text-white shadow-xs shrink-0 hover:scale-105 transition-transform"
               >
                 <Megaphone size={18} className="fill-white/20" />
               </Link>
@@ -988,7 +988,7 @@ export default function DashboardLayout({
                 onClick={toggleSidebar}
                 title="Expand sidebar"
                 aria-label="Expand sidebar"
-                className="p-1.5 rounded-lg text-slate-400 hover:text-[#1D5BEA] dark:hover:text-[#5f86ee] hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+                className="p-1.5 rounded-lg text-slate-400 hover:text-[#008069] dark:hover:text-[#00a884] hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
               >
                 <PanelLeftOpen size={16} />
               </button>
@@ -1020,19 +1020,19 @@ export default function DashboardLayout({
                       onClick={(e) => handleNavClick(e, item.href)}
                       className={`flex items-center justify-between gap-2 px-3 py-2 rounded-xl transition-all duration-200 group relative ${
                         isActive
-                          ? 'bg-[#eef3fe] dark:bg-[#0E1B3D]/40 text-[#1D5BEA] dark:text-[#5f86ee] font-bold border border-[#c5d5fa]/50 dark:border-[#163d9c]/50 shadow-2xs'
+                          ? 'bg-[#e7f5f0] dark:bg-[#0E1B3D]/40 text-[#008069] dark:text-[#00a884] font-bold border border-[#b8e2d6]/50 dark:border-[#00594a]/50 shadow-2xs'
                           : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100/80 dark:hover:bg-slate-800/50 font-medium'
                       }`}
                     >
                       {isActive && (
-                        <span className="absolute left-0 top-2 bottom-2 w-1 bg-[#1D5BEA] rounded-r-full" />
+                        <span className="absolute left-0 top-2 bottom-2 w-1 bg-[#008069] rounded-r-full" />
                       )}
                       <div className="flex items-center gap-2.5 min-w-0">
                         <Icon
                           size={17}
                           className={`shrink-0 transition-transform duration-200 group-hover:scale-105 ${
                             isActive
-                              ? 'text-[#1D5BEA] dark:text-[#5f86ee]'
+                              ? 'text-[#008069] dark:text-[#00a884]'
                               : 'text-slate-400 group-hover:text-slate-700 dark:group-hover:text-slate-300'
                           }`}
                         />
@@ -1047,12 +1047,12 @@ export default function DashboardLayout({
                         </span>
                       )}
                       {item.href === '/dashboard' && unreadChatsCount > 0 && (
-                        <span className="shrink-0 min-w-5 px-1.5 py-0.5 rounded-full text-[10px] leading-4 font-bold tabular-nums text-center bg-[#1D5BEA] text-white shadow-xs">
+                        <span className="shrink-0 min-w-5 px-1.5 py-0.5 rounded-full text-[10px] leading-4 font-bold tabular-nums text-center bg-[#008069] text-white shadow-xs">
                           {formatCount(unreadChatsCount)}
                         </span>
                       )}
                       {item.href === '/dashboard/instagram' && unreadInstagramCount > 0 && (
-                        <span className="shrink-0 min-w-5 px-1.5 py-0.5 rounded-full text-[10px] leading-4 font-bold tabular-nums text-center bg-[#1D5BEA] text-white shadow-xs">
+                        <span className="shrink-0 min-w-5 px-1.5 py-0.5 rounded-full text-[10px] leading-4 font-bold tabular-nums text-center bg-[#008069] text-white shadow-xs">
                           {formatCount(unreadInstagramCount)}
                         </span>
                       )}
@@ -1085,19 +1085,19 @@ export default function DashboardLayout({
                     onClick={(e) => handleNavClick(e, item.href)}
                     className={`flex items-center justify-center w-11 h-11 rounded-xl transition-all duration-200 group relative flex-shrink-0 ${
                       isActive
-                        ? 'bg-[#1D5BEA]/10 text-[#1D5BEA] dark:text-[#5f86ee] shadow-xs'
+                        ? 'bg-[#008069]/10 text-[#008069] dark:text-[#00a884] shadow-xs'
                         : 'text-slate-400 dark:text-slate-500 hover:text-slate-900 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800/60'
                     }`}
                   >
                     {isActive && (
-                      <span className="absolute left-0 top-2.5 bottom-2.5 w-[3px] bg-[#1D5BEA] rounded-r-full" />
+                      <span className="absolute left-0 top-2.5 bottom-2.5 w-[3px] bg-[#008069] rounded-r-full" />
                     )}
 
                     <Icon
                       size={18}
                       className={`transition-transform duration-200 group-hover:scale-110 ${
                         isActive
-                          ? 'text-[#1D5BEA] dark:text-[#5f86ee]'
+                          ? 'text-[#008069] dark:text-[#00a884]'
                           : 'text-slate-400 dark:text-slate-500 group-hover:text-slate-700 dark:group-hover:text-slate-300'
                       }`}
                     />
@@ -1116,7 +1116,7 @@ export default function DashboardLayout({
                       </span>
                     )}
                     {item.href === '/dashboard/instagram' && unreadInstagramCount > 0 && (
-                      <span className="absolute -top-1 -right-1 bg-[#1D5BEA] text-white text-[10px] leading-none font-bold tabular-nums min-w-[18px] h-[18px] px-1 rounded-full flex items-center justify-center border border-white dark:border-slate-900 shadow-sm z-10">
+                      <span className="absolute -top-1 -right-1 bg-[#008069] text-white text-[10px] leading-none font-bold tabular-nums min-w-[18px] h-[18px] px-1 rounded-full flex items-center justify-center border border-white dark:border-slate-900 shadow-sm z-10">
                         {formatCount(unreadInstagramCount)}
                       </span>
                     )}
@@ -1148,20 +1148,20 @@ export default function DashboardLayout({
                   onClick={() => setShowAssistant((prev) => !prev)}
                   className={`flex items-center justify-between w-full px-3 py-2 rounded-xl transition-all cursor-pointer ${
                     showAssistant
-                      ? 'bg-[#1D5BEA]/15 text-[#1D5BEA] dark:text-[#5f86ee] font-bold border border-[#1D5BEA]/20'
+                      ? 'bg-[#008069]/15 text-[#008069] dark:text-[#00a884] font-bold border border-[#008069]/20'
                       : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800/60 font-medium'
                   }`}
                 >
                   <div className="flex items-center gap-2.5 min-w-0">
                     <div className="relative">
-                      <Sparkles size={16} className="text-[#1D5BEA] dark:text-[#5f86ee] shrink-0" />
+                      <Sparkles size={16} className="text-[#008069] dark:text-[#00a884] shrink-0" />
                       {hasUnreadAssistantNotif && !showAssistant && (
                         <span className="absolute -top-1 -right-1 w-2 h-2 bg-red-500 rounded-full animate-pulse" />
                       )}
                     </div>
                     <span className="text-xs truncate">Marketing Copilot</span>
                   </div>
-                  <span className="px-1.5 py-0.5 rounded-full text-[10px] leading-none font-extrabold bg-[#dfe8fd] dark:bg-[#0E1B3D] text-[#174bc4] dark:text-[#9db5ef] border border-[#c5d5fa] dark:border-[#163d9c]">
+                  <span className="px-1.5 py-0.5 rounded-full text-[10px] leading-none font-extrabold bg-[#d6efe7] dark:bg-[#0E1B3D] text-[#006d5b] dark:text-[#8fcfbf] border border-[#b8e2d6] dark:border-[#00594a]">
                     AI
                   </span>
                 </button>
@@ -1174,7 +1174,7 @@ export default function DashboardLayout({
                   className="flex items-center gap-2 min-w-0 flex-1 hover:opacity-85 transition-opacity"
                   title="View Profile"
                 >
-                  <div className="h-8 w-8 rounded-lg bg-[#1D5BEA] text-white flex items-center justify-center font-bold text-[10px] shrink-0 shadow-2xs">
+                  <div className="h-8 w-8 rounded-lg bg-[#008069] text-white flex items-center justify-center font-bold text-[10px] shrink-0 shadow-2xs">
                     {userFullName ? userFullName.substring(0, 2).toUpperCase() : (userEmail ? userEmail.substring(0, 2).toUpperCase() : 'US')}
                   </div>
                   <div className="min-w-0 flex-1">
@@ -1221,14 +1221,14 @@ export default function DashboardLayout({
                   aria-pressed={showAssistant}
                   className={`flex items-center justify-center w-11 h-11 rounded-xl transition-all duration-300 group relative flex-shrink-0 ${
                     showAssistant
-                      ? 'bg-[#1D5BEA]/10 text-[#1D5BEA] dark:text-[#5f86ee] shadow-xs'
+                      ? 'bg-[#008069]/10 text-[#008069] dark:text-[#00a884] shadow-xs'
                       : 'text-slate-400 dark:text-slate-500 hover:text-slate-900 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800/60'
                   }`}
                 >
                   <Sparkles
                     size={18}
                     className={`transition-transform duration-300 group-hover:scale-110 ${
-                      showAssistant ? 'text-[#1D5BEA] dark:text-[#5f86ee]' : ''
+                      showAssistant ? 'text-[#008069] dark:text-[#00a884]' : ''
                     }`}
                   />
                   {hasUnreadAssistantNotif && !showAssistant && (
@@ -1247,14 +1247,14 @@ export default function DashboardLayout({
                 aria-label="My Profile"
                 className={`flex items-center justify-center w-11 h-11 rounded-xl transition-all duration-300 group relative flex-shrink-0 ${
                   pathname === '/dashboard/profile'
-                    ? 'bg-[#1D5BEA]/10 text-[#1D5BEA] dark:text-[#5f86ee] shadow-xs'
+                    ? 'bg-[#008069]/10 text-[#008069] dark:text-[#00a884] shadow-xs'
                     : 'text-slate-400 dark:text-slate-500 hover:text-slate-900 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800/60'
                 }`}
               >
                 {pathname === '/dashboard/profile' && (
-                  <span className="absolute left-0 top-2.5 bottom-2.5 w-[3px] bg-[#1D5BEA] rounded-r-full" />
+                  <span className="absolute left-0 top-2.5 bottom-2.5 w-[3px] bg-[#008069] rounded-r-full" />
                 )}
-                <div className="flex h-8 w-8 rounded-lg bg-[#1D5BEA] text-white items-center justify-center font-bold text-[10px] select-none shadow-2xs">
+                <div className="flex h-8 w-8 rounded-lg bg-[#008069] text-white items-center justify-center font-bold text-[10px] select-none shadow-2xs">
                   {userFullName
                     ? userFullName.substring(0, 2).toUpperCase()
                     : userEmail
@@ -1288,10 +1288,10 @@ export default function DashboardLayout({
             return (
               <button key={tab} type="button" onClick={() => openConnectorTab(connectorApp, tab)} aria-current={on ? 'page' : undefined} aria-label={label}
                 className="flex flex-col items-center justify-center flex-1 min-w-0 h-full py-1.5 group relative border-0 bg-transparent cursor-pointer">
-                <div className={`w-12 h-7 rounded-full flex items-center justify-center transition-all duration-300 ${on ? 'bg-[#1D5BEA]/10 dark:bg-[#5f86ee]/15 text-[#1D5BEA] dark:text-[#1D5BEA] scale-105' : 'text-slate-400 dark:text-slate-500'}`}>
+                <div className={`w-12 h-7 rounded-full flex items-center justify-center transition-all duration-300 ${on ? 'bg-[#008069]/10 dark:bg-[#00a884]/15 text-[#008069] dark:text-[#008069] scale-105' : 'text-slate-400 dark:text-slate-500'}`}>
                   <Icon size={20} />
                 </div>
-                <span aria-hidden className={`text-[10px] font-bold tracking-normal mt-0.5 uppercase truncate max-w-full ${on ? 'text-[#1D5BEA] dark:text-[#1D5BEA]' : 'text-slate-400 dark:text-slate-500'}`}>
+                <span aria-hidden className={`text-[10px] font-bold tracking-normal mt-0.5 uppercase truncate max-w-full ${on ? 'text-[#008069] dark:text-[#008069]' : 'text-slate-400 dark:text-slate-500'}`}>
                   {short ? <><span className="min-[360px]:hidden">{short}</span><span className="max-[359px]:hidden">{label}</span></> : label}
                 </span>
                 {badge > 0 && (
@@ -1313,13 +1313,13 @@ export default function DashboardLayout({
             >
               <div className={`w-12 h-7 rounded-full flex items-center justify-center transition-all duration-300 ${
                 pathname === '/dashboard'
-                  ? 'bg-[#1D5BEA]/10 dark:bg-[#5f86ee]/15 text-[#1D5BEA] dark:text-[#1D5BEA] scale-105'
+                  ? 'bg-[#008069]/10 dark:bg-[#00a884]/15 text-[#008069] dark:text-[#008069] scale-105'
                   : 'text-slate-400 dark:text-slate-500'
               }`}>
                 <MessageCircle size={20} />
               </div>
               <span className={`text-[10px] font-bold tracking-normal mt-0.5 uppercase ${
-                pathname === '/dashboard' ? 'text-[#1D5BEA] dark:text-[#1D5BEA]' : 'text-slate-400 dark:text-slate-500'
+                pathname === '/dashboard' ? 'text-[#008069] dark:text-[#008069]' : 'text-slate-400 dark:text-slate-500'
               }`}>Chats</span>
               {unreadChatsCount > 0 && (
                 <span className="absolute top-1 right-2 bg-red-500 text-white text-[10px] leading-none font-bold tabular-nums min-w-[18px] h-[18px] px-1 rounded-full flex items-center justify-center border border-white dark:border-slate-900 shadow-sm z-50">
@@ -1338,13 +1338,13 @@ export default function DashboardLayout({
             >
               <div className={`w-12 h-7 rounded-full flex items-center justify-center transition-all duration-300 ${
                 pathname.startsWith('/dashboard/tickets')
-                  ? 'bg-[#1D5BEA]/10 dark:bg-[#5f86ee]/15 text-[#1D5BEA] dark:text-[#1D5BEA] scale-105'
+                  ? 'bg-[#008069]/10 dark:bg-[#00a884]/15 text-[#008069] dark:text-[#008069] scale-105'
                   : 'text-slate-400 dark:text-slate-500'
               }`}>
                 <Ticket size={20} />
               </div>
               <span className={`text-[10px] font-bold tracking-normal mt-0.5 uppercase ${
-                pathname.startsWith('/dashboard/tickets') ? 'text-[#1D5BEA] dark:text-[#1D5BEA]' : 'text-slate-400 dark:text-slate-500'
+                pathname.startsWith('/dashboard/tickets') ? 'text-[#008069] dark:text-[#008069]' : 'text-slate-400 dark:text-slate-500'
               }`}>Tickets</span>
               {activeTicketsCount > 0 && (
                 <span className="absolute top-1 right-2 bg-red-500 text-white text-[10px] leading-none font-bold tabular-nums min-w-[18px] h-[18px] px-1 rounded-full flex items-center justify-center border border-white dark:border-slate-900 shadow-sm z-50">
@@ -1363,13 +1363,13 @@ export default function DashboardLayout({
           >
             <div className={`w-12 h-7 rounded-full flex items-center justify-center transition-all duration-300 ${
               pathname.startsWith('/dashboard/leads')
-                ? 'bg-[#1D5BEA]/10 dark:bg-[#5f86ee]/15 text-[#1D5BEA] dark:text-[#1D5BEA] scale-105'
+                ? 'bg-[#008069]/10 dark:bg-[#00a884]/15 text-[#008069] dark:text-[#008069] scale-105'
                 : 'text-slate-400 dark:text-slate-500'
             }`}>
               <TrendingUp size={20} />
             </div>
             <span className={`text-[10px] font-bold tracking-normal mt-0.5 uppercase ${
-              pathname.startsWith('/dashboard/leads') ? 'text-[#1D5BEA] dark:text-[#1D5BEA]' : 'text-slate-400 dark:text-slate-500'
+              pathname.startsWith('/dashboard/leads') ? 'text-[#008069] dark:text-[#008069]' : 'text-slate-400 dark:text-slate-500'
             }`}>Pipeline</span>
             {activeLeadsCount > 0 && (
               <span className="absolute top-1 right-2 bg-red-500 text-white text-[10px] leading-none font-bold tabular-nums min-w-[18px] h-[18px] px-1 rounded-full flex items-center justify-center border border-white dark:border-slate-900 shadow-sm z-50">
@@ -1391,13 +1391,13 @@ export default function DashboardLayout({
           >
             <div className={`w-12 h-7 rounded-full flex items-center justify-center transition-all duration-300 ${
               showSideDrawer
-                ? 'bg-[#1D5BEA]/10 dark:bg-[#5f86ee]/15 text-[#1D5BEA] dark:text-[#1D5BEA]'
+                ? 'bg-[#008069]/10 dark:bg-[#00a884]/15 text-[#008069] dark:text-[#008069]'
                 : 'text-slate-400 dark:text-slate-500'
             }`}>
               <Menu size={20} />
             </div>
             <span className={`text-[10px] font-bold tracking-normal mt-0.5 uppercase ${
-              showSideDrawer ? 'text-[#1D5BEA] dark:text-[#1D5BEA]' : 'text-slate-400 dark:text-slate-500'
+              showSideDrawer ? 'text-[#008069] dark:text-[#008069]' : 'text-slate-400 dark:text-slate-500'
             }`}>More</span>
             {/* Unread dot for assistant notifications */}
             {hasUnreadAssistantNotif && (
@@ -1418,7 +1418,7 @@ export default function DashboardLayout({
             {/* Drawer Panel */}
             <div className="absolute top-0 left-0 bottom-0 w-[280px] bg-white dark:bg-[#111b21] shadow-2xl animate-in slide-in-from-left duration-300 flex flex-col">
               {/* User Header */}
-              <div className="p-5 bg-[#1D5BEA] text-white">
+              <div className="p-5 bg-[#008069] text-white">
                 <div className="flex items-center gap-3">
                   <div className="h-12 w-12 rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center text-base font-bold border border-white/30">
                     {userFullName ? userFullName.substring(0, 2).toUpperCase() : (userEmail ? userEmail.substring(0, 2).toUpperCase() : 'US')}
@@ -1450,11 +1450,11 @@ export default function DashboardLayout({
                       onClick={() => setShowSideDrawer(false)}
                       className={`flex items-center gap-3 px-5 py-3 text-xs font-semibold transition-all ${
                         isActive
-                          ? 'bg-[#1D5BEA]/10 text-[#1D5BEA] dark:text-[#1D5BEA] border-l-[3px] border-[#1D5BEA]'
+                          ? 'bg-[#008069]/10 text-[#008069] dark:text-[#008069] border-l-[3px] border-[#008069]'
                           : 'text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800/60 border-l-[3px] border-transparent'
                       }`}
                     >
-                      <Icon size={18} className={isActive ? 'text-[#1D5BEA]' : 'text-slate-400 dark:text-slate-500'} />
+                      <Icon size={18} className={isActive ? 'text-[#008069]' : 'text-slate-400 dark:text-slate-500'} />
                       {item.label}
                       {planOff(item.href) && <Lock size={12} className="ml-auto shrink-0 text-[#8a94a8]" aria-label="Not on your plan" />}
                     </Link>
@@ -1527,7 +1527,7 @@ export default function DashboardLayout({
             ) : pageAccess === 'billing' ? (
               <div className="flex items-center justify-center h-full p-4">
                 <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-800 p-8 max-w-md w-full text-center shadow-xl">
-                  <div className="mx-auto w-12 h-12 rounded-full bg-blue-50 dark:bg-blue-950/40 flex items-center justify-center text-[#1D5BEA] mb-4"><CreditCard size={22} /></div>
+                  <div className="mx-auto w-12 h-12 rounded-full bg-blue-50 dark:bg-emerald-950/40 flex items-center justify-center text-[#008069] mb-4"><CreditCard size={22} /></div>
                   <h2 className="text-lg font-bold text-slate-900 dark:text-white mb-2">{billing?.onTrial ? 'Your free trial has ended' : billing?.status === 'past_due' ? 'Your payment did not go through' : 'Your WAMA CRM plan has ended'}</h2>
                   <p className="text-sm text-slate-500 dark:text-slate-400 mb-6 leading-relaxed">
                     {canManageBilling
@@ -1535,14 +1535,14 @@ export default function DashboardLayout({
                       : 'Your workspace admin needs to renew the plan. Your chats, contacts and settings are safe.'}
                   </p>
                   {canManageBilling && (
-                    <Link href="/dashboard/billing" className="inline-flex items-center justify-center w-full px-4 py-3 bg-[#1D5BEA] hover:bg-[#174bc4] text-white rounded-xl text-sm font-bold">Subscribe now</Link>
+                    <Link href="/dashboard/billing" className="inline-flex items-center justify-center w-full px-4 py-3 bg-[#008069] hover:bg-[#006d5b] text-white rounded-xl text-sm font-bold">Subscribe now</Link>
                   )}
                 </div>
               </div>
             ) : pageAccess === 'whatsapp' ? (
               <div className="flex items-center justify-center h-full p-4">
                 <div className="bg-white dark:bg-slate-900 rounded-2xl border border-[#e3e8f2] dark:border-slate-800 p-8 max-w-md w-full text-center">
-                  <div className="mx-auto w-12 h-12 rounded-full bg-[#eef1f6] dark:bg-slate-800 flex items-center justify-center text-[#1D5BEA] mb-4"><MessageCircle size={22} /></div>
+                  <div className="mx-auto w-12 h-12 rounded-full bg-[#eef1f6] dark:bg-slate-800 flex items-center justify-center text-[#008069] mb-4"><MessageCircle size={22} /></div>
                   <h2 className="text-lg font-bold text-[#0E1B3D] dark:text-white mb-2">Connect your WhatsApp first</h2>
                   <p className="text-sm text-[#4a5672] dark:text-slate-400 mb-6 leading-relaxed">
                     {can(currentUser, 'settings.manage')
@@ -1550,7 +1550,7 @@ export default function DashboardLayout({
                       : 'Your workspace admin needs to connect the business WhatsApp number. Then your inbox, AI replies and campaigns switch on.'}
                   </p>
                   {can(currentUser, 'settings.manage') && (
-                    <Link href="/dashboard/settings?tab=general#whatsapp" className="inline-flex items-center justify-center w-full px-4 py-3 bg-[#1D5BEA] hover:bg-[#174bc4] text-white rounded-xl text-sm font-bold">Connect WhatsApp</Link>
+                    <Link href="/dashboard/settings?tab=general#whatsapp" className="inline-flex items-center justify-center w-full px-4 py-3 bg-[#008069] hover:bg-[#006d5b] text-white rounded-xl text-sm font-bold">Connect WhatsApp</Link>
                   )}
                   {/* Our team connects it for them, usually the same day */}
                   <a
@@ -1567,20 +1567,20 @@ export default function DashboardLayout({
             ) : pageAccess === 'plan' ? (
               <div className="flex items-center justify-center h-full p-4">
                 <div className="bg-white dark:bg-slate-900 rounded-2xl border border-[#e3e8f2] dark:border-slate-800 p-8 max-w-md w-full text-center">
-                  <div className="mx-auto w-12 h-12 rounded-full bg-[#eef1f6] dark:bg-slate-800 flex items-center justify-center text-[#1D5BEA] mb-4"><Lock size={20} /></div>
+                  <div className="mx-auto w-12 h-12 rounded-full bg-[#eef1f6] dark:bg-slate-800 flex items-center justify-center text-[#008069] mb-4"><Lock size={20} /></div>
                   <h2 className="text-lg font-bold text-[#0E1B3D] dark:text-white mb-2">Not on your {billing?.plan?.name || ''} plan</h2>
                   <p className="text-sm text-[#4a5672] dark:text-slate-400 mb-6 leading-relaxed">
                     {`Your plan does not include ${planOff(pathname)}. `}
                     {canManageBilling ? 'Upgrade to use it. Everything you have now stays as it is.' : 'Ask your workspace admin to upgrade the plan.'}
                   </p>
                   {canManageBilling && (
-                    <Link href="/dashboard/billing?change=1" className="inline-flex items-center justify-center w-full px-4 py-3 bg-[#1D5BEA] hover:bg-[#174bc4] text-white rounded-xl text-sm font-bold">See plans</Link>
+                    <Link href="/dashboard/billing?change=1" className="inline-flex items-center justify-center w-full px-4 py-3 bg-[#008069] hover:bg-[#006d5b] text-white rounded-xl text-sm font-bold">See plans</Link>
                   )}
                 </div>
               </div>
             ) : pageAccess === 'loading' ? (
               <div className="flex items-center justify-center h-full" role="status" aria-label="Loading">
-                <div className="w-6 h-6 rounded-full border-2 border-slate-200 dark:border-slate-700 border-t-[#1D5BEA] animate-spin" />
+                <div className="w-6 h-6 rounded-full border-2 border-slate-200 dark:border-slate-700 border-t-[#008069] animate-spin" />
               </div>
             ) : (
               <div className="flex items-center justify-center h-full p-4 select-none">
@@ -1598,7 +1598,7 @@ export default function DashboardLayout({
                       </p>
                       <Link
                         href={isPlatformAdmin ? '/dashboard/superadmin' : filteredNavItems[0]?.href || '/dashboard/profile'}
-                        className="inline-flex items-center justify-center w-full px-4 py-2.5 bg-[#1D5BEA] hover:bg-[#174bc4] text-white rounded-xl text-xs font-bold shadow-sm transition-all active:scale-[0.98]"
+                        className="inline-flex items-center justify-center w-full px-4 py-2.5 bg-[#008069] hover:bg-[#006d5b] text-white rounded-xl text-xs font-bold shadow-sm transition-all active:scale-[0.98]"
                       >
                         Go back
                       </Link>
@@ -1613,7 +1613,7 @@ export default function DashboardLayout({
                       </p>
                       <Link
                         href={pathname.startsWith('/dashboard/team') && canAccessPage(currentUser, '/dashboard/settings') ? '/dashboard/settings?tab=teammates' : filteredNavItems[0]?.href || '/dashboard/profile'}
-                        className="inline-flex items-center justify-center w-full px-4 py-2.5 bg-[#1D5BEA] hover:bg-[#174bc4] text-white rounded-xl text-xs font-bold shadow-sm transition-all active:scale-[0.98]"
+                        className="inline-flex items-center justify-center w-full px-4 py-2.5 bg-[#008069] hover:bg-[#006d5b] text-white rounded-xl text-xs font-bold shadow-sm transition-all active:scale-[0.98]"
                       >
                         {pathname.startsWith('/dashboard/team') && canAccessPage(currentUser, '/dashboard/settings') ? 'Go to Teammates' : 'Go back'}
                       </Link>
@@ -1630,7 +1630,7 @@ export default function DashboardLayout({
                       </p>
                       <Link
                         href={canAccessPage(currentUser, '/dashboard/settings') ? (isConnectorPage(pathname) ? '/dashboard/connectors' : '/dashboard/settings') : '/dashboard/profile'}
-                        className="inline-flex items-center justify-center w-full px-4 py-2.5 bg-[#1D5BEA] hover:bg-[#174bc4] text-white rounded-xl text-xs font-bold shadow-sm transition-all active:scale-[0.98]"
+                        className="inline-flex items-center justify-center w-full px-4 py-2.5 bg-[#008069] hover:bg-[#006d5b] text-white rounded-xl text-xs font-bold shadow-sm transition-all active:scale-[0.98]"
                       >
                         {canAccessPage(currentUser, '/dashboard/settings') ? (isConnectorPage(pathname) ? 'Go to Connectors' : 'Go to Settings') : 'Go to my profile'}
                       </Link>
@@ -1648,7 +1648,7 @@ export default function DashboardLayout({
               {/* Card Header */}
               <div className="flex items-center justify-between pb-3 border-b border-[#e9edef] dark:border-[#2a3942] cursor-pointer" onClick={() => setIsMinimized(!isMinimized)}>
                 <div className="flex items-center gap-2">
-                  <span className="text-[#1D5BEA]">🚀</span>
+                  <span className="text-[#008069]">🚀</span>
                   <h4 className="text-xs font-bold text-[#111b21] dark:text-white">Configure Your Workspace</h4>
                 </div>
                 <div className="flex items-center gap-2">
@@ -1680,14 +1680,14 @@ export default function DashboardLayout({
                   <div className="bg-white dark:bg-[#111b21] rounded-xl p-3 border border-[#e9edef] dark:border-[#2a3942] space-y-3">
                     <div className="flex items-center justify-between text-[11px] font-bold">
                       <span className="text-[#667781] dark:text-[#8696a0] uppercase tracking-wider text-[10px]">Features & Channels</span>
-                      <span className="text-[#1D5BEA] font-mono text-[10px]">Status</span>
+                      <span className="text-[#008069] font-mono text-[10px]">Status</span>
                     </div>
 
                     {/* SMS / WhatsApp */}
                     <div className="space-y-1">
                       <div className="flex items-center justify-between text-[11px] font-bold">
                         <span className="text-[#111b21] dark:text-white">WhatsApp & SMS Channel</span>
-                        <span className={`text-[10px] font-bold ${credentialsStatus.twilio ? 'text-[#5f86ee]' : 'text-amber-500'}`}>
+                        <span className={`text-[10px] font-bold ${credentialsStatus.twilio ? 'text-[#00a884]' : 'text-amber-500'}`}>
                           {credentialsStatus.twilio ? '✓ Enabled' : '✗ Unconfigured'}
                         </span>
                       </div>
@@ -1700,7 +1700,7 @@ export default function DashboardLayout({
                     <div className="space-y-1">
                       <div className="flex items-center justify-between text-[11px] font-bold">
                         <span className="text-[#111b21] dark:text-white">Email Broadcasting Engine</span>
-                        <span className={`text-[10px] font-bold ${credentialsStatus.sendgrid ? 'text-[#5f86ee]' : 'text-amber-500'}`}>
+                        <span className={`text-[10px] font-bold ${credentialsStatus.sendgrid ? 'text-[#00a884]' : 'text-amber-500'}`}>
                           {credentialsStatus.sendgrid ? '✓ Enabled' : '✗ Unconfigured'}
                         </span>
                       </div>
@@ -1713,7 +1713,7 @@ export default function DashboardLayout({
                     <div className="space-y-1">
                       <div className="flex items-center justify-between text-[11px] font-bold">
                         <span className="text-[#111b21] dark:text-white">AI Copilot & Calling Bot</span>
-                        <span className={`text-[10px] font-bold ${credentialsStatus.openai ? 'text-[#5f86ee]' : 'text-amber-500'}`}>
+                        <span className={`text-[10px] font-bold ${credentialsStatus.openai ? 'text-[#00a884]' : 'text-amber-500'}`}>
                           {credentialsStatus.openai ? '✓ Enabled' : '✗ Unconfigured'}
                         </span>
                       </div>
@@ -1725,7 +1725,7 @@ export default function DashboardLayout({
 
                   <Link
                     href="/dashboard/settings"
-                    className="flex items-center justify-center w-full py-2.5 bg-[#1D5BEA] hover:bg-[#1D5BEA] text-white rounded-xl text-xs font-bold shadow-sm transition-all text-center"
+                    className="flex items-center justify-center w-full py-2.5 bg-[#008069] hover:bg-[#008069] text-white rounded-xl text-xs font-bold shadow-sm transition-all text-center"
                   >
                     Setup Credentials Now
                   </Link>
@@ -1757,7 +1757,7 @@ export default function DashboardLayout({
 
           {/* Realtime Ticket Toast Notification */}
           {ticketToast && (
-            <div className="fixed top-4 right-4 z-[9999] flex items-start gap-3 bg-white dark:bg-[#1f2c34] p-4 rounded-xl border border-[#1D5BEA]/30 dark:border-[#1D5BEA]/20 shadow-2xl animate-in slide-in-from-top-4 duration-300 max-w-sm w-[calc(100%-2rem)] select-none" role="status" aria-live="polite" style={{ borderLeft: '4px solid #1D5BEA' }}>
+            <div className="fixed top-4 right-4 z-[9999] flex items-start gap-3 bg-white dark:bg-[#1f2c34] p-4 rounded-xl border border-[#008069]/30 dark:border-[#008069]/20 shadow-2xl animate-in slide-in-from-top-4 duration-300 max-w-sm w-[calc(100%-2rem)] select-none" role="status" aria-live="polite" style={{ borderLeft: '4px solid #008069' }}>
               <div className="flex-1 min-w-0">
                 <h4 className="text-xs font-bold text-[#111b21] dark:text-white mb-0.5">🎫 New Support Ticket</h4>
                 <p className="text-[11px] font-bold text-slate-800 dark:text-slate-200 truncate">{ticketToast.subject}</p>
@@ -1768,7 +1768,7 @@ export default function DashboardLayout({
                       router.push(`/dashboard?conversationId=${ticketToast.conversationId}`)
                       setTicketToast(null)
                     }}
-                    className="px-2.5 py-1 bg-[#1D5BEA] hover:bg-[#1D5BEA] text-white text-[10px] font-bold rounded-lg shadow-xs hover:shadow-md transition-all cursor-pointer"
+                    className="px-2.5 py-1 bg-[#008069] hover:bg-[#008069] text-white text-[10px] font-bold rounded-lg shadow-xs hover:shadow-md transition-all cursor-pointer"
                   >
                     View Chat
                   </button>

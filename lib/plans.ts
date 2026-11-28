@@ -1,15 +1,19 @@
 /**
  * WAMA CRM plans: what each one costs and what it switches on. Safe for the browser (no server imports).
  *
- * - Starter: WAMA's own WhatsApp number sends booking messages for the business (no inbox), Front Desk only.
- * - Growth and Pro: the business's own WhatsApp number, the inbox, AI replies, campaigns and connectors.
+ * - Starter (₹300): WAMA's own WhatsApp number sends booking and order messages for the business (no inbox).
+ * - Business (₹999): the business's own WhatsApp number, the inbox, AI replies, campaigns, flows, tickets, team.
+ * - Growth (₹1,499): Business + the business's own website (built by us) and Instagram.
+ * - Growth + Content (₹2,499): Growth + 3 short videos and 2 designed posters a month made by our team.
+ * - Pro 1 / 2 / 3: everything, with ads support and video campaigns. Ads on their own: "Contact sales" (not a plan).
+ * (Owner, 28 Nov 2026, from the pricing sheet: ₹999 / ₹1,499 / ₹2,499, Ads contact sales; ₹300 and Pro kept.)
  * Exempt workspaces (the platform's own, Consular Helpdesk) have everything and no limits.
  * Super Admin can change any limit for one workspace (`plan_overrides`) without a deploy.
  */
 
 import type { ConnectorKey } from './connectors'
 
-export type PlanId = 'starter' | 'growth' | 'pro_1' | 'pro_2' | 'pro_3'
+export type PlanId = 'starter' | 'business' | 'growth' | 'content' | 'pro_1' | 'pro_2' | 'pro_3'
 
 export interface PlanLimits {
   /** Inbox, AI replies, tickets, campaigns, templates, flow builder and the public API */
@@ -26,6 +30,12 @@ export interface PlanLimits {
   ads: boolean
   /** Video campaigns made by Magnetora's team each month */
   videos: number
+  /** Designed posters made by Magnetora's team each month */
+  posters: number
+  /** The business's own website (booking site / online store), its AI chat and online payments */
+  website: boolean
+  /** Instagram DMs, comments, auto replies and posting (needs `messaging` too) */
+  instagram: boolean
 }
 
 export interface Plan {
@@ -59,7 +69,8 @@ export const PLANS: Plan[] = [
     tagline: 'Front Desk or E-commerce without connecting WhatsApp: bills, invoices and reports',
     amountPaise: 30_000,
     whatsapp: 'shared',
-    limits: { messaging: false, connectors: 1, connectorKeys: ['salon', 'ecommerce'], team: 3, aiMonthly: 0, ads: false, videos: 0 },
+    // The website stays on Starter (its store orders are confirmed from WAMA's number), as before the new plans
+    limits: { messaging: false, connectors: 1, connectorKeys: ['salon', 'ecommerce'], team: 3, aiMonthly: 0, ads: false, videos: 0, posters: 0, website: true, instagram: false },
     features: [
       'Front Desk or E-commerce: one at a time, switch any time',
       'Bills and GST invoices, shared as a link',
@@ -70,18 +81,58 @@ export const PLANS: Plan[] = [
     ],
   },
   {
+    id: 'business',
+    name: 'Business',
+    tagline: 'Run your whole business from your phone',
+    amountPaise: 99_900,
+    whatsapp: 'own',
+    limits: { messaging: true, connectors: 1, connectorKeys: [], team: 3, aiMonthly: 0, ads: false, videos: 0, posters: 0, website: false, instagram: false },
+    features: [
+      'Mobile app for Android and iPhone, and the web app',
+      'WhatsApp inbox for your whole team (your own number)',
+      'AI chatbot replies 24×7 in English, Telugu and Hindi',
+      'AI learns from your website, PDFs and FAQs',
+      'Campaigns: send offers to all your customers',
+      'Flow builder for automatic replies',
+      'Support tickets, so no customer is missed',
+      'Team management: roles, staff attendance and leave',
+      'Expenses and profit, with a monthly AI sales review',
+      'GST bills and invoices sent on WhatsApp',
+      'Up to 3 team members',
+    ],
+  },
+  {
     id: 'growth',
     name: 'Growth',
-    tagline: 'Your own WhatsApp with AI, campaigns and one connector',
-    amountPaise: 250_000,
+    tagline: 'Get found online and sell more',
+    amountPaise: 149_900,
     whatsapp: 'own',
-    limits: { messaging: true, connectors: 1, connectorKeys: [], team: 5, aiMonthly: 300, ads: true, videos: 0 },
+    limits: { messaging: true, connectors: 1, connectorKeys: [], team: 5, aiMonthly: 0, ads: false, videos: 0, posters: 0, website: true, instagram: true },
     features: [
-      ...MESSAGING_FEATURES,
-      'One connector: Front Desk, E-commerce or Sales Pipeline',
-      '₹300 of AI credit every month',
-      'Ads support from our team (Google and Meta)',
+      'Everything in Business, plus:',
+      'We build your website for you: a booking site for your salon, clinic or gym, or an online store for your shop, boutique or café',
+      'On our free address or your own domain',
+      'AI chat on your website, day and night',
+      'Online payments: UPI and cards',
+      'Instagram DMs and comments in the same inbox',
+      'Automatic replies to Instagram comments, and posting from the app',
       'Up to 5 team members',
+    ],
+  },
+  {
+    id: 'content',
+    name: 'Growth + Content',
+    tagline: 'We make your posts for you',
+    amountPaise: 249_900,
+    whatsapp: 'own',
+    limits: { messaging: true, connectors: 1, connectorKeys: [], team: 5, aiMonthly: 0, ads: false, videos: 3, posters: 2, website: true, instagram: true },
+    features: [
+      'Everything in Growth, plus:',
+      '3 short videos (reels) every month',
+      '2 designed posters every month',
+      'Made by our team, in your brand colours',
+      'Ready for Instagram, Facebook and WhatsApp Status',
+      'Priority support on WhatsApp',
     ],
   },
   {
@@ -90,8 +141,8 @@ export const PLANS: Plan[] = [
     tagline: 'Everything, with ads and 2 video campaigns a month',
     amountPaise: 600_000,
     whatsapp: 'own',
-    limits: { messaging: true, connectors: 1, connectorKeys: [], team: 10, aiMonthly: 500, ads: true, videos: 2 },
-    features: [...MESSAGING_FEATURES, 'Any one connector, switch any time', '₹500 of AI credit every month', 'Ads support from our team', '2 video campaigns a month made by our team', 'Up to 10 team members'],
+    limits: { messaging: true, connectors: 1, connectorKeys: [], team: 10, aiMonthly: 500, ads: true, videos: 2, posters: 0, website: true, instagram: true },
+    features: [...MESSAGING_FEATURES, 'Your website and Instagram', 'Any one connector, switch any time', '₹500 of AI credit every month', 'Ads support from our team', '2 video campaigns a month made by our team', 'Up to 10 team members'],
   },
   {
     id: 'pro_2',
@@ -99,8 +150,8 @@ export const PLANS: Plan[] = [
     tagline: 'Everything, with ads and 4 video campaigns a month',
     amountPaise: 900_000,
     whatsapp: 'own',
-    limits: { messaging: true, connectors: 1, connectorKeys: [], team: 20, aiMonthly: 1000, ads: true, videos: 4 },
-    features: [...MESSAGING_FEATURES, 'Any one connector, switch any time', '₹1,000 of AI credit every month', 'Ads support from our team', '4 video campaigns a month made by our team', 'Up to 20 team members'],
+    limits: { messaging: true, connectors: 1, connectorKeys: [], team: 20, aiMonthly: 1000, ads: true, videos: 4, posters: 0, website: true, instagram: true },
+    features: [...MESSAGING_FEATURES, 'Your website and Instagram', 'Any one connector, switch any time', '₹1,000 of AI credit every month', 'Ads support from our team', '4 video campaigns a month made by our team', 'Up to 20 team members'],
   },
   {
     id: 'pro_3',
@@ -108,10 +159,26 @@ export const PLANS: Plan[] = [
     tagline: 'Everything, with ads and 8 video campaigns a month',
     amountPaise: 1_200_000,
     whatsapp: 'own',
-    limits: { messaging: true, connectors: 1, connectorKeys: [], team: null, aiMonthly: 1500, ads: true, videos: 8 },
-    features: [...MESSAGING_FEATURES, 'Any one connector, switch any time', '₹1,500 of AI credit every month', 'Ads support from our team', '8 video campaigns a month made by our team', 'Unlimited team members'],
+    limits: { messaging: true, connectors: 1, connectorKeys: [], team: null, aiMonthly: 1500, ads: true, videos: 8, posters: 0, website: true, instagram: true },
+    features: [...MESSAGING_FEATURES, 'Your website and Instagram', 'Any one connector, switch any time', '₹1,500 of AI credit every month', 'Ads support from our team', '8 video campaigns a month made by our team', 'Unlimited team members'],
   },
 ]
+
+/** The plan most businesses pick: marked on the pricing and billing pages. */
+export const POPULAR_PLAN: PlanId = 'growth'
+
+/** Ads on their own are priced for each business: the pricing page's last card says "Contact sales". */
+export const ADS_OFFER = {
+  name: 'Ads',
+  tagline: 'We run your ads and bring you leads',
+  features: [
+    'Google and Meta ads (Facebook, Instagram)',
+    'Plan, targeting and ad designs by our team',
+    'Every lead lands in your WhatsApp inbox',
+    'Monthly results report',
+    'Ad budget paid separately to Google / Meta',
+  ],
+} as const
 
 export const DEFAULT_PLAN: PlanId = 'growth'
 
@@ -122,7 +189,7 @@ export const DEFAULT_PLAN: PlanId = 'growth'
  */
 export const MAX_CONNECTORS = 1
 
-export const UNLIMITED: PlanLimits = { messaging: true, connectors: MAX_CONNECTORS, connectorKeys: [], team: null, aiMonthly: 0, ads: false, videos: 0 }
+export const UNLIMITED: PlanLimits = { messaging: true, connectors: MAX_CONNECTORS, connectorKeys: [], team: null, aiMonthly: 0, ads: false, videos: 0, posters: 0, website: true, instagram: true }
 
 export function isPlanId(value: unknown): value is PlanId {
   return PLANS.some((plan) => plan.id === value)
@@ -144,6 +211,8 @@ export function limitsOf(planId: unknown, overrides?: Record<string, unknown> | 
   const o = overrides && typeof overrides === 'object' ? overrides : {}
   if (typeof o.messaging === 'boolean') limits.messaging = o.messaging
   if (typeof o.ads === 'boolean') limits.ads = o.ads
+  if (typeof o.website === 'boolean') limits.website = o.website
+  if (typeof o.instagram === 'boolean') limits.instagram = o.instagram
   const whole = (value: unknown) => (typeof value === 'number' && Number.isFinite(value) && value >= 0 ? Math.floor(value) : null)
   if (whole(o.connectors) !== null) {
     limits.connectors = Math.min(MAX_CONNECTORS, whole(o.connectors)!)
@@ -154,11 +223,12 @@ export function limitsOf(planId: unknown, overrides?: Record<string, unknown> | 
   else if (whole(o.team) !== null) limits.team = whole(o.team)
   if (whole(o.aiMonthly) !== null) limits.aiMonthly = whole(o.aiMonthly)!
   if (whole(o.videos) !== null) limits.videos = whole(o.videos)!
+  if (whole(o.posters) !== null) limits.posters = whole(o.posters)!
   return limits
 }
 
 /** Features a plan may leave out. */
-export type PlanFeature = 'inbox' | 'ai_replies' | 'tickets' | 'campaigns' | 'templates' | 'flows' | 'api'
+export type PlanFeature = 'inbox' | 'ai_replies' | 'tickets' | 'campaigns' | 'templates' | 'flows' | 'api' | 'instagram' | 'website'
 
 export const FEATURE_NAMES: Record<PlanFeature, string> = {
   inbox: 'the WhatsApp inbox',
@@ -168,10 +238,14 @@ export const FEATURE_NAMES: Record<PlanFeature, string> = {
   templates: 'WhatsApp templates',
   flows: 'the flow builder',
   api: 'the developer API',
+  instagram: 'Instagram',
+  website: 'your own website',
 }
 
 export function planAllows(limits: PlanLimits, feature: PlanFeature): boolean {
-  // Every feature that can be left out today comes with your own WhatsApp number
+  // Instagram needs the inbox too; the website stands on its own; everything else comes with your own WhatsApp number
+  if (feature === 'instagram') return limits.messaging && limits.instagram !== false
+  if (feature === 'website') return limits.website !== false
   return feature in FEATURE_NAMES ? limits.messaging : true
 }
 
@@ -180,9 +254,14 @@ export function allowsMap(limits: PlanLimits): Record<PlanFeature, boolean> {
   return Object.fromEntries((Object.keys(FEATURE_NAMES) as PlanFeature[]).map((feature) => [feature, planAllows(limits, feature)])) as Record<PlanFeature, boolean>
 }
 
-/** Words for a refusal: "Your plan does not include campaigns. Upgrade to Growth to use them." */
+/** The smallest plan that has a feature: Instagram and the website come with Growth, the rest with Business. */
+export function planFor(feature: PlanFeature): Plan {
+  return PLANS.find((plan) => plan.id !== 'starter' && planAllows(plan.limits, feature)) || getPlan(DEFAULT_PLAN)
+}
+
+/** Words for a refusal: "Your plan does not include Instagram. Upgrade to Growth or a bigger plan in Billing to use it." */
 export function upgradeMessage(feature: PlanFeature): string {
-  return `Your plan does not include ${FEATURE_NAMES[feature]}. Upgrade to Growth or Pro in Billing to use it.`
+  return `Your plan does not include ${FEATURE_NAMES[feature]}. Upgrade to ${planFor(feature).name} or a bigger plan in Billing to use it.`
 }
 
 /**
@@ -192,7 +271,7 @@ export function upgradeMessage(feature: PlanFeature): string {
 export function connectorBlockReason(limits: PlanLimits, alreadyOn: ConnectorKey[], key: ConnectorKey): string | null {
   if (limits.connectorKeys.length && !limits.connectorKeys.includes(key)) {
     const names: Record<ConnectorKey, string> = { salon: 'Front Desk', ecommerce: 'E-commerce', pipeline: 'Sales Pipeline' }
-    return `Your plan includes ${limits.connectorKeys.map((k) => names[k]).join(' and ')} only. Upgrade to Growth or Pro in Billing to add this connector.`
+    return `Your plan includes ${limits.connectorKeys.map((k) => names[k]).join(' and ')} only. Upgrade to Business or a bigger plan in Billing to add this connector.`
   }
   if (limits.connectors < 1) return 'Your plan has no connectors. Choose a plan in Billing to add one.'
   // One connector at a time: switching this one on switches the other off (connectorSwitch), never a refusal
@@ -225,7 +304,7 @@ export function upgradeDifferencePaise(from: unknown, to: unknown, periodEnd: st
   return Math.round((difference * daysLeft) / periodDays / 100) * 100
 }
 
-/** "₹2,500" */
+/** "₹1,499" */
 export function planPrice(plan: Plan): string {
   return `₹${(plan.amountPaise / 100).toLocaleString('en-IN')}`
 }

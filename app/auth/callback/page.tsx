@@ -7,7 +7,7 @@ import { WamaLogo } from '@/components/brand/wama-logo'
 import { getSupabase } from '@/lib/supabase'
 import { authSessionManager } from '@/lib/auth-context'
 
-const input = 'w-full h-12 px-4 rounded-xl border border-[#d5ddeb] bg-white text-[15px] text-[#0E1B3D] placeholder:text-[#8a94a8] focus:outline-none focus:border-[#1D5BEA] focus:ring-4 focus:ring-[#1D5BEA]/10'
+const input = 'w-full h-12 px-4 rounded-xl border border-[#d5ddeb] bg-white text-[15px] text-[#0E1B3D] placeholder:text-[#8a94a8] focus:outline-none focus:border-[#008069] focus:ring-4 focus:ring-[#008069]/10'
 
 /**
  * Where Google (or Apple) sends people back. Signs them in; the first time, asks for the business name
@@ -94,13 +94,13 @@ export default function OAuthCallback() {
       <div className="w-full max-w-md bg-white rounded-2xl border border-[#e3e8f2] p-6 sm:p-8">
         <WamaLogo />
         {stage === 'working' && (
-          <p className="mt-8 flex items-center gap-2.5 text-[15px] text-[#4a5672]" role="status"><Loader2 size={18} className="animate-spin text-[#1D5BEA]" /> Signing you in…</p>
+          <p className="mt-8 flex items-center gap-2.5 text-[15px] text-[#4a5672]" role="status"><Loader2 size={18} className="animate-spin text-[#008069]" /> Signing you in…</p>
         )}
         {stage === 'error' && (
           <>
             <h1 className="mt-6 text-[20px] font-extrabold text-[#0E1B3D]">That did not work</h1>
             <p className="mt-2 text-[14.5px] text-[#b91c1c]">{error}</p>
-            <a href="/login" className="mt-6 inline-flex h-11 px-5 items-center rounded-xl bg-[#1D5BEA] hover:bg-[#174bc4] text-white text-[15px] font-bold">Back to sign in</a>
+            <a href="/login" className="mt-6 inline-flex h-11 px-5 items-center rounded-xl bg-[#008069] hover:bg-[#006d5b] text-white text-[15px] font-bold">Back to sign in</a>
           </>
         )}
         {stage === 'business' && (
@@ -118,7 +118,7 @@ export default function OAuthCallback() {
               <input value={fullName} onChange={(e) => setFullName(e.target.value)} maxLength={80} autoComplete="name" className={input} />
             </label>
             {error && <p role="alert" className="text-[14px] font-semibold text-[#b91c1c]">{error}</p>}
-            <button type="submit" disabled={saving || companyName.trim().length < 2} className="w-full h-12 rounded-xl bg-[#1D5BEA] hover:bg-[#174bc4] text-white text-[15px] font-bold inline-flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer">
+            <button type="submit" disabled={saving || companyName.trim().length < 2} className="w-full h-12 rounded-xl bg-[#008069] hover:bg-[#006d5b] text-white text-[15px] font-bold inline-flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer">
               {saving && <Loader2 size={18} className="animate-spin" />} Start my free trial
             </button>
             <p className="text-[12.5px] text-[#8a94a8]">By continuing you agree to the <a href="/terms" className="underline">terms</a> and <a href="/privacy" className="underline">privacy policy</a>.</p>

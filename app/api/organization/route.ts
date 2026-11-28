@@ -66,10 +66,10 @@ export async function PATCH(request: NextRequest) {
     if (!plan.ok) {
       return NextResponse.json({ error: plan.error }, { status: plan.status })
     }
-    // Connecting a WhatsApp number by hand (keys typed in Settings) needs Growth or Pro, like Meta's sign-up
+    // Connecting a WhatsApp number by hand (keys typed in Settings) needs Business or bigger, like Meta's sign-up
     if (connectsWhatsApp(plan.values)) {
       const refused = await denyByPlan(auth.user, organizationId, 'inbox')
-      if (refused) return NextResponse.json({ error: 'Connecting your own WhatsApp comes with Growth or Pro. Choose a plan in Billing, then connect it.' }, { status: 402 })
+      if (refused) return NextResponse.json({ error: 'Connecting your own WhatsApp comes with the Business plan or bigger. Choose a plan in Billing, then connect it.' }, { status: 402 })
     }
 
     const { data: organization, error } = await getSupabaseAdminClient()

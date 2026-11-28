@@ -25,7 +25,7 @@ interface RecentOrder {
 }
 
 const STATE_ICON: Record<CheckState, { icon: LucideIcon; tone: string }> = {
-  ok: { icon: CheckCircle2, tone: 'text-[#1D5BEA]' },
+  ok: { icon: CheckCircle2, tone: 'text-[#008069]' },
   warning: { icon: AlertTriangle, tone: 'text-[#b91c1c]' },
   error: { icon: XCircle, tone: 'text-[#b91c1c]' },
   skipped: { icon: MinusCircle, tone: 'text-slate-400' },
@@ -37,12 +37,12 @@ function Bubble({ from, text, buttons }: { from: 'customer' | 'store'; text: str
   const store = from === 'store'
   return (
     <div className={`flex ${store ? 'justify-start' : 'justify-end'}`}>
-      <div className={`max-w-[92%] sm:max-w-[420px] rounded-lg shadow-[0_1px_0.5px_rgba(11,20,26,.13)] text-[13px] leading-[18px] text-[#111b21] dark:text-[#e9edef] overflow-hidden ${store ? 'bg-white dark:bg-[#202c33] rounded-tl-none' : 'bg-[#d9fdd3] dark:bg-[#174bc4] rounded-tr-none'}`}>
+      <div className={`max-w-[92%] sm:max-w-[420px] rounded-lg shadow-[0_1px_0.5px_rgba(11,20,26,.13)] text-[13px] leading-[18px] text-[#111b21] dark:text-[#e9edef] overflow-hidden ${store ? 'bg-white dark:bg-[#202c33] rounded-tl-none' : 'bg-[#d9fdd3] dark:bg-[#006d5b] rounded-tr-none'}`}>
         <p className="px-2.5 py-1.5 whitespace-pre-line">{text}</p>
         {buttons && buttons.length > 0 && (
           <div className="border-t border-black/10 dark:border-white/10 divide-y divide-black/10 dark:divide-white/10">
             {buttons.map((button) => (
-              <div key={button} className="py-1.5 text-center text-[13px] font-medium text-[#1D5BEA] dark:text-[#1D5BEA]">{button}</div>
+              <div key={button} className="py-1.5 text-center text-[13px] font-medium text-[#008069] dark:text-[#008069]">{button}</div>
             ))}
           </div>
         )}
@@ -55,7 +55,7 @@ function FlowStep({ icon: Icon, title, note, off, children, last }: { icon: Luci
   return (
     <li className="relative pl-12">
       {!last && <span className="absolute left-[19px] top-10 bottom-0 w-px bg-slate-200 dark:bg-slate-700" aria-hidden />}
-      <span className={`absolute left-0 top-0 h-10 w-10 rounded-xl flex items-center justify-center ${off ? 'bg-slate-100 text-slate-400 dark:bg-slate-800' : 'bg-[#eef3fe] text-[#1D5BEA] dark:bg-[#0E1B3D]/50 dark:text-[#5f86ee]'}`}>
+      <span className={`absolute left-0 top-0 h-10 w-10 rounded-xl flex items-center justify-center ${off ? 'bg-slate-100 text-slate-400 dark:bg-slate-800' : 'bg-[#e7f5f0] text-[#008069] dark:bg-[#0E1B3D]/50 dark:text-[#00a884]'}`}>
         <Icon size={18} />
       </span>
       <div className="pb-6">
@@ -199,7 +199,7 @@ export function OrderFlowTab({
       <section className={`${cardClass} p-4 sm:p-5`}>
         <div className="flex items-start justify-between gap-3 mb-4">
           <div className="flex items-start gap-3">
-            <span className={`h-11 w-11 shrink-0 rounded-2xl flex items-center justify-center ${meta === null ? 'bg-slate-100 text-slate-400 dark:bg-slate-800' : ready ? 'bg-[#dfe8fd] text-[#174bc4] dark:bg-[#0E1B3D]/60 dark:text-[#5f86ee]' : 'bg-[#fdf0f0] text-[#b91c1c] dark:bg-red-950/50 dark:text-red-300'}`}>
+            <span className={`h-11 w-11 shrink-0 rounded-2xl flex items-center justify-center ${meta === null ? 'bg-slate-100 text-slate-400 dark:bg-slate-800' : ready ? 'bg-[#d6efe7] text-[#006d5b] dark:bg-[#0E1B3D]/60 dark:text-[#00a884]' : 'bg-[#fdf0f0] text-[#b91c1c] dark:bg-red-950/50 dark:text-red-300'}`}>
               {meta === null ? <Loader2 size={20} className="animate-spin" /> : ready ? <Rocket size={20} /> : <AlertCircle size={20} />}
             </span>
             <div>
@@ -323,7 +323,7 @@ export function OrderFlowTab({
                         const Icon = entry.sender_type === 'contact' ? ShoppingCart : failed ? XCircle : CheckCircle2
                         return (
                           <li key={index} className="flex items-start gap-2 text-[11.5px] leading-snug">
-                            <Icon size={13} className={`shrink-0 mt-px ${entry.sender_type === 'contact' ? 'text-slate-400' : failed ? 'text-[#b91c1c]' : 'text-[#1D5BEA]'}`} />
+                            <Icon size={13} className={`shrink-0 mt-px ${entry.sender_type === 'contact' ? 'text-slate-400' : failed ? 'text-[#b91c1c]' : 'text-[#008069]'}`} />
                             <span className="min-w-0">
                               <span className={failed ? 'text-[#b91c1c] dark:text-red-300' : 'text-slate-600 dark:text-slate-300'}>{trailText(entry.body)}</span>
                               {failed && entry.error_message && <span className="block text-[#b91c1c] dark:text-red-300">{entry.error_message}</span>}
@@ -343,7 +343,7 @@ export function OrderFlowTab({
               })}
             </ul>
           )}
-          <button type="button" onClick={onOpenOrders} className="mt-4 inline-flex items-center gap-1.5 text-xs font-semibold text-[#1D5BEA] dark:text-[#1D5BEA] hover:underline cursor-pointer">
+          <button type="button" onClick={onOpenOrders} className="mt-4 inline-flex items-center gap-1.5 text-xs font-semibold text-[#008069] dark:text-[#008069] hover:underline cursor-pointer">
             <Clock size={13} /> All orders
           </button>
         </section>

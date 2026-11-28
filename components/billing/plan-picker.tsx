@@ -37,35 +37,37 @@ export function PlanPicker({ plans, currentId, pendingId, canChange, busyId, onC
         </div>
         <p className="text-[13.5px] text-[#6B7894]">Upgrade: pay only the difference for the days left. Downgrade: starts on your next bill date.</p>
       </div>
-      {/* Five across only on very wide screens: with the side menu open they were squeezed and the prices broke */}
-      <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-5 gap-3">
+      {/* Four across only on very wide screens: with the side menu open they were squeezed and the prices broke */}
+      <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4 gap-3">
         {plans.map((plan) => {
           const current = plan.id === currentId
           const pending = plan.id === pendingId
           const label = current ? 'Your plan' : pending ? 'Starts on your bill date' : plan.price > currentPrice ? `Upgrade to ${plan.name}` : `Switch to ${plan.name}`
           return (
-            <div key={plan.id} className={`rounded-xl border p-4 flex flex-col min-w-0 ${current ? 'border-[#1D5BEA] bg-[#f4f7fe] dark:bg-[#0E1B3D]/40' : 'border-[#e3e8f2] dark:border-slate-800'}`}>
+            <div key={plan.id} className={`rounded-xl border p-4 flex flex-col min-w-0 ${current ? 'border-[#008069] bg-[#f0f9f6] dark:bg-[#0E1B3D]/40' : 'border-[#e3e8f2] dark:border-slate-800'}`}>
               <div className="flex items-center justify-between gap-2">
                 <h3 className="text-[16px] font-extrabold text-[#0E1B3D] dark:text-white">{plan.name}</h3>
-                {current && <span className="text-[11.5px] font-bold px-2 py-0.5 rounded-full bg-[#1D5BEA] text-white">Current</span>}
+                {current && <span className="text-[11.5px] font-bold px-2 py-0.5 rounded-full bg-[#008069] text-white">Current</span>}
               </div>
               <p className="mt-1 whitespace-nowrap"><span className="text-[24px] font-extrabold tracking-tight text-[#0E1B3D] dark:text-white tabular-nums">{rupees(plan.price)}</span><span className="text-[13px] font-semibold text-[#6B7894]"> / month</span></p>
               <p className="text-[13px] text-[#4a5672] dark:text-slate-400 mt-1 leading-snug">{plan.tagline}</p>
               {plan.whatsapp === 'shared' && (
                 <p className="mt-2 inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-[#4a5672] dark:text-slate-300">
-                  <MessageCircle size={14} className="shrink-0 text-[#1D5BEA]" /> No WhatsApp setup needed
+                  <MessageCircle size={14} className="shrink-0 text-[#008069]" /> No WhatsApp setup needed
                 </p>
               )}
               <ul className="mt-3 space-y-2 flex-1">
-                {plan.features.map((feature) => (
+                {plan.features.map((feature) => feature.endsWith(':') ? (
+                  <li key={feature} className="text-[11.5px] font-bold uppercase tracking-wide text-[#8a94a8]">{feature.slice(0, -1)}</li>
+                ) : (
                   <li key={feature} className="flex items-start gap-2 text-[13px] leading-snug text-[#0E1B3D] dark:text-slate-200">
-                    <Check size={15} className="shrink-0 mt-0.5 text-[#1D5BEA]" /> <span className="min-w-0">{feature}</span>
+                    <Check size={15} className="shrink-0 mt-0.5 text-[#008069]" /> <span className="min-w-0">{feature}</span>
                   </li>
                 ))}
               </ul>
               {canChange && (
                 <button type="button" disabled={current || pending || busyId !== null} onClick={() => onChoose(plan)}
-                  className={`mt-4 h-11 sm:h-10 w-full rounded-lg text-[13.5px] font-bold inline-flex items-center justify-center gap-2 transition-colors ${current || pending ? 'bg-[#eef1f6] text-[#6B7894] dark:bg-slate-800 cursor-default' : 'bg-[#1D5BEA] hover:bg-[#174bc4] text-white cursor-pointer disabled:opacity-50'}`}>
+                  className={`mt-4 h-11 sm:h-10 w-full rounded-lg text-[13.5px] font-bold inline-flex items-center justify-center gap-2 transition-colors ${current || pending ? 'bg-[#eef1f6] text-[#6B7894] dark:bg-slate-800 cursor-default' : 'bg-[#008069] hover:bg-[#006d5b] text-white cursor-pointer disabled:opacity-50'}`}>
                   {busyId === plan.id && <Loader2 size={15} className="animate-spin" />} {label}
                 </button>
               )}
@@ -92,7 +94,7 @@ export function MessageWallet({ balance, price, history, options, canPay, busy, 
   return (
     <section aria-labelledby="message-wallet" className={`${card} p-5 sm:p-6`}>
       <div className="flex items-center gap-3">
-        <span className="h-10 w-10 rounded-xl bg-[#eef1f6] dark:bg-slate-800 text-[#1D5BEA] flex items-center justify-center shrink-0"><Wallet size={20} /></span>
+        <span className="h-10 w-10 rounded-xl bg-[#eef1f6] dark:bg-slate-800 text-[#008069] flex items-center justify-center shrink-0"><Wallet size={20} /></span>
         <div className="min-w-0">
           <h2 id="message-wallet" className="text-[18px] font-extrabold text-[#0E1B3D] dark:text-white">Message wallet</h2>
           <p className="text-[13.5px] text-[#4a5672] dark:text-slate-400">WhatsApp messages at Meta&apos;s price, no extra charge</p>
@@ -109,7 +111,7 @@ export function MessageWallet({ balance, price, history, options, canPay, busy, 
         <div className="mt-4 grid grid-cols-2 sm:grid-cols-4 gap-2">
           {options.map((amount) => (
             <button key={amount} type="button" disabled={busy} onClick={() => onTopup(amount)}
-              className="h-11 sm:h-10 rounded-lg border border-[#d5ddeb] dark:border-slate-700 text-[14px] font-bold text-[#0E1B3D] dark:text-slate-100 hover:border-[#1D5BEA] hover:text-[#1D5BEA] transition-colors cursor-pointer disabled:opacity-50">
+              className="h-11 sm:h-10 rounded-lg border border-[#d5ddeb] dark:border-slate-700 text-[14px] font-bold text-[#0E1B3D] dark:text-slate-100 hover:border-[#008069] hover:text-[#008069] transition-colors cursor-pointer disabled:opacity-50">
               + {rupees(amount)}
             </button>
           ))}

@@ -75,7 +75,7 @@ export function PipelineSetup({ orgId, onStagesChange, flash }: { orgId: string;
   }
 
   if (error) return <div className={`${card} p-5 text-[15px] text-[#b91c1c]`}>{error}</div>
-  if (!stages) return <div className="py-16 flex justify-center"><Loader2 className="animate-spin text-[#1D5BEA]" size={28} /></div>
+  if (!stages) return <div className="py-16 flex justify-center"><Loader2 className="animate-spin text-[#008069]" size={28} /></div>
 
   return (
     <div className="grid grid-cols-1 @4xl:grid-cols-[minmax(0,1fr)_320px] gap-4 items-start">
@@ -122,7 +122,7 @@ export function PipelineSetup({ orgId, onStagesChange, flash }: { orgId: string;
         <h3 className="text-[15px] font-bold text-[#0E1B3D] dark:text-white">Good to know</h3>
         <p>Keep it to the steps your team really uses: 4 to 6 works for most businesses.</p>
         <p>Deals from the API and from WhatsApp start in the first stage.</p>
-        <p>Admins can switch the Sales Pipeline off in <a href="/dashboard/connectors" className="font-semibold text-[#1D5BEA]">Connectors</a>. Deals are kept.</p>
+        <p>Admins can switch the Sales Pipeline off in <a href="/dashboard/connectors" className="font-semibold text-[#008069]">Connectors</a>. Deals are kept.</p>
       </aside>
     </div>
   )

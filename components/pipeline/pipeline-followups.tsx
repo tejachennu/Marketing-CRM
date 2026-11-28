@@ -93,7 +93,7 @@ export function PipelineFollowUps({ data, deals, onOpen, onUpdated, flash }: {
             <h3 className={`flex items-center gap-2 text-[14px] font-bold ${group.id === 'overdue' ? 'text-[#b91c1c]' : 'text-[#0E1B3D] dark:text-white'}`}>
               {group.title}
               <span className="h-5 min-w-5 px-1.5 rounded-full bg-white dark:bg-slate-800 border border-[#e3e8f2] dark:border-slate-700 text-[12px] font-bold text-[#4a5672] dark:text-slate-300 inline-flex items-center justify-center">{list.length}</span>
-              {group.id === 'none' && <button type="button" onClick={() => setShowNone((v) => !v)} className="ml-1 text-[13px] font-semibold text-[#1D5BEA] cursor-pointer">{showNone ? 'Hide' : 'Show'}</button>}
+              {group.id === 'none' && <button type="button" onClick={() => setShowNone((v) => !v)} className="ml-1 text-[13px] font-semibold text-[#008069] cursor-pointer">{showNone ? 'Hide' : 'Show'}</button>}
             </h3>
             {!hidden && (
               <ul className={`${card} divide-y divide-[#eef1f6] dark:divide-slate-800`}>
@@ -101,7 +101,7 @@ export function PipelineFollowUps({ data, deals, onOpen, onUpdated, flash }: {
                   <li key={deal.id} className="px-3.5 py-3">
                     <div className="flex flex-col @xl:flex-row @xl:items-center gap-2.5">
                       <button type="button" onClick={() => onOpen(deal.id)} className="min-w-0 flex-1 text-left cursor-pointer group">
-                        <p className="text-[15px] font-bold text-[#0E1B3D] dark:text-white truncate group-hover:text-[#1D5BEA]">{deal.contact?.name || 'No contact'}<span className="font-semibold text-[#6B7894]"> · {deal.title || 'Untitled deal'}</span></p>
+                        <p className="text-[15px] font-bold text-[#0E1B3D] dark:text-white truncate group-hover:text-[#008069]">{deal.contact?.name || 'No contact'}<span className="font-semibold text-[#6B7894]"> · {deal.title || 'Untitled deal'}</span></p>
                         <p className="mt-0.5 flex items-center gap-2 flex-wrap text-[13px] text-[#6B7894]">
                           <FollowUpBadge at={deal.next_follow_up_at} />
                           <span className="truncate min-w-0 max-w-full">{[stages.find((s) => s.id === deal.pipeline_stage_id)?.name, deal.value != null ? money(deal.value, currency, true) : null, me.seeAll ? personName(team, deal.assigned_to) : null].filter(Boolean).join(' · ')}</span>

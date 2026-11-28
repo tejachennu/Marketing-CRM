@@ -38,14 +38,14 @@ export function LoyaltyCard({ orgId, showToast }: { orgId: string; showToast: Sh
   return (
     <section className={`${cardClass} p-4 sm:p-5 space-y-3`} aria-labelledby="loyalty-title">
       <div className="flex items-start gap-3">
-        <Gift size={20} className="text-[#1D5BEA] shrink-0 mt-0.5" />
+        <Gift size={20} className="text-[#008069] shrink-0 mt-0.5" />
         <div>
           <h2 id="loyalty-title" className="text-sm font-bold text-slate-900 dark:text-white">Loyalty points</h2>
           <p className="text-xs text-slate-500 dark:text-slate-400">Customers get points when an order is delivered and use them on the next order (1 point = ₹1). Points go by phone number; to use them, the customer signs in on your store.</p>
         </div>
       </div>
       <label className="flex items-center gap-2 text-sm cursor-pointer">
-        <input type="checkbox" className="h-4 w-4 accent-[#1D5BEA]" checked={settings.on} onChange={(e) => setSettings({ ...settings, on: e.target.checked })} />
+        <input type="checkbox" className="h-4 w-4 accent-[#008069]" checked={settings.on} onChange={(e) => setSettings({ ...settings, on: e.target.checked })} />
         Give loyalty points
       </label>
       {settings.on && (
@@ -66,7 +66,7 @@ export function LoyaltyCard({ orgId, showToast }: { orgId: string; showToast: Sh
         </div>
       )}
       <label className="flex items-start gap-2 text-sm cursor-pointer">
-        <input type="checkbox" className="h-4 w-4 mt-0.5 accent-[#1D5BEA]" checked={settings.members} onChange={(e) => setSettings({ ...settings, members: e.target.checked })} />
+        <input type="checkbox" className="h-4 w-4 mt-0.5 accent-[#008069]" checked={settings.members} onChange={(e) => setSettings({ ...settings, members: e.target.checked })} />
         <span>Front Desk members get their plan&apos;s discount in the shop<span className={`block ${hintClass} mt-0`}>For customers signed in on your store with the phone on their membership card. Used instead of an offer when it saves more.</span></span>
       </label>
       <button type="button" className={primaryButton} disabled={saving} onClick={save}>{saving ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />} Save points</button>

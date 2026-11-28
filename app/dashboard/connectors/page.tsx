@@ -13,8 +13,8 @@ import { useConfirm } from '@/lib/dialog-context'
 const ICONS: Record<ConnectorKey, LucideIcon> = { salon: FrontDeskIcon, ecommerce: ShoppingBag, pipeline: TrendingUp }
 
 const LOOKS: Record<ConnectorKey, { band: string; icon: string; tags: string[]; tick: string }> = {
-  salon: { band: 'bg-[#eef3fe] dark:bg-blue-950/30', icon: 'bg-[#1D5BEA]', tags: ['Bookings', 'Billing', 'Reviews'], tick: 'bg-[#eef3fe] text-[#1D5BEA] dark:bg-blue-950/40 dark:text-blue-300' },
-  ecommerce: { band: 'bg-[#eef3fe] dark:bg-[#0E1B3D]/30', icon: 'bg-[#1D5BEA]', tags: ['Catalog', 'Payments', 'Orders'], tick: 'bg-[#eef3fe] text-[#174bc4] dark:bg-[#0E1B3D]/40 dark:text-[#9db5ef]' },
+  salon: { band: 'bg-[#e7f5f0] dark:bg-emerald-950/30', icon: 'bg-[#008069]', tags: ['Bookings', 'Billing', 'Reviews'], tick: 'bg-[#e7f5f0] text-[#008069] dark:bg-emerald-950/40 dark:text-emerald-300' },
+  ecommerce: { band: 'bg-[#e7f5f0] dark:bg-[#0E1B3D]/30', icon: 'bg-[#008069]', tags: ['Catalog', 'Payments', 'Orders'], tick: 'bg-[#e7f5f0] text-[#006d5b] dark:bg-[#0E1B3D]/40 dark:text-[#8fcfbf]' },
   pipeline: { band: 'bg-[#f4f6fa] dark:bg-slate-800/40', icon: 'bg-[#0E1B3D] dark:bg-slate-700', tags: ['Deals', 'Follow-ups', 'Reports'], tick: 'bg-[#f4f6fa] text-[#0E1B3D] dark:bg-slate-800 dark:text-slate-100' },
 }
 

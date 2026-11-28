@@ -158,10 +158,10 @@ class AppState extends ChangeNotifier {
   bool get needsOnboarding => store.read('onboarding')?['pending'] == true;
 
   /// Picked on the last welcome page: the connector ('salon' or 'ecommerce') and with or without their own WhatsApp
-  /// (Growth, or Starter at ₹300 where WAMA CRM's number sends confirmations). The free trial carries on either way.
+  /// (Business at ₹999, or Starter at ₹300 where WAMA CRM's number sends confirmations). The free trial carries on either way.
   Future<void> finishOnboarding({required String connector, required bool ownWhatsApp}) async {
     try {
-      await ask('/api/billing/change-plan', {'plan': ownWhatsApp ? 'growth' : 'starter'});
+      await ask('/api/billing/change-plan', {'plan': ownWhatsApp ? 'business' : 'starter'});
     } on ApiException catch (_) {
       // No billing on this server (or exempt): the plan stays as it is
     }

@@ -109,7 +109,7 @@ function TeamPerformance({ orgId, flash, range, onRangeChange, onOpenReviews }: 
             {data.toCall.map((f: any) => (
               <li key={f.id} className="px-4 @xl:px-5 py-3.5 flex flex-col @xl:flex-row @xl:items-center gap-2 @xl:gap-4">
                 <div className="min-w-0 flex-1">
-                  <p className="text-[15.5px] font-bold text-[#0E1B3D] dark:text-white">{f.customer_name || 'Customer'} {f.customer_phone && <a href={`tel:${f.customer_phone}`} className="ml-1 text-[14px] font-semibold text-[#1D5BEA] hover:underline">{f.customer_phone}</a>}</p>
+                  <p className="text-[15.5px] font-bold text-[#0E1B3D] dark:text-white">{f.customer_name || 'Customer'} {f.customer_phone && <a href={`tel:${f.customer_phone}`} className="ml-1 text-[14px] font-semibold text-[#008069] hover:underline">{f.customer_phone}</a>}</p>
                   <p className="text-[13.5px] text-[#6B7894] flex items-center gap-2"><Stars rating={f.rating} /> {formatIstDay(istDate(f.created_at), today)}{f.staff_names?.length ? ` · served by ${f.staff_names.join(', ')}` : ''}</p>
                   {(f.tags?.length > 0 || f.comment) && <p className="mt-1 text-[14px] text-[#0E1B3D] dark:text-slate-200">{f.tags?.length > 0 && <span className="font-semibold text-[#4a5672] dark:text-slate-300">{f.tags.join(', ')}{f.comment ? ' · ' : ''}</span>}{f.comment && `“${f.comment}”`}</p>}
                 </div>
@@ -121,8 +121,8 @@ function TeamPerformance({ orgId, flash, range, onRangeChange, onOpenReviews }: 
       )}
 
       <section className={card}>
-        <div className="px-4 @xl:px-5 py-4 border-b border-[#eef1f6] dark:border-slate-800 flex items-center gap-2"><Users size={19} className="text-[#1D5BEA]" /><h2 className="text-[18px] font-extrabold text-[#0E1B3D] dark:text-white">Team performance</h2></div>
-        {loading && !data ? <div className="flex justify-center py-14"><Loader2 className="animate-spin text-[#1D5BEA]" /></div>
+        <div className="px-4 @xl:px-5 py-4 border-b border-[#eef1f6] dark:border-slate-800 flex items-center gap-2"><Users size={19} className="text-[#008069]" /><h2 className="text-[18px] font-extrabold text-[#0E1B3D] dark:text-white">Team performance</h2></div>
+        {loading && !data ? <div className="flex justify-center py-14"><Loader2 className="animate-spin text-[#008069]" /></div>
           : !data?.staff?.length ? <p className="px-5 py-12 text-center text-[15px] text-[#6B7894]">Add your team in Setup, then bill services with who did them. Their numbers show here.</p>
           : (
             <ul className={`divide-y divide-[#eef1f6] dark:divide-slate-800 ${loading ? 'opacity-60' : ''}`}>
@@ -142,7 +142,7 @@ function TeamPerformance({ orgId, flash, range, onRangeChange, onOpenReviews }: 
                       {row.commissionPercent > 0 && <p className="text-[13px] font-bold text-[#4a5672] dark:text-slate-300">Earned {formatRupees(row.commission)}</p>}
                     </div>
                   </div>
-                  <div className="mt-2.5 ml-14 h-2 rounded-full bg-[#eef1f6] dark:bg-slate-800 overflow-hidden" aria-hidden><div className="h-full rounded-full bg-[#1D5BEA]" style={{ width: `${Math.round((row.revenue / best) * 100)}%` }} /></div>
+                  <div className="mt-2.5 ml-14 h-2 rounded-full bg-[#eef1f6] dark:bg-slate-800 overflow-hidden" aria-hidden><div className="h-full rounded-full bg-[#008069]" style={{ width: `${Math.round((row.revenue / best) * 100)}%` }} /></div>
                   {row.topServices.length > 0 && (
                     <div className="mt-2 ml-14 flex flex-wrap gap-1.5">
                       {row.topServices.map((s: any) => <span key={s.name} className="inline-flex items-center h-6 px-2 rounded-md bg-[#f4f6fa] dark:bg-slate-800 text-[12px] font-semibold text-[#4a5672] dark:text-slate-300">{s.name} × {s.count}</span>)}
@@ -157,7 +157,7 @@ function TeamPerformance({ orgId, flash, range, onRangeChange, onOpenReviews }: 
       {data?.recentFeedback?.length > 0 && (
         <section className={card}>
           <div className="px-4 @xl:px-5 py-4 border-b border-[#eef1f6] dark:border-slate-800 flex items-center gap-2"><Star size={19} className="text-[#0E1B3D] dark:text-slate-100" /><h2 className="text-[18px] font-extrabold text-[#0E1B3D] dark:text-white">Latest feedback</h2>
-            {onOpenReviews && <button type="button" onClick={onOpenReviews} className="ml-auto inline-flex items-center gap-1 h-9 px-3 rounded-xl text-[14px] font-semibold text-[#1D5BEA] hover:bg-[#eef3fe] dark:hover:bg-blue-950/40 cursor-pointer">All reviews <ChevronRight size={16} /></button>}
+            {onOpenReviews && <button type="button" onClick={onOpenReviews} className="ml-auto inline-flex items-center gap-1 h-9 px-3 rounded-xl text-[14px] font-semibold text-[#008069] hover:bg-[#e7f5f0] dark:hover:bg-emerald-950/40 cursor-pointer">All reviews <ChevronRight size={16} /></button>}
           </div>
           <ul className="divide-y divide-[#eef1f6] dark:divide-slate-800">
             {data.recentFeedback.map((f: any) => (

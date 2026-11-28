@@ -46,7 +46,7 @@ function credentialsOf(org: any): { credentials?: ReturnType<typeof getMetaCrede
   }
 }
 
-/** The shop's own WhatsApp comes with Growth and Pro; a billing read error never locks anyone out. */
+/** The shop's own WhatsApp comes with Business and up; a billing read error never locks anyone out. */
 async function ownWhatsApp(organizationId: string) {
   return billingRowFor(getSupabaseAdminClient(), organizationId).then((row) => planAllows(billingLimits(row), 'templates')).catch(() => true)
 }

@@ -127,7 +127,7 @@ export function loginCodeEmail(code: string, name: string) {
     html: `<div style='font-family:Arial,sans-serif;max-width:480px;margin:0 auto;color:#0E1B3D'>
   <p style='font-size:15px'>Hi ${safe},</p>
   <p style='font-size:15px'>Enter this code to sign in to <strong>WAMA CRM</strong>:</p>
-  <p style='font-size:32px;font-weight:800;letter-spacing:8px;color:#1D5BEA;font-family:monospace;margin:20px 0'>${code}</p>
+  <p style='font-size:32px;font-weight:800;letter-spacing:8px;color:#008069;font-family:monospace;margin:20px 0'>${code}</p>
   <p style='font-size:13px;color:#6B7894'>It works for ${CODE_MINUTES} minutes. If you did not try to sign in, you can ignore this email.</p>
 </div>`,
   }

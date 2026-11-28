@@ -37,7 +37,7 @@ function ForgotPasswordContent() {
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-[#0b141a] flex flex-col items-center justify-center p-4 relative overflow-hidden font-sans text-slate-900 dark:text-slate-100 transition-colors duration-300">
       {/* Ambient background glows */}
-      <div className="absolute top-[-20%] left-[-10%] w-[50%] h-[50%] bg-[#1D5BEA]/5 dark:bg-[#1D5BEA]/10 rounded-full blur-[120px] pointer-events-none" />
+      <div className="absolute top-[-20%] left-[-10%] w-[50%] h-[50%] bg-[#008069]/5 dark:bg-[#008069]/10 rounded-full blur-[120px] pointer-events-none" />
       <div className="absolute bottom-[-20%] right-[-10%] w-[50%] h-[50%] bg-blue-500/5 dark:bg-blue-500/10 rounded-full blur-[120px] pointer-events-none" />
 
       <div className="w-full max-w-[440px] relative z-10">
@@ -58,7 +58,7 @@ function ForgotPasswordContent() {
 
           {sent ? (
             <div className="text-center py-4 space-y-4 animate-in zoom-in-95 duration-300">
-              <div className="w-16 h-16 bg-[#e7f7f4] dark:bg-[#0E1B3D]/50 text-[#1D5BEA] rounded-full flex items-center justify-center mx-auto mb-4 border border-[#1D5BEA]/10">
+              <div className="w-16 h-16 bg-[#e7f7f4] dark:bg-[#0E1B3D]/50 text-[#008069] rounded-full flex items-center justify-center mx-auto mb-4 border border-[#008069]/10">
                 <MailCheck size={32} />
               </div>
               <h2 className="text-xl font-black text-slate-900 dark:text-white tracking-tight">Check your email</h2>
@@ -89,7 +89,7 @@ function ForgotPasswordContent() {
                       type="email"
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
-                      className="w-full pl-10 pr-4 py-3 bg-white dark:bg-[#1f2c34] border border-slate-200 dark:border-[#2a3942] focus:border-[#1D5BEA] rounded-xl focus:outline-none focus:ring-2 focus:ring-[#1D5BEA]/15 text-xs font-semibold placeholder-slate-400 dark:placeholder-slate-500 text-slate-800 dark:text-white transition-all"
+                      className="w-full pl-10 pr-4 py-3 bg-white dark:bg-[#1f2c34] border border-slate-200 dark:border-[#2a3942] focus:border-[#008069] rounded-xl focus:outline-none focus:ring-2 focus:ring-[#008069]/15 text-xs font-semibold placeholder-slate-400 dark:placeholder-slate-500 text-slate-800 dark:text-white transition-all"
                       placeholder="you@example.com"
                       required
                     />
@@ -105,7 +105,7 @@ function ForgotPasswordContent() {
                 <Button
                   type="submit"
                   disabled={loading}
-                  className="w-full bg-[#1D5BEA] text-white py-3 rounded-xl font-bold transition-all disabled:opacity-50 text-xs flex items-center justify-center gap-1.5 cursor-pointer border-none shadow-sm"
+                  className="w-full bg-[#008069] text-white py-3 rounded-xl font-bold transition-all disabled:opacity-50 text-xs flex items-center justify-center gap-1.5 cursor-pointer border-none shadow-sm"
                 >
                   {loading ? (
                     <>
@@ -129,7 +129,7 @@ export default function ForgotPasswordPage() {
   return (
     <Suspense fallback={
       <div className="min-h-screen bg-slate-50 dark:bg-[#0b141a] flex items-center justify-center">
-        <Loader2 className="animate-spin text-[#1D5BEA]" size={24} />
+        <Loader2 className="animate-spin text-[#008069]" size={24} />
       </div>
     }>
       <ForgotPasswordContent />

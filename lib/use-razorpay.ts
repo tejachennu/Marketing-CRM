@@ -21,7 +21,7 @@ export async function openRazorpay(options: Record<string, any>): Promise<Record
   return new Promise((resolve) => {
     const checkout = new (window as any).Razorpay({
       ...options,
-      theme: { color: '#1D5BEA' },
+      theme: { color: '#008069' },
       handler: (response: Record<string, string>) => resolve(response),
       modal: { ondismiss: () => resolve(null) },
     })

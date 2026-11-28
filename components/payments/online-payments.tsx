@@ -24,11 +24,11 @@ export interface PaymentsState {
 type Toast = (kind: 'success' | 'error', message: string) => void
 
 const box = 'rounded-xl border border-[#e3e8f2] dark:border-slate-700 bg-white dark:bg-slate-900'
-const field = 'w-full h-10 px-3 rounded-lg border border-[#d5ddeb] dark:border-slate-700 bg-white dark:bg-slate-950 text-[14px] text-[#0E1B3D] dark:text-white outline-none focus:border-[#1D5BEA]'
+const field = 'w-full h-10 px-3 rounded-lg border border-[#d5ddeb] dark:border-slate-700 bg-white dark:bg-slate-950 text-[14px] text-[#0E1B3D] dark:text-white outline-none focus:border-[#008069]'
 const label = 'block text-[12.5px] font-semibold text-[#4a5672] dark:text-slate-300 mb-1'
 const hint = 'text-[12.5px] text-[#6B7894] dark:text-slate-400'
-const primary = 'h-10 px-4 rounded-lg bg-[#1D5BEA] hover:bg-[#174bc4] text-white text-[13.5px] font-bold inline-flex items-center gap-1.5 cursor-pointer disabled:opacity-50'
-const secondary = 'h-10 px-3.5 rounded-lg border border-[#d5ddeb] dark:border-slate-700 text-[13.5px] font-semibold text-[#0E1B3D] dark:text-white inline-flex items-center gap-1.5 cursor-pointer hover:border-[#1D5BEA] disabled:opacity-50'
+const primary = 'h-10 px-4 rounded-lg bg-[#008069] hover:bg-[#006d5b] text-white text-[13.5px] font-bold inline-flex items-center gap-1.5 cursor-pointer disabled:opacity-50'
+const secondary = 'h-10 px-3.5 rounded-lg border border-[#d5ddeb] dark:border-slate-700 text-[13.5px] font-semibold text-[#0E1B3D] dark:text-white inline-flex items-center gap-1.5 cursor-pointer hover:border-[#008069] disabled:opacity-50'
 
 async function call(url: string, init?: RequestInit) {
   const res = await fetch(url, { ...init, headers: { 'Content-Type': 'application/json' } })
@@ -90,9 +90,9 @@ export function OnlinePayments({ orgId, canManage, showToast, onChange }: { orgI
   const row = (gateway: Gateway, info: typeof rzp, methods: string, fee: string) => (
     <div className={`${box} p-3.5`}>
       <div className="flex items-center gap-3">
-        <span className={`h-9 w-9 shrink-0 rounded-lg flex items-center justify-center text-[13px] font-extrabold ${info.connected ? 'bg-[#1D5BEA] text-white' : 'bg-[#eef1f6] text-[#4a5672]'}`}>{GATEWAY_NAMES[gateway].slice(0, 1)}</span>
+        <span className={`h-9 w-9 shrink-0 rounded-lg flex items-center justify-center text-[13px] font-extrabold ${info.connected ? 'bg-[#008069] text-white' : 'bg-[#eef1f6] text-[#4a5672]'}`}>{GATEWAY_NAMES[gateway].slice(0, 1)}</span>
         <div className="min-w-0 flex-1">
-          <p className="text-[14px] font-bold text-[#0E1B3D] dark:text-white">{GATEWAY_NAMES[gateway]} {info.connected && <span className="ml-1 text-[12px] font-semibold text-[#1D5BEA]">Connected</span>}</p>
+          <p className="text-[14px] font-bold text-[#0E1B3D] dark:text-white">{GATEWAY_NAMES[gateway]} {info.connected && <span className="ml-1 text-[12px] font-semibold text-[#008069]">Connected</span>}</p>
           <p className={`${hint} truncate`}>{info.connected ? <>{info.account}{!info.live && <span className="text-[#b91c1c] font-semibold"> · test mode, no real money</span>}{!info.webhook && ' · webhook not set'}</> : `${methods} · ${fee}`}</p>
         </div>
         {canManage && (
@@ -156,7 +156,7 @@ export function OnlinePayments({ orgId, canManage, showToast, onChange }: { orgI
             {state.gateways.map((g) => (
               <button key={g} type="button" role="radio" aria-checked={state.use === g} disabled={!canManage || Boolean(busy)}
                 onClick={() => state.use !== g && run('use', () => put({ use: g }), `Customers now pay with ${GATEWAY_NAMES[g]}.`)}
-                className={`h-10 rounded-lg border text-[13.5px] font-bold cursor-pointer ${state.use === g ? 'border-[#1D5BEA] bg-[#1D5BEA] text-white' : 'border-[#d5ddeb] text-[#0E1B3D] dark:text-white hover:border-[#1D5BEA]'}`}>
+                className={`h-10 rounded-lg border text-[13.5px] font-bold cursor-pointer ${state.use === g ? 'border-[#008069] bg-[#008069] text-white' : 'border-[#d5ddeb] text-[#0E1B3D] dark:text-white hover:border-[#008069]'}`}>
                 {GATEWAY_NAMES[g]}
               </button>
             ))}

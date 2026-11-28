@@ -23,10 +23,13 @@ team roles, a Super Admin console, and a public REST API for integrators (`/api/
 - The owner (Teja) writes in **Telugu-English mix** ("Tenglish"). Reply in plain, simple English.
 - **Branch: `v4`.** Develop, commit and push there only. No pull requests unless asked.
 - **Never deploy to production unless the owner says so** (e.g. "Deploy it"). "Push it" means git push only.
-- **Design: simple colours.** Navy `#0E1B3D`, one blue `#1D5BEA` (hover `#174bc4`), greys
-  (`#f4f6fa #eef1f6 #e3e8f2 #d5ddeb #4a5672 #6B7894 #8a94a8`), and red `#b91c1c` / `#fdf0f0` **only** for
-  things needing attention. **No gradients, no rainbow colours.** (Older pages still have emerald/green
-  bits; don't spread them into new work.)
+- **Design: simple colours.** Navy `#0E1B3D` for text, **one green `#008069`** (hover `#006d5b`, soft background
+  `#e7f5f0`, light border `#8fcfbf`, dark-mode green `#00a884` / Tailwind `emerald-*` in `dark:`), the same WhatsApp
+  green as the mobile app (owner, 28 Nov 2026: "change colour to previous green", whole website + dashboard; it was
+  blue `#1D5BEA` from 22 to 28 Nov). Greys (`#f4f6fa #eef1f6 #e3e8f2 #d5ddeb #4a5672 #6B7894 #8a94a8`), and red
+  `#b91c1c` / `#fdf0f0` **only** for things needing attention. **No gradients, no rainbow colours.** Businesses' own
+  pages (store, booking, website, chat widget, feedback, membership card) keep the business's colour; role badges
+  (Admin blue, Manager teal, Agent emerald) and Meta / Facebook / chart colours are left as they are.
 - **100% responsive**: every screen must work from 320px phones to desktop, with no sideways scroll.
   Phones use the bottom bar (see "Connector bottom bar").
 - **Never put secrets in the repo** (it is public): no API keys, tokens, passwords, Razorpay keys.
@@ -117,6 +120,29 @@ Email: `HOSTINGER_SMTP_*`, `SENDGRID_*`. Other: `NEXT_PUBLIC_APP_URL`, `CRON_SEC
   front_desk read/write, leads read/write.
 
 ## What has been built (recent history, newest first)
+
+- **New plans and prices; the website and dashboard green again** (owner, 28 Nov 2026, from the pricing sheet:
+  "Update the pricing page and app with these prices and change colour to previous green"; kept ₹300 and Pro).
+  - `lib/plans.ts`: Starter ₹300 (no own WhatsApp; keeps its website), **Business ₹999** (`business`: own WhatsApp,
+    inbox, AI, campaigns, flows, tickets, team, attendance, expenses, GST bills; 3 people; **no website, no
+    Instagram**), **Growth ₹1,499** (`growth`, the default and "Most popular": + the website we build, own domain, AI
+    chat on the website, online payments, Instagram; 5 people), **Growth + Content ₹2,499** (`content`: + 3 reels and 2
+    posters a month by our team; `limits.videos` 3, `posters` 2), Pro 1 / 2 / 3 unchanged. Ads alone = `ADS_OFFER`
+    ("Contact sales" on WhatsApp, not a plan). New limits `website`, `instagram`, `posters` (Super Admin can override
+    them); new features `instagram` (needs the inbox too) and `website`; `planFor(feature)` names the smallest plan in
+    refusals ("Upgrade to Growth or a bigger plan…"). **No monthly AI credit on Business / Growth / Content** (the ₹300
+    free credit, then top-ups) and Growth no longer promises ads help: owner to confirm.
+  - Server (`lib/plan-gate.ts`): `/api/instagram*` → `instagram`; `/api/salon/website`, `/api/commerce/storefront*`
+    (settings, own domain, online payments) → `website`. Public pages of a site switched on before a downgrade are not
+    switched off. Dashboard: Instagram gets the lock + "Not on your plan" card on Business.
+  - Web: `/pricing` rebuilt (Business · Growth · Growth + Content · Ads cards, then "More plans": Starter, Pro 1–3;
+    mobile + web app chips; new FAQ), home page plans = the three main ones + "See all plans", billing picker 4 across
+    on very wide screens; "Everything in X, plus:" lines show as headings (web and app `plan_cards.dart`).
+  - App: onboarding "With my own WhatsApp" = Business ₹999 (`finishOnboarding` → `business`), demo plans, "Your own
+    WhatsApp comes with the Business plan". Nobody was paying when this changed (all 13 workspaces on trial).
+    `RAZORPAY_PLAN_GROWTH` in Vercel, if set, would still point at ₹2,500: remove or update it.
+  - **Colours**: our blue accent shades → the app's green across `app/` and `components/` (118 files: the blue hex
+    family, plus the `dark:` blue classes on the same lines), see "Design" above.
 
 - **"Takes time" switch on each Front Desk service: off = billing only** (owner, 28 Nov 2026: "Prati service ki time
   vundadu just billing vuntadi time enable disable option evu").

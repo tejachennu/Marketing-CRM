@@ -61,7 +61,7 @@ const USE_CASE_ICONS: Record<string, LucideIcon> = {
 }
 // Simple colours only (pink, amber and violet tiles were here): blue, navy and grey in turn
 const TINTS = [
-  'bg-[#eef3fe] text-[#1D5BEA] dark:bg-[#0E1B3D]/60 dark:text-[#9db5ef]',
+  'bg-[#e7f5f0] text-[#008069] dark:bg-[#0E1B3D]/60 dark:text-[#8fcfbf]',
   'bg-[#eef1f6] text-[#0E1B3D] dark:bg-slate-800 dark:text-slate-200',
 ]
 const AI_USES = ['WhatsApp AI replies', 'Shopping assistant', 'Reply suggestions', 'Lead scoring', 'Writing help']
@@ -134,8 +134,8 @@ function statusView(billing: Billing): StatusView {
 }
 
 const TONES: Record<Tone, { panel: string; icon: string; eyebrow: string; title: string; body: string }> = {
-  brand: { panel: 'bg-[#0E1B3D] border-transparent text-white', icon: 'bg-white/10 text-[#9db5ef]', eyebrow: 'bg-white/10 text-[#9db5ef]', title: 'text-white', body: 'text-white/75' },
-  green: { panel: 'bg-white dark:bg-[#111b21] border-[#eef3fe] dark:border-[#0E1B3D]/60', icon: 'bg-[#eef3fe] text-[#174bc4] dark:bg-[#0E1B3D]/50 dark:text-[#9db5ef]', eyebrow: 'bg-[#eef3fe] text-[#174bc4] dark:bg-[#0E1B3D]/50 dark:text-[#9db5ef]', title: 'text-[#0E1B3D] dark:text-white', body: 'text-[#4a5672] dark:text-slate-400' },
+  brand: { panel: 'bg-[#0E1B3D] border-transparent text-white', icon: 'bg-white/10 text-[#8fcfbf]', eyebrow: 'bg-white/10 text-[#8fcfbf]', title: 'text-white', body: 'text-white/75' },
+  green: { panel: 'bg-white dark:bg-[#111b21] border-[#e7f5f0] dark:border-[#0E1B3D]/60', icon: 'bg-[#e7f5f0] text-[#006d5b] dark:bg-[#0E1B3D]/50 dark:text-[#8fcfbf]', eyebrow: 'bg-[#e7f5f0] text-[#006d5b] dark:bg-[#0E1B3D]/50 dark:text-[#8fcfbf]', title: 'text-[#0E1B3D] dark:text-white', body: 'text-[#4a5672] dark:text-slate-400' },
   // "Plan ends on …": a grey panel with a navy mark (no amber in the palette)
   amber: { panel: 'bg-white dark:bg-[#111b21] border-[#d5ddeb] dark:border-slate-700', icon: 'bg-[#eef1f6] text-[#0E1B3D] dark:bg-slate-800 dark:text-slate-200', eyebrow: 'bg-[#0E1B3D] text-white dark:bg-slate-700 dark:text-white', title: 'text-[#0E1B3D] dark:text-white', body: 'text-[#4a5672] dark:text-slate-400' },
   red: { panel: 'bg-[#fff8f8] dark:bg-red-950/20 border-[#f5cccc] dark:border-red-900/60', icon: 'bg-[#fde4e4] text-[#b91c1c] dark:bg-red-950/50 dark:text-red-300', eyebrow: 'bg-[#fde4e4] text-[#b91c1c] dark:bg-red-950/50 dark:text-red-300', title: 'text-[#0E1B3D] dark:text-white', body: 'text-[#4a5672] dark:text-slate-400' },
@@ -148,7 +148,7 @@ function CreditRing({ percent, paused }: { percent: number; paused: boolean }) {
   const radius = 52
   const circumference = 2 * Math.PI * radius
   // Red only when it needs attention (low or paused)
-  const color = paused || percent <= 20 ? '#b91c1c' : '#1D5BEA'
+  const color = paused || percent <= 20 ? '#b91c1c' : '#008069'
   return (
     <div className="relative h-32 w-32 shrink-0">
       <svg viewBox="0 0 128 128" className="h-full w-full -rotate-90" aria-hidden="true">
@@ -371,7 +371,7 @@ export default function BillingPage() {
   if (!billing) {
     return (
       <div className="h-full flex items-center justify-center bg-[#f6f8fc] dark:bg-[#0b141a]">
-        {error ? <p className="text-[15px] text-[#b91c1c] flex items-center gap-2"><AlertCircle size={17} /> {error}</p> : <Loader2 className="animate-spin text-[#1D5BEA]" size={28} />}
+        {error ? <p className="text-[15px] text-[#b91c1c] flex items-center gap-2"><AlertCircle size={17} /> {error}</p> : <Loader2 className="animate-spin text-[#008069]" size={28} />}
       </div>
     )
   }
@@ -398,7 +398,7 @@ export default function BillingPage() {
           <p className="inline-flex items-center gap-1.5 text-[13.5px] font-medium text-[#6B7894]"><Lock size={14} /> Payments secured by Razorpay</p>
         </div>
 
-        {notice && <div role="status" className="rounded-xl bg-[#eef3fe] dark:bg-[#0E1B3D]/40 text-[#174bc4] dark:text-[#9db5ef] px-4 py-3 text-[14.5px] font-semibold flex items-center gap-2"><CheckCircle2 size={18} className="shrink-0" /> {notice}</div>}
+        {notice && <div role="status" className="rounded-xl bg-[#e7f5f0] dark:bg-[#0E1B3D]/40 text-[#006d5b] dark:text-[#8fcfbf] px-4 py-3 text-[14.5px] font-semibold flex items-center gap-2"><CheckCircle2 size={18} className="shrink-0" /> {notice}</div>}
         {error && <div role="alert" className="rounded-xl bg-[#fdf0f0] dark:bg-red-950/40 text-[#b91c1c] dark:text-red-300 px-4 py-3 text-[14.5px] font-semibold flex items-center gap-2"><AlertCircle size={18} className="shrink-0" /> {error}</div>}
 
         {/* Where the workspace stands, and the one thing to do next */}
@@ -412,7 +412,7 @@ export default function BillingPage() {
                 <p className={`text-[15px] leading-relaxed mt-1.5 max-w-2xl ${tone.body}`}>{view.body}</p>
                 {view.progress !== undefined && (
                   <div className="mt-4 max-w-md">
-                    <div className="h-2 rounded-full bg-white/15 overflow-hidden"><div className="h-full rounded-full bg-[#9db5ef]" style={{ width: `${view.progress}%` }} /></div>
+                    <div className="h-2 rounded-full bg-white/15 overflow-hidden"><div className="h-full rounded-full bg-[#8fcfbf]" style={{ width: `${view.progress}%` }} /></div>
                     <div className="flex justify-between text-[12.5px] text-white/60 mt-1.5"><span>Trial started</span><span>Ends {formatDate(billing.accessUntil)}</span></div>
                   </div>
                 )}
@@ -434,7 +434,7 @@ export default function BillingPage() {
                       onClick={subscribe}
                       disabled={busy !== null || !paymentsOn}
                       className={`w-full md:w-auto inline-flex items-center justify-center gap-2 h-12 px-6 rounded-xl text-[15.5px] font-bold transition-colors cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed ${
-                        view.tone === 'brand' ? 'bg-white text-[#0E1B3D] hover:bg-[#eef3fe]' : view.tone === 'red' ? 'bg-[#b91c1c] text-white hover:bg-[#991b1b]' : 'bg-[#1D5BEA] text-white hover:bg-[#174bc4]'
+                        view.tone === 'brand' ? 'bg-white text-[#0E1B3D] hover:bg-[#e7f5f0]' : view.tone === 'red' ? 'bg-[#b91c1c] text-white hover:bg-[#991b1b]' : 'bg-[#008069] text-white hover:bg-[#006d5b]'
                       }`}
                     >
                       {busy === 'subscribe' ? <Loader2 size={18} className="animate-spin" /> : view.tone === 'amber' ? <RotateCcw size={18} /> : <CreditCard size={18} />}
@@ -482,15 +482,15 @@ export default function BillingPage() {
             <ul className="p-5 sm:p-6 grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3">
               {billing.plan.features.map((feature) => (
                 <li key={feature} className="flex items-start gap-3 text-[15px] leading-snug text-[#0E1B3D] dark:text-slate-200">
-                  <CheckCircle2 size={19} className="shrink-0 mt-px text-[#1D5BEA]" /> {feature}
+                  <CheckCircle2 size={19} className="shrink-0 mt-px text-[#008069]" /> {feature}
                 </li>
               ))}
             </ul>
 
             <div className="border-t border-[#eef1f6] dark:border-slate-800 px-5 sm:px-6 py-3.5 flex flex-wrap gap-x-6 gap-y-2 text-[13.5px] text-[#4a5672] dark:text-slate-400">
-              <span className="inline-flex items-center gap-1.5"><Wallet size={15} className="text-[#1D5BEA]" /> UPI, cards and net banking</span>
-              <span className="inline-flex items-center gap-1.5"><RotateCcw size={15} className="text-[#1D5BEA]" /> Stop any time</span>
-              <span className="inline-flex items-center gap-1.5"><Mail size={15} className="text-[#1D5BEA]" /> Receipt emailed for every payment</span>
+              <span className="inline-flex items-center gap-1.5"><Wallet size={15} className="text-[#008069]" /> UPI, cards and net banking</span>
+              <span className="inline-flex items-center gap-1.5"><RotateCcw size={15} className="text-[#008069]" /> Stop any time</span>
+              <span className="inline-flex items-center gap-1.5"><Mail size={15} className="text-[#008069]" /> Receipt emailed for every payment</span>
             </div>
           </section>
           </div>
@@ -501,9 +501,9 @@ export default function BillingPage() {
           {/* AI credit */}
           <section className={`${card} p-5 sm:p-6`}>
             <div className="flex items-center justify-between gap-3">
-              <h2 className="text-[17px] font-bold text-[#0E1B3D] dark:text-white flex items-center gap-2"><Sparkles size={18} className="text-[#1D5BEA]" /> AI credit</h2>
+              <h2 className="text-[17px] font-bold text-[#0E1B3D] dark:text-white flex items-center gap-2"><Sparkles size={18} className="text-[#008069]" /> AI credit</h2>
               {aiTracked && (
-                <span className={`inline-flex items-center h-6 px-2.5 rounded-full text-[12.5px] font-bold ${billing.aiPaused || percent <= 20 ? 'bg-[#fdf0f0] text-[#b91c1c] dark:bg-red-950/50 dark:text-red-300' : 'bg-[#eef3fe] text-[#174bc4] dark:bg-[#0E1B3D]/50 dark:text-[#9db5ef]'}`}>
+                <span className={`inline-flex items-center h-6 px-2.5 rounded-full text-[12.5px] font-bold ${billing.aiPaused || percent <= 20 ? 'bg-[#fdf0f0] text-[#b91c1c] dark:bg-red-950/50 dark:text-red-300' : 'bg-[#e7f5f0] text-[#006d5b] dark:bg-[#0E1B3D]/50 dark:text-[#8fcfbf]'}`}>
                   {billing.aiPaused ? 'Paused' : percent <= 20 ? 'Running low' : 'Running'}
                 </span>
               )}
@@ -538,7 +538,7 @@ export default function BillingPage() {
                           const selected = amount === option
                           return (
                             <button key={option} type="button" role="radio" aria-checked={selected} onClick={() => setAmount(option)}
-                              className={`h-11 rounded-xl border text-[15px] font-bold transition-colors cursor-pointer ${selected ? 'border-[#1D5BEA] bg-[#eef3fe] text-[#1D5BEA] dark:bg-[#0E1B3D]/60 dark:text-[#9db5ef]' : 'border-[#d5ddeb] dark:border-slate-700 text-[#0E1B3D] dark:text-white hover:border-[#9db5ef]'}`}>
+                              className={`h-11 rounded-xl border text-[15px] font-bold transition-colors cursor-pointer ${selected ? 'border-[#008069] bg-[#e7f5f0] text-[#008069] dark:bg-[#0E1B3D]/60 dark:text-[#8fcfbf]' : 'border-[#d5ddeb] dark:border-slate-700 text-[#0E1B3D] dark:text-white hover:border-[#8fcfbf]'}`}>
                               {option === 'other' ? 'Other' : rupees(option)}
                             </button>
                           )
@@ -549,11 +549,11 @@ export default function BillingPage() {
                           <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[15px] font-semibold text-[#6B7894]">₹</span>
                           <input value={customAmount} onChange={(event) => setCustomAmount(event.target.value.replace(/[^\d]/g, ''))} inputMode="numeric" autoFocus
                             placeholder={`${billing.minTopup} to ${billing.maxTopup.toLocaleString('en-IN')}`} aria-label="Other amount"
-                            className="w-full h-11 pl-8 pr-3 rounded-xl border border-[#d5ddeb] dark:border-slate-700 bg-white dark:bg-[#0b141a] text-[15px] text-[#0E1B3D] dark:text-white focus:outline-none focus:border-[#1D5BEA] focus:ring-2 focus:ring-[#1D5BEA]/15" />
+                            className="w-full h-11 pl-8 pr-3 rounded-xl border border-[#d5ddeb] dark:border-slate-700 bg-white dark:bg-[#0b141a] text-[15px] text-[#0E1B3D] dark:text-white focus:outline-none focus:border-[#008069] focus:ring-2 focus:ring-[#008069]/15" />
                         </label>
                       )}
                       <button type="button" onClick={() => topup(chosen)} disabled={!chosenValid || busy !== null || !paymentsOn}
-                        className="mt-3 w-full inline-flex items-center justify-center gap-2 h-12 rounded-xl bg-[#1D5BEA] hover:bg-[#174bc4] text-white text-[15.5px] font-bold transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed">
+                        className="mt-3 w-full inline-flex items-center justify-center gap-2 h-12 rounded-xl bg-[#008069] hover:bg-[#006d5b] text-white text-[15.5px] font-bold transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed">
                         {busy === 'topup' ? <Loader2 size={18} className="animate-spin" /> : <Sparkles size={18} />}
                         {chosenValid ? `Add ${rupees(chosen)} of AI credit` : `Choose an amount (₹${billing.minTopup}+)`}
                       </button>
@@ -603,7 +603,7 @@ export default function BillingPage() {
             <div className="lg:col-span-7">
             <section className={`${card}`}>
               <div className="px-5 sm:px-6 py-4 border-b border-[#eef1f6] dark:border-slate-800 flex items-center gap-2">
-                <Receipt size={18} className="text-[#1D5BEA]" />
+                <Receipt size={18} className="text-[#008069]" />
                 <h2 className="text-[17px] font-bold text-[#0E1B3D] dark:text-white">Payments</h2>
               </div>
               {billing.payments.length === 0 ? (
@@ -618,7 +618,7 @@ export default function BillingPage() {
                     const isPlan = payment.purpose === 'subscription'
                     return (
                       <li key={`${payment.date}-${index}`} className="px-5 sm:px-6 py-3.5 flex items-center gap-3">
-                        <span className={`h-10 w-10 shrink-0 rounded-xl flex items-center justify-center ${isPlan ? 'bg-[#eef3fe] text-[#1D5BEA] dark:bg-[#0E1B3D]/60 dark:text-[#9db5ef]' : 'bg-[#eef3fe] text-[#174bc4] dark:bg-[#0E1B3D]/40 dark:text-[#9db5ef]'}`}>
+                        <span className={`h-10 w-10 shrink-0 rounded-xl flex items-center justify-center ${isPlan ? 'bg-[#e7f5f0] text-[#008069] dark:bg-[#0E1B3D]/60 dark:text-[#8fcfbf]' : 'bg-[#e7f5f0] text-[#006d5b] dark:bg-[#0E1B3D]/40 dark:text-[#8fcfbf]'}`}>
                           {isPlan ? <CreditCard size={18} /> : <Sparkles size={18} />}
                         </span>
                         <span className="flex-1 min-w-0">
@@ -627,7 +627,7 @@ export default function BillingPage() {
                         </span>
                         <span className="text-right shrink-0">
                           <span className="block text-[15px] font-bold text-[#0E1B3D] dark:text-white tabular-nums whitespace-nowrap">{rupees(payment.amount)}</span>
-                          <span className="block text-[12.5px] font-semibold text-[#174bc4] dark:text-[#9db5ef]">Paid</span>
+                          <span className="block text-[12.5px] font-semibold text-[#006d5b] dark:text-[#8fcfbf]">Paid</span>
                         </span>
                       </li>
                     )
@@ -641,7 +641,7 @@ export default function BillingPage() {
           {/* Questions */}
           <section className={`${card}`}>
             <div className="px-5 sm:px-6 py-4 border-b border-[#eef1f6] dark:border-slate-800 flex items-center gap-2">
-              <Bot size={18} className="text-[#1D5BEA]" />
+              <Bot size={18} className="text-[#008069]" />
               <h2 className="text-[17px] font-bold text-[#0E1B3D] dark:text-white">Common questions</h2>
             </div>
             <div className="divide-y divide-[#eef1f6] dark:divide-slate-800">
@@ -657,7 +657,7 @@ export default function BillingPage() {
             </div>
             {SUPPORT_EMAIL && (
               <p className="px-5 sm:px-6 py-3.5 border-t border-[#eef1f6] dark:border-slate-800 text-[13.5px] text-[#6B7894]">
-                Need help with billing? Write to <a href={`mailto:${SUPPORT_EMAIL}`} className="font-semibold text-[#1D5BEA] hover:underline">{SUPPORT_EMAIL}</a>
+                Need help with billing? Write to <a href={`mailto:${SUPPORT_EMAIL}`} className="font-semibold text-[#008069] hover:underline">{SUPPORT_EMAIL}</a>
               </p>
             )}
           </section>

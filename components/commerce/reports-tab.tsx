@@ -35,7 +35,7 @@ function niceTop(peak: number): number {
 /** "▲ 18% vs the 30 days before", inside a number tile. */
 function ChangeLine({ change }: { change: { text: string; down: boolean } | null }) {
   if (!change) return null
-  return <p className={`mt-1 text-[11px] font-semibold leading-snug ${change.down ? 'text-[#b91c1c] dark:text-red-300' : 'text-[#174bc4] dark:text-[#9db5ef]'}`}>{change.text}</p>
+  return <p className={`mt-1 text-[11px] font-semibold leading-snug ${change.down ? 'text-[#b91c1c] dark:text-red-300' : 'text-[#006d5b] dark:text-[#8fcfbf]'}`}>{change.text}</p>
 }
 
 /** Shop reports: visitors, orders, money received, what sells, carts left, best customers; by period and channel. */
@@ -81,7 +81,7 @@ export function ReportsTab({ orgId, currency }: { orgId: string; currency: strin
     setRange({ ...draft })
     setPicking(false)
   }
-  const chip = (active: boolean) => `shrink-0 h-8 max-sm:h-10 px-3 rounded-lg text-xs font-bold cursor-pointer whitespace-nowrap ${active ? 'bg-[#1D5BEA] text-white' : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'}`
+  const chip = (active: boolean) => `shrink-0 h-8 max-sm:h-10 px-3 rounded-lg text-xs font-bold cursor-pointer whitespace-nowrap ${active ? 'bg-[#008069] text-white' : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'}`
   const group = 'inline-flex max-w-full overflow-x-auto p-1 rounded-xl bg-white dark:bg-[#111b21] border border-slate-200 dark:border-slate-800'
   const labelEvery = report ? Math.max(1, Math.ceil(report.daily.length / 7)) : 1
   // The chart's scale: a round top value, its half, and 0 (the bars had no numbers beside them)
@@ -95,7 +95,7 @@ export function ReportsTab({ orgId, currency }: { orgId: string; currency: strin
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2">
-          <BarChart3 size={18} className="text-[#1D5BEA]" />
+          <BarChart3 size={18} className="text-[#008069]" />
           <h2 className="text-base font-bold text-slate-900 dark:text-white">Shop reports</h2>
           {loading && <Loader2 size={14} className="animate-spin text-slate-400" />}
         </div>
@@ -127,7 +127,7 @@ export function ReportsTab({ orgId, currency }: { orgId: string; currency: strin
             To
             <input type="date" value={draft.to} min={draft.from || undefined} max={istToday()} onChange={(e) => setDraft((d) => ({ ...d, to: e.target.value }))} className="mt-1 block h-10 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-[#111b21] px-3 text-sm text-slate-900 dark:text-white" />
           </label>
-          <button type="button" onClick={applyDates} disabled={!draft.from || !draft.to || Boolean(draftProblem)} className="h-10 px-4 rounded-lg bg-[#1D5BEA] hover:bg-[#174bc4] disabled:opacity-50 text-white text-sm font-bold cursor-pointer">Show report</button>
+          <button type="button" onClick={applyDates} disabled={!draft.from || !draft.to || Boolean(draftProblem)} className="h-10 px-4 rounded-lg bg-[#008069] hover:bg-[#006d5b] disabled:opacity-50 text-white text-sm font-bold cursor-pointer">Show report</button>
           {range && <button type="button" onClick={() => { setRange(null); setPicking(false) }} className="h-10 px-3 rounded-lg text-sm font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer">Clear dates</button>}
           {draftProblem && <p role="alert" className="w-full text-xs text-[#b91c1c]">{draftProblem}</p>}
           <p className="w-full text-[11px] text-slate-500">Up to 366 days. Compared with the same number of days just before.</p>
@@ -142,11 +142,11 @@ export function ReportsTab({ orgId, currency }: { orgId: string; currency: strin
             <Metric label="Sales" value={money(report.sales)} note={`${money(report.received ?? 0)} received · ${money(Math.max(0, report.sales - (report.received ?? 0)))} to collect`} icon={IndianRupee} extra={<ChangeLine change={salesChange} />} />
             <Metric label="Orders" value={report.orders.toLocaleString('en-IN')} note={`${report.orders ? `About ${money(Math.round(report.averageOrder))} each` : 'No orders yet'}${report.cancelled ? ` · ${report.cancelled} cancelled` : ''}`} icon={Package} extra={<ChangeLine change={ordersChange} />} />
             {website ? (
-              <Metric label="Store visits" value={report.visits.toLocaleString('en-IN')} note={report.conversion === null ? 'Counted when people open your store page' : `${Math.round(report.conversion)}% of visits ordered`} icon={Eye} tone="text-[#1D5BEA]" />
+              <Metric label="Store visits" value={report.visits.toLocaleString('en-IN')} note={report.conversion === null ? 'Counted when people open your store page' : `${Math.round(report.conversion)}% of visits ordered`} icon={Eye} tone="text-[#008069]" />
             ) : (
-              <Metric label="Received" value={money(report.received ?? 0)} note="Paid orders in this period" icon={IndianRupee} tone="text-[#1D5BEA]" />
+              <Metric label="Received" value={money(report.received ?? 0)} note="Paid orders in this period" icon={IndianRupee} tone="text-[#008069]" />
             )}
-            <Metric label="Customers" value={(report.newCustomers + report.returningCustomers).toLocaleString('en-IN')} note={`${report.newCustomers} new · ${report.returningCustomers} returning${report.repeatCustomers ? ` · ${report.repeatCustomers} ordered again` : ''}`} icon={Users} tone="text-[#1D5BEA]" />
+            <Metric label="Customers" value={(report.newCustomers + report.returningCustomers).toLocaleString('en-IN')} note={`${report.newCustomers} new · ${report.returningCustomers} returning${report.repeatCustomers ? ` · ${report.repeatCustomers} ordered again` : ''}`} icon={Users} tone="text-[#008069]" />
           </div>
 
           <section className={`${cardClass} p-4 sm:p-5`}>
@@ -192,7 +192,7 @@ export function ReportsTab({ orgId, currency }: { orgId: string; currency: strin
                           className="relative flex-1 min-w-0 h-full flex items-end cursor-pointer"
                           title={`${dayLabel(d.day)}: ${money(d.sales)} · ${d.orders} orders${website ? ` · ${d.visits} visits` : ''}`}
                         >
-                          <span className={`block w-full rounded-t ${value(d) ? (pointed === i ? 'bg-[#0E1B3D] dark:bg-[#9db5ef]' : 'bg-[#1D5BEA]') : 'bg-[#e3e8f2] dark:bg-slate-800'}`} style={{ height: `${value(d) ? Math.max(3, (value(d) / axisTop) * 100) : 2}%` }} />
+                          <span className={`block w-full rounded-t ${value(d) ? (pointed === i ? 'bg-[#0E1B3D] dark:bg-[#8fcfbf]' : 'bg-[#008069]') : 'bg-[#e3e8f2] dark:bg-slate-800'}`} style={{ height: `${value(d) ? Math.max(3, (value(d) / axisTop) * 100) : 2}%` }} />
                         </button>
                       ))}
                     </div>
@@ -263,8 +263,8 @@ export function ReportsTab({ orgId, currency }: { orgId: string; currency: strin
                   {report.channels.map((c) => (
                     <li key={c.channel}>
                       <button type="button" onClick={() => setChannel(channel === c.channel ? '' : (c.channel as ReportChannel))} className="w-full text-left cursor-pointer" aria-pressed={channel === c.channel}>
-                        <div className="flex justify-between gap-2"><span className={`min-w-0 truncate font-medium ${channel === c.channel ? 'text-[#1D5BEA]' : ''}`}>{c.label}</span><span className="tabular-nums shrink-0 whitespace-nowrap">{c.orders} · {money(c.sales)}</span></div>
-                        <div className="mt-1 h-2 rounded-full bg-[#eef1f6] dark:bg-slate-800"><div className="h-2 rounded-full bg-[#1D5BEA]" style={{ width: `${channelTotal ? Math.max(2, (c.sales / channelTotal) * 100) : 0}%` }} /></div>
+                        <div className="flex justify-between gap-2"><span className={`min-w-0 truncate font-medium ${channel === c.channel ? 'text-[#008069]' : ''}`}>{c.label}</span><span className="tabular-nums shrink-0 whitespace-nowrap">{c.orders} · {money(c.sales)}</span></div>
+                        <div className="mt-1 h-2 rounded-full bg-[#eef1f6] dark:bg-slate-800"><div className="h-2 rounded-full bg-[#008069]" style={{ width: `${channelTotal ? Math.max(2, (c.sales / channelTotal) * 100) : 0}%` }} /></div>
                       </button>
                     </li>
                   ))}

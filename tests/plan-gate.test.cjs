@@ -10,7 +10,7 @@ const starter = P.limitsOf('starter')
 const growth = P.limitsOf('growth')
 const exempt = B.billingLimits({ billing_exempt: true })
 
-test('Starter (₹999, no own WhatsApp) is refused every own-WhatsApp feature on the server', () => {
+test('Starter (₹300, no own WhatsApp) is refused every own-WhatsApp feature on the server', () => {
   for (const path of ['/api/conversations', '/api/messages/send', '/api/instagram/posts', '/api/tickets', '/api/tickets/to-deal', '/api/whatsapp-templates', '/api/templates', '/api/campaigns/run', '/api/campaigns/senders', '/api/flows/simulate', '/api/knowledge/sources', '/api/ai/agent', '/api/ai/playground-chat', '/api/commerce/catalog', '/api/commerce/meta-detect', '/api/settings/api-keys', '/api/whatsapp/embedded-signup']) {
     assert.ok(G.planRefusal(starter, path), `Starter should be refused ${path}`)
   }
@@ -29,9 +29,24 @@ test('Starter (₹300) has Front Desk and E-commerce, not the Sales Pipeline or 
   assert.match(G.planRefusal(starter, '/api/pipeline/leads'), /Sales Pipeline/)
 })
 
-test('Growth and Pro reach everything; exempt workspaces have no limits', () => {
-  for (const limits of [growth, P.limitsOf('pro_1'), exempt]) {
-    for (const path of ['/api/conversations', '/api/campaigns/run', '/api/ai/agent', '/api/commerce/orders', '/api/pipeline/leads', '/api/salon/act']) {
+test('Business (₹999) has the inbox, AI, campaigns and flows, but not Instagram or its own website (those come with Growth)', () => {
+  const business = P.limitsOf('business')
+  for (const path of ['/api/conversations', '/api/campaigns/run', '/api/ai/agent', '/api/flows/simulate', '/api/tickets', '/api/commerce/catalog', '/api/commerce/orders', '/api/pipeline/leads', '/api/salon/act', '/api/salon/booking-flow/draft']) {
+    assert.equal(G.planRefusal(business, path), null, path)
+  }
+  for (const path of ['/api/instagram', '/api/instagram/posts', '/api/salon/website', '/api/commerce/storefront', '/api/commerce/storefront/payments', '/api/commerce/storefront/domain']) {
+    assert.match(G.planRefusal(business, path), /Upgrade to Growth or a bigger plan/, path)
+  }
+  // Starter keeps its website (store orders are confirmed from WAMA's number) but has no Instagram
+  assert.equal(G.planRefusal(starter, '/api/salon/website'), null)
+  assert.match(G.planRefusal(starter, '/api/instagram'), /Upgrade to Growth/)
+  // Things that need your own WhatsApp point Starter to Business
+  assert.match(G.planRefusal(starter, '/api/campaigns/run'), /Upgrade to Business or a bigger plan/)
+})
+
+test('Growth, Growth + Content and Pro reach everything; exempt workspaces have no limits', () => {
+  for (const limits of [growth, P.limitsOf('content'), P.limitsOf('pro_1'), exempt]) {
+    for (const path of ['/api/conversations', '/api/campaigns/run', '/api/ai/agent', '/api/commerce/orders', '/api/pipeline/leads', '/api/salon/act', '/api/instagram', '/api/salon/website', '/api/commerce/storefront']) {
       assert.equal(G.planRefusal(limits, path), null, path)
     }
   }

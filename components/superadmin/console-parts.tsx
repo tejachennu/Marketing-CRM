@@ -61,7 +61,7 @@ export type WorkspaceFilter = 'all' | 'paying' | 'trial' | 'attention' | 'ended'
 // ── Shared bits ──────────────────────────────────────────────────────────────
 
 const card = 'bg-white dark:bg-[#111b21] rounded-2xl border border-[#e3e8f2] dark:border-slate-800'
-const field = 'h-10 px-3 rounded-xl border border-[#d5ddeb] dark:border-slate-700 bg-white dark:bg-[#0b141a] text-[14px] text-[#0E1B3D] dark:text-white placeholder:text-[#8a94a8] focus:outline-none focus:border-[#1D5BEA]'
+const field = 'h-10 px-3 rounded-xl border border-[#d5ddeb] dark:border-slate-700 bg-white dark:bg-[#0b141a] text-[14px] text-[#0E1B3D] dark:text-white placeholder:text-[#8a94a8] focus:outline-none focus:border-[#008069]'
 const rupees = (value: number) => `₹${value.toLocaleString('en-IN', { maximumFractionDigits: 2 })}`
 const formatDate = (iso: string | null | undefined) => (iso ? new Date(iso).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '—')
 
@@ -89,7 +89,7 @@ export function planStatus(b: ConsoleBilling): { label: string; tone: 'plain' | 
 
 const TONES = {
   plain: 'bg-[#eef1f6] text-[#0E1B3D] dark:bg-slate-800 dark:text-slate-200',
-  blue: 'bg-[#eef3fe] text-[#1D5BEA] dark:bg-blue-950/40 dark:text-blue-300',
+  blue: 'bg-[#e7f5f0] text-[#008069] dark:bg-emerald-950/40 dark:text-emerald-300',
   red: 'bg-[#fdf0f0] text-[#b91c1c] dark:bg-red-950/40 dark:text-red-300',
 }
 
@@ -127,7 +127,7 @@ function matches(w: ConsoleWorkspace, filter: WorkspaceFilter): boolean {
 
 function Tile({ label, value, hint, alert, onClick }: { label: string; value: string; hint?: string; alert?: boolean; onClick?: () => void }) {
   return (
-    <button type="button" onClick={onClick} className={`${card} px-4 py-4 text-left min-w-0 hover:border-[#1D5BEA] transition-colors cursor-pointer`}>
+    <button type="button" onClick={onClick} className={`${card} px-4 py-4 text-left min-w-0 hover:border-[#008069] transition-colors cursor-pointer`}>
       <span className="block text-[13px] font-semibold text-[#6B7894] truncate">{label}</span>
       <span className={`block text-[26px] font-extrabold leading-tight mt-1 truncate ${alert ? 'text-[#b91c1c]' : 'text-[#0E1B3D] dark:text-white'}`}>{value}</span>
       {hint && <span className="block text-[12.5px] text-[#8a94a8] mt-0.5 truncate">{hint}</span>}
@@ -188,13 +188,13 @@ export function ConsoleOverview({ workspaces, totals, billingReady, onOpen, onSh
 
       <div className="grid lg:grid-cols-2 gap-5">
         <ListCard title="Needs attention" icon={<AlertTriangle size={17} className="text-[#b91c1c]" />} empty={attention.length ? undefined : 'All good. Nothing needs you right now.'}
-          action={attention.length > 6 ? <button type="button" onClick={() => onShow('attention')} className="text-[13.5px] font-semibold text-[#1D5BEA] cursor-pointer">See all {attention.length}</button> : undefined}>
+          action={attention.length > 6 ? <button type="button" onClick={() => onShow('attention')} className="text-[13.5px] font-semibold text-[#008069] cursor-pointer">See all {attention.length}</button> : undefined}>
           <ul className="divide-y divide-[#eef1f6] dark:divide-slate-800">
             {attention.slice(0, 6).map((w) => <Row key={w.id} workspace={w} onOpen={onOpen} sub={<AttentionChips items={w.attention || []} />} />)}
           </ul>
         </ListCard>
 
-        <ListCard title="Plans" icon={<CreditCard size={17} className="text-[#1D5BEA]" />} empty={billingReady ? undefined : 'Billing is not switched on yet.'}>
+        <ListCard title="Plans" icon={<CreditCard size={17} className="text-[#008069]" />} empty={billingReady ? undefined : 'Billing is not switched on yet.'}>
           <ul className="px-4 sm:px-5 py-3 space-y-3">
             {plans.map((plan) => (
               <li key={plan.plan} className="min-w-0">
@@ -205,7 +205,7 @@ export function ConsoleOverview({ workspaces, totals, billingReady, onOpen, onSh
                 <div className="mt-1.5 flex items-center gap-2">
                   <div className="flex-1 h-2 rounded-full bg-[#eef1f6] dark:bg-slate-800 overflow-hidden flex">
                     <div className="h-full bg-[#0E1B3D] dark:bg-white" style={{ width: `${(plan.paying / biggest) * 100}%` }} />
-                    <div className="h-full bg-[#1D5BEA]/45" style={{ width: `${(plan.trial / biggest) * 100}%` }} />
+                    <div className="h-full bg-[#008069]/45" style={{ width: `${(plan.trial / biggest) * 100}%` }} />
                   </div>
                   <span className="w-20 shrink-0 text-right text-[13px] font-semibold text-[#0E1B3D] dark:text-white">{rupees(plan.revenue)}</span>
                 </div>
@@ -217,7 +217,7 @@ export function ConsoleOverview({ workspaces, totals, billingReady, onOpen, onSh
       </div>
 
       <div className="grid lg:grid-cols-2 gap-5">
-        <ListCard title="Trials ending next" icon={<Clock size={17} className="text-[#1D5BEA]" />} empty={trials.length ? undefined : 'Nobody is on a free trial.'}>
+        <ListCard title="Trials ending next" icon={<Clock size={17} className="text-[#008069]" />} empty={trials.length ? undefined : 'Nobody is on a free trial.'}>
           <ul className="divide-y divide-[#eef1f6] dark:divide-slate-800">
             {trials.slice(0, 6).map((w) => (
               <Row key={w.id} workspace={w} onOpen={onOpen} sub={`${w.billing.planName} · last chat: ${lastActive(w.last_active_at).toLowerCase()}`}
@@ -225,7 +225,7 @@ export function ConsoleOverview({ workspaces, totals, billingReady, onOpen, onSh
             ))}
           </ul>
         </ListCard>
-        <ListCard title="Newest workspaces" icon={<Building2 size={17} className="text-[#1D5BEA]" />} empty={workspaces.length ? undefined : 'No workspaces yet.'}>
+        <ListCard title="Newest workspaces" icon={<Building2 size={17} className="text-[#008069]" />} empty={workspaces.length ? undefined : 'No workspaces yet.'}>
           <ul className="divide-y divide-[#eef1f6] dark:divide-slate-800">
             {workspaces.slice(0, 6).map((w) => <Row key={w.id} workspace={w} onOpen={onOpen} sub={`Joined ${formatDate(w.created_at)} · ${w.members} ${w.members === 1 ? 'person' : 'people'}`} right={<StatusPill billing={w.billing} />} />)}
           </ul>
@@ -311,7 +311,7 @@ export function WorkspaceList({ workspaces, filter, onFilter, onOpen }: { worksp
               </select>
             </label>
             <button type="button" onClick={download} disabled={!list.length} title="Save this list as a spreadsheet" aria-label="Save this list as a spreadsheet"
-              className="h-10 w-10 shrink-0 rounded-xl border border-[#d5ddeb] dark:border-slate-700 flex items-center justify-center text-[#0E1B3D] dark:text-white hover:border-[#1D5BEA] hover:text-[#1D5BEA] cursor-pointer disabled:opacity-40"><Download size={16} /></button>
+              className="h-10 w-10 shrink-0 rounded-xl border border-[#d5ddeb] dark:border-slate-700 flex items-center justify-center text-[#0E1B3D] dark:text-white hover:border-[#008069] hover:text-[#008069] cursor-pointer disabled:opacity-40"><Download size={16} /></button>
           </div>
         </div>
       </div>
@@ -407,7 +407,7 @@ export interface SetupStatus {
 function Check({ ok, title, detail }: { ok: boolean | null; title: string; detail: string }) {
   return (
     <li className="flex items-start gap-3 py-3">
-      {ok === null ? <Loader2 size={18} className="shrink-0 mt-0.5 animate-spin text-[#8a94a8]" /> : ok ? <CheckCircle2 size={18} className="shrink-0 mt-0.5 text-[#1D5BEA]" /> : <CircleAlert size={18} className="shrink-0 mt-0.5 text-[#b91c1c]" />}
+      {ok === null ? <Loader2 size={18} className="shrink-0 mt-0.5 animate-spin text-[#8a94a8]" /> : ok ? <CheckCircle2 size={18} className="shrink-0 mt-0.5 text-[#008069]" /> : <CircleAlert size={18} className="shrink-0 mt-0.5 text-[#b91c1c]" />}
       <span className="min-w-0">
         <span className="block text-[14.5px] font-semibold text-[#0E1B3D] dark:text-white">{title}</span>
         <span className={`block text-[13.5px] ${ok === false ? 'text-[#b91c1c]' : 'text-[#4a5672] dark:text-slate-400'}`}>{detail}</span>
@@ -439,10 +439,10 @@ function DatabaseSecurity({ api }: { api: (path: string, init?: RequestInit) => 
   const open = state?.open || []
   return (
     <section className={`${card} p-4 sm:p-5 ${state && state.connected && !state.safe ? 'border-[#b91c1c]' : ''}`}>
-      <h2 className="text-[16px] font-bold text-[#0E1B3D] dark:text-white flex items-center gap-2"><ShieldCheck size={17} className={state?.safe ? 'text-[#1D5BEA]' : 'text-[#b91c1c]'} /> Database security</h2>
+      <h2 className="text-[16px] font-bold text-[#0E1B3D] dark:text-white flex items-center gap-2"><ShieldCheck size={17} className={state?.safe ? 'text-[#008069]' : 'text-[#b91c1c]'} /> Database security</h2>
       {!state ? <p className="mt-2 text-[13.5px] text-[#6B7894] flex items-center gap-2"><Loader2 size={14} className="animate-spin" /> Checking…</p>
         : !state.connected ? <p className="mt-2 text-[13.5px] text-[#4a5672]">{state.message}</p>
-        : state.safe ? <p className="mt-2 text-[13.5px] text-[#4a5672] flex items-center gap-2"><CheckCircle2 size={15} className="text-[#1D5BEA]" /> All {state.total} tables are locked. The public key reads nothing; each person reads only their own business.</p>
+        : state.safe ? <p className="mt-2 text-[13.5px] text-[#4a5672] flex items-center gap-2"><CheckCircle2 size={15} className="text-[#008069]" /> All {state.total} tables are locked. The public key reads nothing; each person reads only their own business.</p>
         : (
           <div className="mt-2 space-y-3">
             <p className="rounded-lg bg-[#fdf0f0] p-3 text-[13.5px] font-semibold text-[#b91c1c]">{open.length} table{open.length === 1 ? ' is' : 's are'} open: anyone with the public key (it is in every browser) could read {open.length === 1 ? 'it' : 'them'}, with every business&apos;s data: {open.slice(0, 12).join(', ')}{open.length > 12 ? ` and ${open.length - 12} more` : ''}.</p>
@@ -487,7 +487,7 @@ export function ConsoleSetup({ api, status, billingReady, canSwitchOnBilling, sw
     <div className="space-y-5">
       <DatabaseSecurity api={api} />
       <section className={`${card} p-4 sm:p-5`}>
-        <h2 className="text-[16px] font-bold text-[#0E1B3D] dark:text-white flex items-center gap-2"><CreditCard size={17} className="text-[#1D5BEA]" /> Payments</h2>
+        <h2 className="text-[16px] font-bold text-[#0E1B3D] dark:text-white flex items-center gap-2"><CreditCard size={17} className="text-[#008069]" /> Payments</h2>
         <ul className="divide-y divide-[#eef1f6] dark:divide-slate-800 mt-1">
           <Check ok={billingReady} title="Billing" detail={billingReady ? 'Switched on: plans, free trials and wallets are running.' : 'Not switched on yet. Clients do not see Billing.'} />
           <Check ok={razorpay ? razorpay.mode === 'live' : null} title="Razorpay keys" detail={!razorpay ? 'Checking…' : razorpay.mode === 'live' ? 'Live keys: real payments.' : razorpay.mode === 'test' ? 'Test keys: no real money is taken. Put the live keys in Vercel.' : 'Not set in Vercel, so nobody can pay.'} />
@@ -495,7 +495,7 @@ export function ConsoleSetup({ api, status, billingReady, canSwitchOnBilling, sw
         </ul>
         <div className="mt-3 flex flex-wrap gap-2">
           {!billingReady && canSwitchOnBilling && (
-            <button type="button" onClick={onSwitchOnBilling} disabled={switchingOn} className="inline-flex items-center gap-2 h-10 px-4 rounded-xl bg-[#1D5BEA] hover:bg-[#174bc4] text-white text-[14px] font-bold cursor-pointer disabled:opacity-50">
+            <button type="button" onClick={onSwitchOnBilling} disabled={switchingOn} className="inline-flex items-center gap-2 h-10 px-4 rounded-xl bg-[#008069] hover:bg-[#006d5b] text-white text-[14px] font-bold cursor-pointer disabled:opacity-50">
               {switchingOn ? <Loader2 size={16} className="animate-spin" /> : <CreditCard size={16} />} Switch on billing
             </button>
           )}
@@ -510,13 +510,13 @@ export function ConsoleSetup({ api, status, billingReady, canSwitchOnBilling, sw
       <SharedNumberPanel api={api} />
 
       <section className={`${card} p-4 sm:p-5`}>
-        <h2 className="text-[16px] font-bold text-[#0E1B3D] dark:text-white flex items-center gap-2"><BellRing size={17} className="text-[#1D5BEA]" /> Pop-up notifications on phones</h2>
+        <h2 className="text-[16px] font-bold text-[#0E1B3D] dark:text-white flex items-center gap-2"><BellRing size={17} className="text-[#008069]" /> Pop-up notifications on phones</h2>
         <ul className="divide-y divide-[#eef1f6] dark:divide-slate-800 mt-1">
           <Check ok={push ? push.app : null} title="App settings" detail={!push ? 'Checking…' : push.app ? 'Set: the app can register phones.' : 'Missing in Vercel: FIREBASE_PROJECT_ID, FIREBASE_ANDROID_APP_ID, FIREBASE_API_KEY, FIREBASE_SENDER_ID.'} />
           <Check ok={push ? push.server : null} title="Sending key" detail={!push ? 'Checking…' : push.server ? 'Set: the server can send notifications.' : 'FIREBASE_SERVICE_ACCOUNT is missing in Vercel, or is not the whole JSON file.'} />
         </ul>
         <div className="mt-3 flex flex-col sm:flex-row sm:items-center gap-3">
-          <button type="button" onClick={testPush} disabled={testing} className="inline-flex items-center justify-center gap-2 h-10 px-4 rounded-xl border border-[#d5ddeb] dark:border-slate-700 text-[#0E1B3D] dark:text-white text-[14px] font-semibold hover:border-[#1D5BEA] hover:text-[#1D5BEA] cursor-pointer disabled:opacity-50 shrink-0">
+          <button type="button" onClick={testPush} disabled={testing} className="inline-flex items-center justify-center gap-2 h-10 px-4 rounded-xl border border-[#d5ddeb] dark:border-slate-700 text-[#0E1B3D] dark:text-white text-[14px] font-semibold hover:border-[#008069] hover:text-[#008069] cursor-pointer disabled:opacity-50 shrink-0">
             {testing ? <Loader2 size={16} className="animate-spin" /> : <BellRing size={16} />} Send a test to my phone
           </button>
           {testResult && <p role="status" className={`text-[13.5px] ${testResult.ok ? 'text-[#0E1B3D] dark:text-white' : 'text-[#b91c1c]'}`}>{testResult.text}</p>}

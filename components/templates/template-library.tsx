@@ -122,7 +122,7 @@ export function TemplateLibrary({ orgId, existingNames, onCreated, onCancel }: {
         ) : (
           <div className="p-3 sm:p-4 grid grid-cols-1 md:grid-cols-2 gap-3">
             {templates.map((template) => (
-              <button key={`${template.name}-${template.language}`} type="button" onClick={() => choose(template)} className={`text-left rounded-xl border p-3 transition-colors cursor-pointer ${selected?.name === template.name && selected.language === template.language ? 'border-[#0064e0] bg-[#f5f9ff] dark:bg-blue-950/20' : 'border-[#dadde1] dark:border-slate-700 hover:bg-[#f7f8fa] dark:hover:bg-slate-800/50'}`}>
+              <button key={`${template.name}-${template.language}`} type="button" onClick={() => choose(template)} className={`text-left rounded-xl border p-3 transition-colors cursor-pointer ${selected?.name === template.name && selected.language === template.language ? 'border-[#0064e0] bg-[#f2faf7] dark:bg-emerald-950/20' : 'border-[#dadde1] dark:border-slate-700 hover:bg-[#f7f8fa] dark:hover:bg-slate-800/50'}`}>
                 <span className="block text-[14px] font-semibold text-[#1c2b33] dark:text-white">{humanize(template.name)}</span>
                 {template.topic && <span className="inline-block mt-1 px-2 py-0.5 rounded-md bg-[#eceef1] dark:bg-slate-800 text-[11.5px] font-semibold text-[#4b4f56] dark:text-slate-300">{humanize(template.topic.toLowerCase())}</span>}
                 <span className="block mt-1.5 text-[12.5px] text-[#65676b] dark:text-slate-400 line-clamp-3">{template.body}</span>
@@ -135,7 +135,7 @@ export function TemplateLibrary({ orgId, existingNames, onCreated, onCancel }: {
       <div className="lg:sticky lg:top-4 space-y-3">
         {!selected || !preview ? (
           <div className="rounded-xl border border-dashed border-[#ced0d4] dark:border-slate-700 p-6 text-center text-[13.5px] text-[#65676b] dark:text-slate-400">
-            <BadgeCheck size={26} className="mx-auto mb-2 text-[#1D5BEA]" />
+            <BadgeCheck size={26} className="mx-auto mb-2 text-[#008069]" />
             Templates from Meta's library are pre-approved: you can send them as soon as they're created. Choose one to preview it.
           </div>
         ) : (

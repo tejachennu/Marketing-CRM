@@ -51,15 +51,15 @@ export function useWorkspace(): { workspace: Workspace | null; error: string } {
 }
 
 export const card = 'bg-white dark:bg-[#111b21] rounded-2xl border border-[#e3e8f2] dark:border-slate-800 shadow-[0_1px_2px_rgba(14,27,61,0.04)]'
-export const input = 'w-full h-11 px-3.5 rounded-xl border border-[#d5ddeb] dark:border-slate-700 bg-white dark:bg-[#0b141a] text-base sm:text-[15px] text-[#0E1B3D] dark:text-white placeholder:text-[#8a94a8] focus:outline-none focus:border-[#1D5BEA] focus:ring-2 focus:ring-[#1D5BEA]/15'
-export const primaryButton = 'inline-flex items-center justify-center gap-2 h-11 px-5 rounded-xl bg-[#1D5BEA] hover:bg-[#174bc4] text-white text-[15px] font-bold transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed'
+export const input = 'w-full h-11 px-3.5 rounded-xl border border-[#d5ddeb] dark:border-slate-700 bg-white dark:bg-[#0b141a] text-base sm:text-[15px] text-[#0E1B3D] dark:text-white placeholder:text-[#8a94a8] focus:outline-none focus:border-[#008069] focus:ring-2 focus:ring-[#008069]/15'
+export const primaryButton = 'inline-flex items-center justify-center gap-2 h-11 px-5 rounded-xl bg-[#008069] hover:bg-[#006d5b] text-white text-[15px] font-bold transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed'
 export const secondaryButton = 'inline-flex items-center justify-center gap-2 h-11 px-4 rounded-xl border border-[#d5ddeb] dark:border-slate-700 text-[#0E1B3D] dark:text-slate-100 text-[15px] font-semibold hover:bg-[#f4f6fa] dark:hover:bg-slate-800 transition-colors cursor-pointer disabled:opacity-50'
 export const dangerButton = 'inline-flex items-center justify-center gap-2 h-11 px-4 rounded-xl border border-[#f3c7c7] dark:border-red-900 text-[#b91c1c] dark:text-red-300 text-[15px] font-semibold hover:bg-[#fdf0f0] dark:hover:bg-red-950/30 transition-colors cursor-pointer disabled:opacity-50'
 
 export function Chip({ selected, onClick, children, disabled }: { selected?: boolean; onClick?: () => void; children: React.ReactNode; disabled?: boolean }) {
   return (
     <button type="button" onClick={onClick} disabled={disabled} aria-pressed={selected}
-      className={`inline-flex items-center gap-1.5 min-h-10 px-3.5 py-1.5 rounded-xl border text-[14.5px] font-semibold transition-colors cursor-pointer disabled:opacity-50 ${selected ? 'border-[#1D5BEA] bg-[#eef3fe] text-[#1D5BEA] dark:bg-blue-950/40 dark:text-blue-300' : 'border-[#d5ddeb] dark:border-slate-700 text-[#0E1B3D] dark:text-slate-200 hover:border-[#9db5ef]'}`}>
+      className={`inline-flex items-center gap-1.5 min-h-10 px-3.5 py-1.5 rounded-xl border text-[14.5px] font-semibold transition-colors cursor-pointer disabled:opacity-50 ${selected ? 'border-[#008069] bg-[#e7f5f0] text-[#008069] dark:bg-emerald-950/40 dark:text-emerald-300' : 'border-[#d5ddeb] dark:border-slate-700 text-[#0E1B3D] dark:text-slate-200 hover:border-[#8fcfbf]'}`}>
       {children}
     </button>
   )
@@ -87,7 +87,7 @@ export function Modal({ title, subtitle, icon, onClose, children, footer, wide, 
         <div className="sm:hidden mx-auto mt-2.5 h-1.5 w-10 rounded-full bg-[#d5ddeb] dark:bg-slate-700" aria-hidden />
         <div className="flex items-start justify-between gap-3 px-4 sm:px-6 pt-4 sm:pt-6 pb-3">
           <div className="flex items-center gap-3 min-w-0">
-            {icon && <span className="h-11 w-11 shrink-0 rounded-2xl bg-[#eef3fe] dark:bg-blue-950/40 text-[#1D5BEA] dark:text-blue-300 flex items-center justify-center">{icon}</span>}
+            {icon && <span className="h-11 w-11 shrink-0 rounded-2xl bg-[#e7f5f0] dark:bg-emerald-950/40 text-[#008069] dark:text-emerald-300 flex items-center justify-center">{icon}</span>}
             <div className="min-w-0">
               <h2 className="text-[20px] font-extrabold tracking-tight text-[#0E1B3D] dark:text-white truncate">{title}</h2>
               {subtitle && <p className="text-[14px] text-[#6B7894] dark:text-slate-400 truncate">{subtitle}</p>}
@@ -105,7 +105,7 @@ export function Modal({ title, subtitle, icon, onClose, children, footer, wide, 
 export function Toggle({ checked, onChange, label, disabled }: { checked: boolean; onChange: (value: boolean) => void; label: string; disabled?: boolean }) {
   return (
     <button type="button" role="switch" aria-checked={checked} aria-label={label} disabled={disabled} onClick={() => onChange(!checked)}
-      className={`relative inline-flex h-7 w-12 shrink-0 rounded-full transition-colors cursor-pointer disabled:opacity-50 ${checked ? 'bg-[#1D5BEA]' : 'bg-[#d5ddeb] dark:bg-slate-700'}`}>
+      className={`relative inline-flex h-7 w-12 shrink-0 rounded-full transition-colors cursor-pointer disabled:opacity-50 ${checked ? 'bg-[#008069]' : 'bg-[#d5ddeb] dark:bg-slate-700'}`}>
       <span className={`absolute top-1 h-5 w-5 rounded-full bg-white shadow transition-transform ${checked ? 'translate-x-6' : 'translate-x-1'}`} />
     </button>
   )

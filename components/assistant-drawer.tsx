@@ -37,7 +37,7 @@ interface InsightCard {
 const INSIGHT_COLORS: Record<string, { bg: string; border: string; text: string; icon: string }> = {
   urgent: { bg: 'bg-red-50 dark:bg-red-950/30', border: 'border-red-200 dark:border-red-800/40', text: 'text-red-700 dark:text-red-400', icon: 'text-red-500' },
   warning: { bg: 'bg-amber-50 dark:bg-amber-950/30', border: 'border-amber-200 dark:border-amber-800/40', text: 'text-amber-700 dark:text-amber-400', icon: 'text-amber-500' },
-  success: { bg: 'bg-[#eef3fe] dark:bg-[#0E1B3D]/30', border: 'border-[#c5d5fa] dark:border-[#163d9c]/40', text: 'text-[#174bc4] dark:text-[#5f86ee]', icon: 'text-[#1D5BEA]' },
+  success: { bg: 'bg-[#e7f5f0] dark:bg-[#0E1B3D]/30', border: 'border-[#b8e2d6] dark:border-[#00594a]/40', text: 'text-[#006d5b] dark:text-[#00a884]', icon: 'text-[#008069]' },
   info: { bg: 'bg-blue-50 dark:bg-blue-950/30', border: 'border-blue-200 dark:border-blue-800/40', text: 'text-blue-700 dark:text-blue-400', icon: 'text-blue-500' },
 }
 
@@ -233,7 +233,7 @@ export function AssistantDrawer({
     <div className="fixed bottom-4 right-4 z-[60] w-[360px] sm:w-[390px] h-[520px] sm:h-[560px] bg-white dark:bg-[#111b21] border border-[#e9edef] dark:border-[#2a3942] rounded-2xl shadow-2xl flex flex-col overflow-hidden animate-in slide-in-from-bottom-4 fade-in duration-300 font-sans">
       
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 bg-[#1D5BEA] dark:bg-[#174bc4] border-b border-[#1D5BEA]/20 select-none flex-shrink-0">
+      <div className="flex items-center justify-between px-4 py-3 bg-[#008069] dark:bg-[#006d5b] border-b border-[#008069]/20 select-none flex-shrink-0">
         <div className="flex items-center gap-2.5">
           <div className="h-8 w-8 rounded-full bg-white/15 flex items-center justify-center">
             <Bot size={16} className="text-white" />
@@ -275,8 +275,8 @@ export function AssistantDrawer({
         {/* Proactive Insight Cards */}
         {insights.length > 0 && (
           <div className="space-y-1.5">
-            <div className="flex items-center gap-1.5 text-[10px] font-bold text-[#667781] dark:text-[#8696a0] uppercase tracking-wider hover:text-[#1D5BEA] transition-colors w-full cursor-pointer" onClick={() => setShowInsights(!showInsights)}>
-              <Zap size={10} className="text-[#1D5BEA]" />
+            <div className="flex items-center gap-1.5 text-[10px] font-bold text-[#667781] dark:text-[#8696a0] uppercase tracking-wider hover:text-[#008069] transition-colors w-full cursor-pointer" onClick={() => setShowInsights(!showInsights)}>
+              <Zap size={10} className="text-[#008069]" />
               <span>{insights.length} Insight{insights.length > 1 ? 's' : ''}</span>
               {showInsights ? <ChevronUp size={10} /> : <ChevronDown size={10} />}
               <button
@@ -322,7 +322,7 @@ export function AssistantDrawer({
             <div
               className={`max-w-[85%] rounded-lg px-3 py-2 shadow-[0_1px_0.5px_rgba(11,20,26,.13)] ${
                 msg.role === 'user'
-                  ? 'bg-[#d9fdd3] dark:bg-[#174bc4] rounded-tr-none text-[#111b21] dark:text-[#e9edef]'
+                  ? 'bg-[#d9fdd3] dark:bg-[#006d5b] rounded-tr-none text-[#111b21] dark:text-[#e9edef]'
                   : 'bg-white dark:bg-[#202c33] rounded-tl-none text-[#111b21] dark:text-[#e9edef]'
               }`}
             >
@@ -348,7 +348,7 @@ export function AssistantDrawer({
                         rendered = rendered.replace(/^[\s]*[•\-\*]\s/, '')
                         return (
                           <div key={i} className="flex gap-1.5 ml-1 my-0.5">
-                            <span className="text-[#1D5BEA] font-bold flex-shrink-0">•</span>
+                            <span className="text-[#008069] font-bold flex-shrink-0">•</span>
                             <span dangerouslySetInnerHTML={{ __html: rendered }} />
                           </div>
                         )
@@ -359,7 +359,7 @@ export function AssistantDrawer({
                         rendered = rendered.replace(/^\d+\.\s/, '')
                         return (
                           <div key={i} className="flex gap-1.5 ml-1 my-0.5">
-                            <span className="text-[#1D5BEA] font-bold flex-shrink-0 text-[11px]">{isNumbered[1]}.</span>
+                            <span className="text-[#008069] font-bold flex-shrink-0 text-[11px]">{isNumbered[1]}.</span>
                             <span dangerouslySetInnerHTML={{ __html: rendered }} />
                           </div>
                         )
@@ -372,7 +372,7 @@ export function AssistantDrawer({
                   {/* Footer */}
                   <div className="flex items-center justify-end gap-1.5 mt-1 select-none">
                     {msg.toolsUsed && msg.toolsUsed.length > 0 && (
-                      <span className="text-[10px] text-[#1D5BEA] dark:text-[#1D5BEA] font-semibold bg-[#1D5BEA]/10 px-1.5 py-0.5 rounded-full">
+                      <span className="text-[10px] text-[#008069] dark:text-[#008069] font-semibold bg-[#008069]/10 px-1.5 py-0.5 rounded-full">
                         ⚡ {msg.toolsUsed.length} tool{msg.toolsUsed.length > 1 ? 's' : ''} used
                       </span>
                     )}
@@ -396,7 +396,7 @@ export function AssistantDrawer({
               key={i}
               onClick={() => sendMessage(chip)}
               disabled={isTyping}
-              className="px-3 py-1.5 rounded-full text-[11px] font-medium whitespace-nowrap border border-[#1D5BEA]/30 text-[#1D5BEA] dark:text-[#1D5BEA] hover:bg-[#1D5BEA]/10 transition-colors flex-shrink-0 disabled:opacity-50 cursor-pointer"
+              className="px-3 py-1.5 rounded-full text-[11px] font-medium whitespace-nowrap border border-[#008069]/30 text-[#008069] dark:text-[#008069] hover:bg-[#008069]/10 transition-colors flex-shrink-0 disabled:opacity-50 cursor-pointer"
             >
               {chip}
             </button>
@@ -423,7 +423,7 @@ export function AssistantDrawer({
         <button
           onClick={() => sendMessage(input)}
           disabled={!input.trim() || isTyping}
-          className="p-2 bg-[#1D5BEA] hover:bg-[#1D5BEA] disabled:opacity-40 text-white rounded-full transition-colors flex items-center justify-center flex-shrink-0 shadow-sm disabled:cursor-not-allowed cursor-pointer"
+          className="p-2 bg-[#008069] hover:bg-[#008069] disabled:opacity-40 text-white rounded-full transition-colors flex items-center justify-center flex-shrink-0 shadow-sm disabled:cursor-not-allowed cursor-pointer"
         >
           {isTyping ? (
             <Loader2 size={16} className="animate-spin" />

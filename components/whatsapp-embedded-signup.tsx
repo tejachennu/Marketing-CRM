@@ -279,7 +279,7 @@ export function WhatsAppEmbeddedSignup({
   const isLoading = isLaunching || isProcessing
 
   return (
-    <div className="bg-gradient-to-br from-[#00a884]/5 via-transparent to-blue-500/5 dark:from-[#00a884]/10 dark:to-blue-500/10 border border-[#00a884]/30 dark:border-[#00a884]/20 rounded-xl p-4 sm:p-5 mb-4 transition-all">
+    <div className="bg-gradient-to-br from-[#00a884]/5 via-transparent to-blue-500/5 dark:from-[#00a884]/10 dark:to-emerald-500/10 border border-[#00a884]/30 dark:border-[#00a884]/20 rounded-xl p-4 sm:p-5 mb-4 transition-all">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="space-y-1">
           <div className="flex items-center gap-2">

@@ -43,14 +43,14 @@ export function ChipsInput({
 
   return (
     <div
-      className={`mt-1 flex flex-wrap items-center gap-1.5 px-2 py-1.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 focus-within:border-[#1D5BEA] focus-within:ring-2 focus-within:ring-[#1D5BEA]/20 ${
+      className={`mt-1 flex flex-wrap items-center gap-1.5 px-2 py-1.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 focus-within:border-[#008069] focus-within:ring-2 focus-within:ring-[#008069]/20 ${
         disabled ? 'opacity-60' : ''
       }`}
     >
       {values.map((value, index) => (
         <span
           key={`${value}-${index}`}
-          className="inline-flex items-center gap-1 max-w-full pl-2 pr-1 py-0.5 rounded-md bg-[#1D5BEA]/10 text-[#174bc4] dark:text-[#9db5ef] text-xs font-medium"
+          className="inline-flex items-center gap-1 max-w-full pl-2 pr-1 py-0.5 rounded-md bg-[#008069]/10 text-[#006d5b] dark:text-[#8fcfbf] text-xs font-medium"
         >
           <span className="truncate">{value}</span>
           {!disabled && (
@@ -58,7 +58,7 @@ export function ChipsInput({
               type="button"
               aria-label={`Remove ${value}`}
               onClick={() => onChange(values.filter((_, i) => i !== index))}
-              className="p-0.5 rounded hover:bg-[#1D5BEA]/20 cursor-pointer"
+              className="p-0.5 rounded hover:bg-[#008069]/20 cursor-pointer"
             >
               <X className="w-3 h-3" />
             </button>

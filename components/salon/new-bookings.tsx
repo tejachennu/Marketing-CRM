@@ -37,12 +37,12 @@ export function NewBookings({ orgId, bookings, onOpenDay }: { orgId: string; boo
   return (
     <section className={`${card} overflow-hidden`} aria-label="New bookings from customers">
       <div className="flex items-center gap-3 px-4 @xl:px-5 py-3 border-b border-[#eef1f6] dark:border-slate-800">
-        <span className="h-9 w-9 shrink-0 rounded-xl bg-[#eef3fe] dark:bg-blue-950/40 text-[#1D5BEA] flex items-center justify-center"><BellRing size={18} /></span>
+        <span className="h-9 w-9 shrink-0 rounded-xl bg-[#e7f5f0] dark:bg-emerald-950/40 text-[#008069] flex items-center justify-center"><BellRing size={18} /></span>
         <div className="min-w-0 flex-1">
-          <h3 className="text-[15.5px] font-extrabold text-[#0E1B3D] dark:text-white">New bookings from customers <span className="text-[#1D5BEA]">{list.length}</span></h3>
+          <h3 className="text-[15.5px] font-extrabold text-[#0E1B3D] dark:text-white">New bookings from customers <span className="text-[#008069]">{list.length}</span></h3>
           <p className="text-[12.5px] text-[#6B7894] truncate">Made on your website, WhatsApp or app. Tap one to see its day.</p>
         </div>
-        <button type="button" onClick={gotIt} className="shrink-0 inline-flex items-center gap-1.5 h-9 px-3 rounded-lg text-[13.5px] font-semibold text-[#1D5BEA] hover:bg-[#eef3fe] dark:hover:bg-blue-950/40 cursor-pointer"><Check size={16} /> Got it</button>
+        <button type="button" onClick={gotIt} className="shrink-0 inline-flex items-center gap-1.5 h-9 px-3 rounded-lg text-[13.5px] font-semibold text-[#008069] hover:bg-[#e7f5f0] dark:hover:bg-emerald-950/40 cursor-pointer"><Check size={16} /> Got it</button>
       </div>
       <ul className="divide-y divide-[#eef1f6] dark:divide-slate-800">
         {list.slice(0, 6).map((b) => {

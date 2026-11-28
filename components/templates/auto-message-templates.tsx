@@ -32,9 +32,9 @@ export interface AutoTemplatesData {
 
 const PATHS: Record<Kind, string> = { desk: '/api/salon/templates', shop: '/api/commerce/shop-messages' }
 const smallButton = 'inline-flex items-center justify-center gap-1.5 h-10 px-3.5 rounded-xl border border-[#d5ddeb] dark:border-slate-700 bg-white dark:bg-[#111b21] text-[14px] font-semibold text-[#0E1B3D] dark:text-white hover:bg-[#f4f6fa] dark:hover:bg-slate-800 cursor-pointer disabled:opacity-50'
-const smallPrimary = 'inline-flex items-center justify-center gap-1.5 h-10 px-3.5 rounded-xl bg-[#1D5BEA] hover:bg-[#174bc4] text-white text-[14px] font-bold cursor-pointer disabled:opacity-50'
-const linkButton = 'text-[13px] font-semibold text-[#1D5BEA] hover:underline cursor-pointer disabled:opacity-50'
-const field = 'w-full rounded-xl border border-[#d5ddeb] dark:border-slate-700 bg-white dark:bg-[#0b141a] text-base sm:text-[14.5px] text-[#0E1B3D] dark:text-white focus:outline-none focus:border-[#1D5BEA] focus:ring-2 focus:ring-[#1D5BEA]/15'
+const smallPrimary = 'inline-flex items-center justify-center gap-1.5 h-10 px-3.5 rounded-xl bg-[#008069] hover:bg-[#006d5b] text-white text-[14px] font-bold cursor-pointer disabled:opacity-50'
+const linkButton = 'text-[13px] font-semibold text-[#008069] hover:underline cursor-pointer disabled:opacity-50'
+const field = 'w-full rounded-xl border border-[#d5ddeb] dark:border-slate-700 bg-white dark:bg-[#0b141a] text-base sm:text-[14.5px] text-[#0E1B3D] dark:text-white focus:outline-none focus:border-[#008069] focus:ring-2 focus:ring-[#008069]/15'
 
 const defFor = (kind: Kind, view: AutoMessageView): AutoMessageDef => ({ ...(kind === 'desk' ? (FRONT_DESK_MESSAGES as Record<string, AutoMessageDef>) : (SHOP_MESSAGE_DEFS as Record<string, AutoMessageDef>))[view.purpose], fields: view.fields })
 
@@ -44,7 +44,7 @@ function StatusChip({ view }: { view: AutoMessageView }) {
   if (!c) return <span className={`${base} bg-[#f4f6fa] dark:bg-slate-800 text-[#6B7894]`}>Not set up</span>
   if (c.state === 'approved') return <span className={`${base} bg-[#0E1B3D] text-white dark:bg-white dark:text-[#0E1B3D]`}><Check size={12} strokeWidth={3} /> Approved</span>
   if (c.state === 'rejected' || c.state === 'missing') return <span className={`${base} bg-[#fdf0f0] text-[#b91c1c] dark:bg-red-950/40 dark:text-red-300`}>{c.label}</span>
-  if (c.state === 'review') return <span className={`${base} bg-[#eef3fe] text-[#1D5BEA] dark:bg-blue-950/40 dark:text-blue-300`}>In review</span>
+  if (c.state === 'review') return <span className={`${base} bg-[#e7f5f0] text-[#008069] dark:bg-emerald-950/40 dark:text-emerald-300`}>In review</span>
   return <span className={`${base} bg-[#f4f6fa] text-[#4a5672] dark:bg-slate-800 dark:text-slate-300`}>{c.label}</span>
 }
 
@@ -64,7 +64,7 @@ function Bubble({ text, fields, buttons }: { text: string; fields: AutoField[]; 
         </p>
         {buttons.length > 0 && (
           <div className="mt-2 -mx-3 border-t border-[#eef1f6] dark:border-slate-700">
-            {buttons.map((b, i) => <p key={i} className="px-3 py-2 text-center text-[14px] font-semibold text-[#1D5BEA] border-b last:border-b-0 border-[#eef1f6] dark:border-slate-700">{b || 'Button'}</p>)}
+            {buttons.map((b, i) => <p key={i} className="px-3 py-2 text-center text-[14px] font-semibold text-[#008069] border-b last:border-b-0 border-[#eef1f6] dark:border-slate-700">{b || 'Button'}</p>)}
           </div>
         )}
       </div>
@@ -174,12 +174,12 @@ export function AutoMessageTemplates({ orgId, kind, flash, heading, intro, onCha
 
       {!data ? (
         error ? <div className="p-4 sm:p-5 space-y-3"><Note tone="red">{error}</Note><button type="button" onClick={() => load()} className={smallButton}>Try again</button></div>
-          : <div className="flex justify-center py-10"><Loader2 className="animate-spin text-[#1D5BEA]" /></div>
+          : <div className="flex justify-center py-10"><Loader2 className="animate-spin text-[#008069]" /></div>
       ) : locked ? (
         <div className="p-4 sm:p-5 space-y-3">
           <p className="flex items-start gap-2.5 text-[14px] text-[#4a5672] dark:text-slate-300 leading-relaxed"><Lock size={17} className="shrink-0 mt-0.5 text-[#6B7894]" /> {kind === 'desk'
             ? 'On your plan these messages go from WAMA\'s WhatsApp number with fixed wording that is already approved, so there is nothing to set up here. Your own wording, sent from your own WhatsApp number, comes with Growth.'
-            : 'These messages go from your own WhatsApp number, which comes with Growth. On your plan, customers get their order confirmation from WAMA\'s WhatsApp number.'}</p>
+            : 'These messages go from your own WhatsApp number, which comes with the Business plan. On your plan, customers get their order confirmation from WAMA\'s WhatsApp number.'}</p>
           <a href="/dashboard/billing" className={smallButton}>See plans</a>
         </div>
       ) : (
@@ -320,7 +320,7 @@ function TemplateEditor({ orgId, kind, view, onClose, onSubmit }: { orgId: strin
           <p className="mt-1 text-[12.5px] text-[#8a94a8]">Words in braces are filled for each customer. Tap one to add it where the cursor is.</p>
           <div className="mt-2 flex flex-wrap gap-1.5">
             {view.fields.map((f) => (
-              <button key={f.key} type="button" onClick={() => insert(f.label)} className="inline-flex items-center h-8 px-2.5 rounded-lg border border-[#d5ddeb] dark:border-slate-700 bg-white dark:bg-slate-900 text-[13px] font-semibold text-[#0E1B3D] dark:text-slate-100 hover:border-[#1D5BEA] hover:text-[#1D5BEA] cursor-pointer">+ {f.label}</button>
+              <button key={f.key} type="button" onClick={() => insert(f.label)} className="inline-flex items-center h-8 px-2.5 rounded-lg border border-[#d5ddeb] dark:border-slate-700 bg-white dark:bg-slate-900 text-[13px] font-semibold text-[#0E1B3D] dark:text-slate-100 hover:border-[#008069] hover:text-[#008069] cursor-pointer">+ {f.label}</button>
             ))}
           </div>
         </div>

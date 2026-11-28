@@ -139,7 +139,7 @@ export function CatalogPicker({ orgId, categories, onClose, onAdded, flash }: {
 
           <div className="rounded-2xl border border-[#e3e8f2] dark:border-slate-800 overflow-hidden">
             <label className="flex items-center gap-3 px-3.5 py-2.5 bg-[#f8fafc] dark:bg-slate-900 border-b border-[#eef1f6] dark:border-slate-800 text-[14px] font-semibold text-[#4a5672] dark:text-slate-300 cursor-pointer">
-              <input type="checkbox" checked={allTicked} disabled={open.length === 0} onChange={toggleAll} className="h-5 w-5 accent-[#1D5BEA] cursor-pointer" aria-label="Tick all shown" />
+              <input type="checkbox" checked={allTicked} disabled={open.length === 0} onChange={toggleAll} className="h-5 w-5 accent-[#008069] cursor-pointer" aria-label="Tick all shown" />
               <span className="flex-1">Tick all shown</span>
               <span className="text-[13px] font-normal text-[#6B7894]">{ticked.length} ticked</span>
             </label>
@@ -150,8 +150,8 @@ export function CatalogPicker({ orgId, categories, onClose, onAdded, flash }: {
                 const on = ticked.includes(item.id)
                 return (
                   <li key={item.id}>
-                    <label className={`flex items-center gap-3 px-3.5 py-2.5 ${added ? 'opacity-70' : 'cursor-pointer hover:bg-[#f8fafc] dark:hover:bg-slate-900/60'} ${on ? 'bg-[#f5f8ff] dark:bg-blue-950/20' : ''}`}>
-                      <input type="checkbox" checked={added || on} disabled={added} onChange={() => toggle(item.id)} className="h-5 w-5 shrink-0 accent-[#1D5BEA] cursor-pointer disabled:cursor-default" aria-label={item.name} />
+                    <label className={`flex items-center gap-3 px-3.5 py-2.5 ${added ? 'opacity-70' : 'cursor-pointer hover:bg-[#f8fafc] dark:hover:bg-slate-900/60'} ${on ? 'bg-[#f2faf7] dark:bg-emerald-950/20' : ''}`}>
+                      <input type="checkbox" checked={added || on} disabled={added} onChange={() => toggle(item.id)} className="h-5 w-5 shrink-0 accent-[#008069] cursor-pointer disabled:cursor-default" aria-label={item.name} />
                       <ItemThumb url={item.image_url} />
                       <span className="min-w-0 flex-1">
                         <span className="block text-[15px] font-semibold text-[#0E1B3D] dark:text-white truncate">{item.name}</span>
@@ -316,7 +316,7 @@ export function ChangeHistory({ orgId }: { orgId: string }) {
             return (
               <li key={entry.id} className="relative flex gap-3 pb-4">
                 {index < entries.length - 1 && <span className="absolute left-[7px] top-5 bottom-0 w-px bg-[#e3e8f2] dark:bg-slate-800" aria-hidden />}
-                <span className="relative mt-1.5 h-[15px] w-[15px] shrink-0 rounded-full border-[3px] border-white dark:border-[#111b21] bg-[#1D5BEA] ring-1 ring-[#d5ddeb] dark:ring-slate-700" aria-hidden />
+                <span className="relative mt-1.5 h-[15px] w-[15px] shrink-0 rounded-full border-[3px] border-white dark:border-[#111b21] bg-[#008069] ring-1 ring-[#d5ddeb] dark:ring-slate-700" aria-hidden />
                 <div className="min-w-0 flex-1">
                   <p className="text-[15px] text-[#0E1B3D] dark:text-white break-words">
                     <strong>{entry.user_name || 'Someone'}</strong> {entry.action} <strong>{entry.target || `${AREA_LABEL[entry.area] || 'the'} settings`}</strong>

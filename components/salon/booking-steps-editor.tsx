@@ -139,8 +139,8 @@ export function StepsEditor({ orgId, steps, onChange, onDraft, business = '', ad
   const customCount = steps.filter((s) => !['services', 'staff', 'datetime'].includes(s.type)).length
   return (
     <div className="space-y-4">
-      <div className="rounded-2xl border border-[#cfdcfb] dark:border-blue-900/60 bg-[#f5f8ff] dark:bg-blue-950/20 p-4">
-        <p className="flex items-center gap-2 text-[15px] font-bold text-[#0E1B3D] dark:text-white"><Sparkles size={17} className="text-[#1D5BEA]" /> Write with AI</p>
+      <div className="rounded-2xl border border-[#c9e9df] dark:border-emerald-900/60 bg-[#f2faf7] dark:bg-emerald-950/20 p-4">
+        <p className="flex items-center gap-2 text-[15px] font-bold text-[#0E1B3D] dark:text-white"><Sparkles size={17} className="text-[#008069]" /> Write with AI</p>
         <p className="text-[13px] text-[#4a5672] dark:text-slate-300 mt-0.5">Say how customers should book, in your own words. The AI drafts the steps; you check and save.</p>
         <textarea className={`${input} h-20 py-2.5 mt-2.5`} value={describe} maxLength={1500} onChange={(e) => setDescribe(e.target.value)}
           placeholder="Ask if it is their first visit, then services, then any allergies (typed), then who, then day and time. Tell them to come 10 minutes early." />
@@ -191,8 +191,8 @@ export function StepsEditor({ orgId, steps, onChange, onDraft, business = '', ad
                       ['list', 'List, one at a time', 'Pick one, then “Add another” for more.'],
                     ] as const).map(([id, title, note]) => (
                       <button key={id} type="button" role="radio" aria-checked={servicesStyle === id} onClick={() => onServicesStyle(id)}
-                        className={`text-left rounded-xl border px-3 py-2.5 cursor-pointer transition-colors ${servicesStyle === id ? 'border-[#1D5BEA] bg-[#f5f8ff] dark:bg-blue-950/20' : 'border-[#d5ddeb] dark:border-slate-700 hover:border-[#9db5ef]'}`}>
-                        <span className="flex items-center gap-1.5 text-[14px] font-bold text-[#0E1B3D] dark:text-white">{servicesStyle === id ? <Check size={15} strokeWidth={3} className="text-[#1D5BEA]" /> : <ListChecks size={15} className="text-[#8a94a8]" />} {title}</span>
+                        className={`text-left rounded-xl border px-3 py-2.5 cursor-pointer transition-colors ${servicesStyle === id ? 'border-[#008069] bg-[#f2faf7] dark:bg-emerald-950/20' : 'border-[#d5ddeb] dark:border-slate-700 hover:border-[#8fcfbf]'}`}>
+                        <span className="flex items-center gap-1.5 text-[14px] font-bold text-[#0E1B3D] dark:text-white">{servicesStyle === id ? <Check size={15} strokeWidth={3} className="text-[#008069]" /> : <ListChecks size={15} className="text-[#8a94a8]" />} {title}</span>
                         <span className="block text-[12.5px] text-[#6B7894] mt-0.5">{note}</span>
                       </button>
                     ))}
@@ -235,7 +235,7 @@ export function StepsEditor({ orgId, steps, onChange, onDraft, business = '', ad
                     placeholder="Google Maps link (open your shop in Maps, Share, Copy link)" aria-label="Google Maps link" />
                   <p className="@xl:col-span-2 text-[12.5px] text-[#6B7894]">
                     {typeof step.latitude === 'number' ? 'Sent as a map pin.' : 'Sent as your address with an "Open map" button. A Google Maps link with the place in it sends a map pin instead.'}
-                    {address && step.address !== address && <button type="button" onClick={() => update(index, { address, name: step.name || business })} className="ml-1.5 font-semibold text-[#1D5BEA] cursor-pointer">Use my business address</button>}
+                    {address && step.address !== address && <button type="button" onClick={() => update(index, { address, name: step.name || business })} className="ml-1.5 font-semibold text-[#008069] cursor-pointer">Use my business address</button>}
                   </p>
                 </div>
               )}

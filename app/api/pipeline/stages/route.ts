@@ -40,7 +40,7 @@ export async function POST(request: NextRequest) {
     if (stages.length >= MAX_STAGES) return NextResponse.json({ error: `A pipeline can have up to ${MAX_STAGES} stages.` }, { status: 400 })
     if (stages.some((s: any) => s.name.toLowerCase() === name.toLowerCase())) return NextResponse.json({ error: 'There is already a stage with this name.', field: 'name' }, { status: 400 })
     const position = Math.max(0, ...stages.map((s: any) => Number(s.position) || 0)) + 1
-    const { error } = await db.from('pipeline_stages').insert({ organization_id: organizationId, name, color: '#1D5BEA', position })
+    const { error } = await db.from('pipeline_stages').insert({ organization_id: organizationId, name, color: '#008069', position })
     if (error) throw new Error(error.message)
     return NextResponse.json({ success: true, stages: await stagesWithCounts(db, organizationId) }, { status: 201 })
   } catch (error) {

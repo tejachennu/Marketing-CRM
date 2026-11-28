@@ -38,7 +38,7 @@ export function MobileMenu() {
             ))}
             <div className="grid grid-cols-2 gap-2 pt-3 pb-1">
               <Link href="/login" className="h-11 inline-flex items-center justify-center rounded-lg border border-[#d5ddeb] font-semibold text-[#0E1B3D]">Log in</Link>
-              <Link href="/signup" className="h-11 inline-flex items-center justify-center rounded-lg bg-[#1D5BEA] font-semibold text-white">Start free</Link>
+              <Link href="/signup" className="h-11 inline-flex items-center justify-center rounded-lg bg-[#008069] font-semibold text-white">Start free</Link>
             </div>
           </nav>
         </div>
@@ -219,10 +219,10 @@ function Bubble({ line }: { line: Line }) {
   const mine = line.from === 'business'
   return (
     <div className={`flex ${mine ? 'justify-end' : 'justify-start'}`}>
-      <div className={`max-w-[85%] rounded-xl px-3 py-2 text-[13.5px] leading-snug shadow-[0_1px_0.5px_rgba(11,20,26,0.13)] ${mine ? 'bg-[#e7f0ff] rounded-tr-sm' : 'bg-white rounded-tl-sm'}`}>
+      <div className={`max-w-[85%] rounded-xl px-3 py-2 text-[13.5px] leading-snug shadow-[0_1px_0.5px_rgba(11,20,26,0.13)] ${mine ? 'bg-[#e3f4ee] rounded-tr-sm' : 'bg-white rounded-tl-sm'}`}>
         <p className="text-[#111b21]">{line.text}</p>
-        {line.card && <p className="mt-1.5 rounded-lg bg-white/80 border border-[#d5ddeb] px-2.5 py-1.5 text-[12.5px] font-semibold text-[#1D5BEA]">{line.card}</p>}
-        {mine && <span className="mt-0.5 flex justify-end text-[#1D5BEA]"><CheckCheck size={14} aria-label="Read" /></span>}
+        {line.card && <p className="mt-1.5 rounded-lg bg-white/80 border border-[#d5ddeb] px-2.5 py-1.5 text-[12.5px] font-semibold text-[#008069]">{line.card}</p>}
+        {mine && <span className="mt-0.5 flex justify-end text-[#008069]"><CheckCheck size={14} aria-label="Read" /></span>}
       </div>
     </div>
   )
@@ -234,10 +234,10 @@ export function PhoneChat({ name, lines }: { name: string; lines: Line[] }) {
     <div className="mx-auto w-full max-w-[340px] rounded-[30px] border-[8px] border-[#0E1B3D] bg-[#0E1B3D] shadow-[0_30px_60px_-30px_rgba(14,27,61,0.55)]">
       <div className="rounded-[22px] overflow-hidden bg-[#f4f6fa]">
         <div className="flex items-center gap-2.5 bg-[#0E1B3D] px-3.5 py-3 text-white">
-          <span className="h-8 w-8 rounded-full bg-[#1D5BEA] inline-flex items-center justify-center text-[13px] font-bold">{name.slice(0, 1)}</span>
+          <span className="h-8 w-8 rounded-full bg-[#008069] inline-flex items-center justify-center text-[13px] font-bold">{name.slice(0, 1)}</span>
           <div className="min-w-0">
             <p className="text-[14px] font-semibold truncate">{name}</p>
-            <p className="text-[11px] text-[#c5d5fa]">Business account · replies in seconds</p>
+            <p className="text-[11px] text-[#b8e2d6]">Business account · replies in seconds</p>
           </div>
         </div>
         <div className="space-y-2 px-3 py-4 min-h-[300px]">
@@ -260,7 +260,7 @@ export function UseCases() {
           const on = u.key === active
           return (
             <button key={u.key} type="button" role="tab" aria-selected={on} onClick={() => setActive(u.key)}
-              className={`shrink-0 inline-flex items-center gap-2 h-10 px-4 rounded-full border text-[14px] font-semibold cursor-pointer transition-colors ${on ? 'bg-[#0E1B3D] border-[#0E1B3D] text-white' : 'bg-white border-[#d5ddeb] text-[#4a5672] hover:border-[#1D5BEA] hover:text-[#1D5BEA]'}`}>
+              className={`shrink-0 inline-flex items-center gap-2 h-10 px-4 rounded-full border text-[14px] font-semibold cursor-pointer transition-colors ${on ? 'bg-[#0E1B3D] border-[#0E1B3D] text-white' : 'bg-white border-[#d5ddeb] text-[#4a5672] hover:border-[#008069] hover:text-[#008069]'}`}>
               <Icon size={16} /> {u.label}
             </button>
           )
@@ -268,20 +268,20 @@ export function UseCases() {
       </div>
       <div role="tabpanel" className="mt-8 grid gap-10 lg:grid-cols-[1.1fr_1fr] items-center">
         <div>
-          <span className="inline-flex items-center gap-1.5 rounded-full bg-[#eef3fe] px-3 py-1 text-[12.5px] font-semibold text-[#1D5BEA]"><Store size={14} /> Uses the {item.connector} connector</span>
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-[#e7f5f0] px-3 py-1 text-[12.5px] font-semibold text-[#008069]"><Store size={14} /> Uses the {item.connector} connector</span>
           <h3 className="mt-3 text-[24px] sm:text-[30px] font-bold leading-tight tracking-tight text-[#0E1B3D]">{item.title}</h3>
           <p className="mt-3 text-[15.5px] leading-relaxed text-[#4a5672]"><strong className="text-[#0E1B3D]">The problem:</strong> {item.problem}</p>
           <ul className="mt-5 space-y-3">
             {item.points.map((p) => (
               <li key={p} className="flex gap-3 text-[15.5px] text-[#0E1B3D]">
-                <span className="mt-0.5 h-5 w-5 shrink-0 rounded-full bg-[#1D5BEA] text-white inline-flex items-center justify-center"><Check size={13} strokeWidth={3} /></span>
+                <span className="mt-0.5 h-5 w-5 shrink-0 rounded-full bg-[#008069] text-white inline-flex items-center justify-center"><Check size={13} strokeWidth={3} /></span>
                 {p}
               </li>
             ))}
           </ul>
           <div className="mt-7 flex flex-wrap gap-3">
-            <Link href="/signup" className="inline-flex h-11 items-center gap-2 rounded-lg bg-[#1D5BEA] hover:bg-[#174bc4] px-5 font-semibold text-white">Start free for 14 days <ArrowRight size={17} /></Link>
-            <a href={whatsappUs(`Hi, I run a business (${item.label}). I want to grow my business with ${BRAND.company}.`)} target="_blank" rel="noopener noreferrer" className="inline-flex h-11 items-center rounded-lg border border-[#d5ddeb] bg-white px-5 font-semibold text-[#0E1B3D] hover:border-[#1D5BEA]">Ask us on WhatsApp</a>
+            <Link href="/signup" className="inline-flex h-11 items-center gap-2 rounded-lg bg-[#008069] hover:bg-[#006d5b] px-5 font-semibold text-white">Start free for 14 days <ArrowRight size={17} /></Link>
+            <a href={whatsappUs(`Hi, I run a business (${item.label}). I want to grow my business with ${BRAND.company}.`)} target="_blank" rel="noopener noreferrer" className="inline-flex h-11 items-center rounded-lg border border-[#d5ddeb] bg-white px-5 font-semibold text-[#0E1B3D] hover:border-[#008069]">Ask us on WhatsApp</a>
           </div>
         </div>
         <PhoneChat name={sampleName(item.key)} lines={item.chat} />
@@ -303,7 +303,7 @@ export function DemoForm() {
   const [busy, setBusy] = useState(false)
   const [done, setDone] = useState(false)
   const [error, setError] = useState('')
-  const field = 'w-full h-11 rounded-lg border border-[#d5ddeb] bg-white px-3.5 text-[15px] text-[#0E1B3D] placeholder:text-[#8a94a8] focus:outline-none focus:border-[#1D5BEA] focus:ring-2 focus:ring-[#1D5BEA]/15'
+  const field = 'w-full h-11 rounded-lg border border-[#d5ddeb] bg-white px-3.5 text-[15px] text-[#0E1B3D] placeholder:text-[#8a94a8] focus:outline-none focus:border-[#008069] focus:ring-2 focus:ring-[#008069]/15'
 
   async function submit(e: React.FormEvent) {
     e.preventDefault()
@@ -335,9 +335,9 @@ export function DemoForm() {
   if (done) {
     return (
       <div className="rounded-2xl border border-[#d5ddeb] bg-white p-8 text-center">
-        <span className="mx-auto h-11 w-11 rounded-full bg-[#1D5BEA] text-white inline-flex items-center justify-center"><Check size={22} /></span>
+        <span className="mx-auto h-11 w-11 rounded-full bg-[#008069] text-white inline-flex items-center justify-center"><Check size={22} /></span>
         <h3 className="mt-3 text-[18px] font-bold text-[#0E1B3D]">Thank you! We will call you soon.</h3>
-        <p className="mt-1 text-[14.5px] text-[#4a5672]">Usually within a few working hours. In a hurry? <a className="font-semibold text-[#1D5BEA]" href={whatsappUs(`Hi, I just asked for a free growth plan from ${BRAND.company}.`)} target="_blank" rel="noopener noreferrer">WhatsApp us</a>.</p>
+        <p className="mt-1 text-[14.5px] text-[#4a5672]">Usually within a few working hours. In a hurry? <a className="font-semibold text-[#008069]" href={whatsappUs(`Hi, I just asked for a free growth plan from ${BRAND.company}.`)} target="_blank" rel="noopener noreferrer">WhatsApp us</a>.</p>
       </div>
     )
   }
@@ -365,7 +365,7 @@ export function DemoForm() {
       </div>
       <input type="text" name="website" value={trap} onChange={(e) => setTrap(e.target.value)} tabIndex={-1} autoComplete="off" aria-hidden="true" className="absolute -left-[9999px] h-0 w-0 opacity-0" />
       {error && <p role="alert" className="rounded-lg bg-[#fdf0f0] px-3 py-2 text-[14px] font-semibold text-[#b91c1c]">{error}</p>}
-      <button type="submit" disabled={busy} className="w-full h-12 rounded-lg bg-[#1D5BEA] hover:bg-[#174bc4] text-[15.5px] font-bold text-white inline-flex items-center justify-center gap-2 cursor-pointer disabled:opacity-60">
+      <button type="submit" disabled={busy} className="w-full h-12 rounded-lg bg-[#008069] hover:bg-[#006d5b] text-[15.5px] font-bold text-white inline-flex items-center justify-center gap-2 cursor-pointer disabled:opacity-60">
         {busy ? <Loader2 size={18} className="animate-spin" /> : null} Get my free growth plan
       </button>
       <p className="text-center text-[12.5px] text-[#6B7894]">A 20-minute call. We look at your business and tell you what to do first, free.</p>

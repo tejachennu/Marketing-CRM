@@ -933,7 +933,7 @@ export default function CampaignFullTabPage() {
     return (
       <div className="flex-1 flex flex-col items-center justify-center h-full bg-[#f0f2f5] dark:bg-[#0c1317]">
         <div className="flex flex-col items-center p-8 bg-white dark:bg-[#1f2c34] rounded-2xl shadow-sm border border-[#e9edef] dark:border-[#2a3942]">
-          <Loader2 className="animate-spin text-[#1D5BEA] mb-3" size={32} />
+          <Loader2 className="animate-spin text-[#008069] mb-3" size={32} />
           <h2 className="text-sm font-bold text-[#111b21] dark:text-white">
             Opening Campaign Workspace...
           </h2>
@@ -958,7 +958,7 @@ export default function CampaignFullTabPage() {
           </p>
           <button
             onClick={() => router.push('/dashboard/campaigns')}
-            className="px-4 py-2 bg-[#1D5BEA] text-white rounded-xl text-xs font-bold hover:bg-[#174bc4] transition-all cursor-pointer inline-flex items-center gap-1.5 shadow-sm"
+            className="px-4 py-2 bg-[#008069] text-white rounded-xl text-xs font-bold hover:bg-[#006d5b] transition-all cursor-pointer inline-flex items-center gap-1.5 shadow-sm"
           >
             <ArrowLeft size={14} />
             <span>Return to Campaigns</span>
@@ -992,7 +992,7 @@ export default function CampaignFullTabPage() {
                   {campaign.name}
                 </h1>
                 <span className={`text-[10px] sm:text-[10px] font-black uppercase px-2 py-0.5 rounded-full border shrink-0 ${
-                  campaign.status === 'COMPLETED' ? 'bg-[#eef3fe] dark:bg-[#0E1B3D]/40 text-[#174bc4] dark:text-[#5f86ee] border-[#c5d5fa]/80 dark:border-[#163d9c]/60' :
+                  campaign.status === 'COMPLETED' ? 'bg-[#e7f5f0] dark:bg-[#0E1B3D]/40 text-[#006d5b] dark:text-[#00a884] border-[#b8e2d6]/80 dark:border-[#00594a]/60' :
                   campaign.status === 'PROCESSING' || campaign.status === 'PENDING' ? 'bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-400 border-amber-200/80 dark:border-amber-800/60 animate-pulse' :
                   campaign.status === 'SCHEDULED' ? 'bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border-indigo-200/80 dark:border-indigo-800/60' :
                   campaign.status === 'STOPPED' || campaign.status === 'CANCELLED' ? 'bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-400 border-rose-200/80 dark:border-rose-800/60' :
@@ -1019,17 +1019,17 @@ export default function CampaignFullTabPage() {
             className="sm:hidden p-1.5 text-[#54656f] dark:text-[#8696a0] hover:text-[#111b21] dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition-all cursor-pointer disabled:opacity-50 shrink-0"
             title="Refresh campaign data"
           >
-            <RefreshCw size={15} className={isRefreshing ? 'animate-spin text-[#1D5BEA]' : ''} />
+            <RefreshCw size={15} className={isRefreshing ? 'animate-spin text-[#008069]' : ''} />
           </button>
         </div>
 
         {/* Tab Switcher & Desktop Quick Actions */}
         <div className="flex items-center justify-between sm:justify-end gap-2 md:gap-3 shrink-0 w-full sm:w-auto">
           {/* Active Chats Live Indication Mark (desktop only) */}
-          <div className="hidden lg:flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#eef3fe] dark:bg-[#0E1B3D]/30 border border-[#c5d5fa] dark:border-[#163d9c]/60 shadow-2xs">
-            <span className="w-2 h-2 rounded-full bg-[#1D5BEA] animate-pulse" />
-            <MessageSquare size={13} className="text-[#1D5BEA] dark:text-[#5f86ee]" />
-            <span className="text-xs font-extrabold text-[#163d9c] dark:text-[#9db5ef]">
+          <div className="hidden lg:flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#e7f5f0] dark:bg-[#0E1B3D]/30 border border-[#b8e2d6] dark:border-[#00594a]/60 shadow-2xs">
+            <span className="w-2 h-2 rounded-full bg-[#008069] animate-pulse" />
+            <MessageSquare size={13} className="text-[#008069] dark:text-[#00a884]" />
+            <span className="text-xs font-extrabold text-[#00594a] dark:text-[#8fcfbf]">
               {activeChatsCount} Active {activeChatsCount === 1 ? 'Chat' : 'Chats'}
             </span>
             {unreadChatsCount > 0 && (
@@ -1052,10 +1052,10 @@ export default function CampaignFullTabPage() {
                   : 'text-[#54656f] dark:text-[#8696a0] hover:text-[#111b21] dark:hover:text-white'
               }`}
             >
-              <MessageSquare size={13} className="text-[#1D5BEA] dark:text-[#5f86ee]" />
+              <MessageSquare size={13} className="text-[#008069] dark:text-[#00a884]" />
               <span>Live Chats</span>
               {activeChatsCount > 0 && (
-                <span className="bg-[#1D5BEA] text-white text-[10px] font-black px-1.5 py-0.2 rounded-full">
+                <span className="bg-[#008069] text-white text-[10px] font-black px-1.5 py-0.2 rounded-full">
                   {activeChatsCount}
                 </span>
               )}
@@ -1080,7 +1080,7 @@ export default function CampaignFullTabPage() {
             className="hidden sm:flex p-2 text-[#54656f] dark:text-[#8696a0] hover:text-[#111b21] dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition-all cursor-pointer disabled:opacity-50"
             title="Refresh campaign data"
           >
-            <RefreshCw size={15} className={isRefreshing ? 'animate-spin text-[#1D5BEA]' : ''} />
+            <RefreshCw size={15} className={isRefreshing ? 'animate-spin text-[#008069]' : ''} />
           </button>
         </div>
       </header>
@@ -1107,7 +1107,7 @@ export default function CampaignFullTabPage() {
                   placeholder="Search contact or reply..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full pl-9 pr-8 py-2 bg-[#f0f2f5] dark:bg-[#202d36] rounded-xl text-xs text-[#111b21] dark:text-white placeholder-[#8696a0] border border-transparent focus:border-[#1D5BEA] focus:outline-hidden transition-all"
+                  className="w-full pl-9 pr-8 py-2 bg-[#f0f2f5] dark:bg-[#202d36] rounded-xl text-xs text-[#111b21] dark:text-white placeholder-[#8696a0] border border-transparent focus:border-[#008069] focus:outline-hidden transition-all"
                 />
                 {searchQuery && (
                   <button
@@ -1125,7 +1125,7 @@ export default function CampaignFullTabPage() {
                   onClick={() => setRecipientFilter('replied')}
                   className={`px-2.5 py-1 rounded-full text-[10px] font-bold transition-all cursor-pointer shrink-0 flex items-center gap-1 ${
                     recipientFilter === 'replied'
-                      ? 'bg-[#1D5BEA] text-white shadow-xs'
+                      ? 'bg-[#008069] text-white shadow-xs'
                       : 'bg-[#f0f2f5] dark:bg-[#202d36] text-[#54656f] dark:text-[#8696a0] hover:bg-[#e9edef]'
                   }`}
                 >
@@ -1203,12 +1203,12 @@ export default function CampaignFullTabPage() {
                         }}
                         className={`p-3 transition-all cursor-pointer flex items-start gap-3 relative group ${
                           isSelected
-                            ? 'bg-[#f0f2f5] dark:bg-[#2a3942]/60 border-l-4 border-l-[#1D5BEA]'
+                            ? 'bg-[#f0f2f5] dark:bg-[#2a3942]/60 border-l-4 border-l-[#008069]'
                             : 'hover:bg-[#f8f9fa] dark:hover:bg-[#1a252d]'
                         }`}
                       >
                         {/* Avatar */}
-                        <div className="h-10 w-10 rounded-full bg-[#1D5BEA] text-white flex items-center justify-center font-bold text-xs shrink-0 shadow-2xs">
+                        <div className="h-10 w-10 rounded-full bg-[#008069] text-white flex items-center justify-center font-bold text-xs shrink-0 shadow-2xs">
                           {displayName.charAt(0).toUpperCase()}
                         </div>
 
@@ -1229,7 +1229,7 @@ export default function CampaignFullTabPage() {
                               <span
                                 className={`text-[10px] font-black px-1.5 py-0.2 rounded border uppercase ${
                                   rec.dispatch_status === 'DELIVERED'
-                                    ? 'bg-[#eef3fe] dark:bg-[#0E1B3D]/30 text-[#1D5BEA] border-[#c5d5fa]/50'
+                                    ? 'bg-[#e7f5f0] dark:bg-[#0E1B3D]/30 text-[#008069] border-[#b8e2d6]/50'
                                     : rec.dispatch_status === 'READ'
                                     ? 'bg-blue-50 dark:bg-blue-950/30 text-blue-600 border-blue-200/50'
                                     : rec.dispatch_status === 'FAILED'
@@ -1250,7 +1250,7 @@ export default function CampaignFullTabPage() {
                                   {rec.last_message.sender_type === 'user' ? (
                                     <CheckCheck size={12} className="text-[#53bdeb] shrink-0" />
                                   ) : (
-                                    <span className="w-1.5 h-1.5 rounded-full bg-[#1D5BEA] shrink-0" />
+                                    <span className="w-1.5 h-1.5 rounded-full bg-[#008069] shrink-0" />
                                   )}
                                   <span className="truncate">{rec.last_message.body}</span>
                                 </>
@@ -1264,7 +1264,7 @@ export default function CampaignFullTabPage() {
                             {/* Unread badge & Replied Badge */}
                             <div className="flex items-center gap-1 shrink-0">
                               {rec.has_replied && (
-                                <span className="text-[10px] font-extrabold px-1.5 py-0.2 rounded-full bg-[#dfe8fd] dark:bg-[#0E1B3D]/50 text-[#174bc4] dark:text-[#9db5ef]">
+                                <span className="text-[10px] font-extrabold px-1.5 py-0.2 rounded-full bg-[#d6efe7] dark:bg-[#0E1B3D]/50 text-[#006d5b] dark:text-[#8fcfbf]">
                                   Replied
                                 </span>
                               )}
@@ -1285,7 +1285,7 @@ export default function CampaignFullTabPage() {
                     <div className="p-3 text-center bg-white dark:bg-[#111b21] border-t border-[#f0f2f5] dark:border-[#202d36]/60 sticky bottom-0 z-10 shadow-xs">
                       <button
                         onClick={() => setChatListLimit((prev) => prev + 30)}
-                        className="w-full py-2 px-3 text-xs font-bold text-[#1D5BEA] dark:text-[#5f86ee] bg-[#eef3fe] dark:bg-[#0E1B3D]/30 hover:bg-[#dfe8fd] dark:hover:bg-[#0E1B3D]/40 rounded-xl transition-all cursor-pointer shadow-2xs"
+                        className="w-full py-2 px-3 text-xs font-bold text-[#008069] dark:text-[#00a884] bg-[#e7f5f0] dark:bg-[#0E1B3D]/30 hover:bg-[#d6efe7] dark:hover:bg-[#0E1B3D]/40 rounded-xl transition-all cursor-pointer shadow-2xs"
                       >
                         Load More Chats ({filteredRecipients.length - visibleRecipients.length} remaining)
                       </button>
@@ -1315,7 +1315,7 @@ export default function CampaignFullTabPage() {
                     >
                       <ArrowLeft size={18} />
                     </button>
-                    <div className="h-9 w-9 rounded-full bg-[#1D5BEA] text-white flex items-center justify-center font-bold text-xs shrink-0 shadow-2xs">
+                    <div className="h-9 w-9 rounded-full bg-[#008069] text-white flex items-center justify-center font-bold text-xs shrink-0 shadow-2xs">
                       {(selectedRecipient.first_name || selectedRecipient.phone_number || 'C')
                         .charAt(0)
                         .toUpperCase()}
@@ -1328,7 +1328,7 @@ export default function CampaignFullTabPage() {
                             : selectedRecipient.contact_phone || selectedRecipient.phone_number}
                         </h3>
                         {selectedRecipient.has_replied && (
-                          <span className="text-[10px] font-black px-1.5 py-0.2 rounded-full bg-[#eef3fe] dark:bg-[#0E1B3D]/40 text-[#1D5BEA] dark:text-[#5f86ee] border border-[#c5d5fa] dark:border-[#163d9c]">
+                          <span className="text-[10px] font-black px-1.5 py-0.2 rounded-full bg-[#e7f5f0] dark:bg-[#0E1B3D]/40 text-[#008069] dark:text-[#00a884] border border-[#b8e2d6] dark:border-[#00594a]">
                             Active Reply
                           </span>
                         )}
@@ -1342,7 +1342,7 @@ export default function CampaignFullTabPage() {
                               ? 'bg-rose-50 dark:bg-rose-950/30 text-rose-700 dark:text-rose-400 border-rose-200/60'
                               : metaWindowStatus.isClosingSoon
                               ? 'bg-amber-50 dark:bg-amber-950/30 text-amber-700 dark:text-amber-400 border-amber-200/60'
-                              : 'bg-[#eef3fe] dark:bg-[#0E1B3D]/30 text-[#174bc4] dark:text-[#5f86ee] border-[#c5d5fa]/60'
+                              : 'bg-[#e7f5f0] dark:bg-[#0E1B3D]/30 text-[#006d5b] dark:text-[#00a884] border-[#b8e2d6]/60'
                           }`}
                           title={
                             metaWindowStatus.isOpen
@@ -1360,7 +1360,7 @@ export default function CampaignFullTabPage() {
                                 ? 'bg-rose-500'
                                 : metaWindowStatus.isClosingSoon
                                 ? 'bg-amber-500 animate-pulse'
-                                : 'bg-[#1D5BEA] animate-pulse'
+                                : 'bg-[#008069] animate-pulse'
                             }`}
                           />
                           <span>{metaWindowStatus.text}</span>
@@ -1379,10 +1379,10 @@ export default function CampaignFullTabPage() {
                           className="hover:text-[#111b21] dark:hover:text-white cursor-pointer"
                           title="Copy phone"
                         >
-                          {copiedPhone ? <Check size={11} className="text-[#1D5BEA]" /> : <Copy size={11} />}
+                          {copiedPhone ? <Check size={11} className="text-[#008069]" /> : <Copy size={11} />}
                         </button>
                         <span>•</span>
-                        <span className="uppercase text-[10px] font-bold text-[#1D5BEA] dark:text-[#5f86ee]">
+                        <span className="uppercase text-[10px] font-bold text-[#008069] dark:text-[#00a884]">
                           {selectedRecipient.dispatch_status}
                         </span>
                       </div>
@@ -1417,7 +1417,7 @@ export default function CampaignFullTabPage() {
                         fetchTemplates()
                         setShowTemplateModal(true)
                       }}
-                      className="px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 border bg-[#eef3fe] dark:bg-[#0E1B3D]/30 text-[#1D5BEA] dark:text-[#5f86ee] border-[#1D5BEA]/30 hover:bg-[#dfe8fd] dark:hover:bg-[#0E1B3D]/40 shadow-2xs"
+                      className="px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 border bg-[#e7f5f0] dark:bg-[#0E1B3D]/30 text-[#008069] dark:text-[#00a884] border-[#008069]/30 hover:bg-[#d6efe7] dark:hover:bg-[#0E1B3D]/40 shadow-2xs"
                       title="Send Meta-approved WhatsApp template"
                     >
                       <FileText size={12} />
@@ -1429,12 +1429,12 @@ export default function CampaignFullTabPage() {
                       onClick={() => setShowCampaignContext((prev) => !prev)}
                       className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 border ${
                         showCampaignContext
-                          ? 'bg-[#eef3fe] dark:bg-[#0E1B3D]/30 text-[#1D5BEA] dark:text-[#5f86ee] border-[#1D5BEA]/30'
+                          ? 'bg-[#e7f5f0] dark:bg-[#0E1B3D]/30 text-[#008069] dark:text-[#00a884] border-[#008069]/30'
                           : 'bg-white dark:bg-[#111b21] text-[#54656f] dark:text-[#8696a0] hover:bg-[#f0f2f5] dark:hover:bg-[#202d36] border-[#e9edef] dark:border-[#2a3942]'
                       }`}
                       title={showCampaignContext ? 'Hide campaign message' : 'View dispatched campaign message'}
                     >
-                      <FileText size={12} className={showCampaignContext ? 'text-[#1D5BEA]' : ''} />
+                      <FileText size={12} className={showCampaignContext ? 'text-[#008069]' : ''} />
                       <span className="hidden md:inline">{showCampaignContext ? 'Hide Campaign Message' : 'View Campaign Message'}</span>
                       {showCampaignContext ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
                     </button>
@@ -1443,8 +1443,8 @@ export default function CampaignFullTabPage() {
 
                 {/* Pinned Campaign Message Context Banner (Collapsible, closed by default) */}
                 {showCampaignContext && recipientDispatchedText && (
-                  <div className="bg-[#eef3fe]/95 dark:bg-[#1f2c34]/95 border-b border-[#c5d5fa] dark:border-[#2a3942] p-3 px-4 shadow-xs text-xs backdrop-blur-xs flex-shrink-0 animate-in fade-in slide-in-from-top-2 duration-200">
-                    <div className="flex items-center justify-between text-[10px] font-bold text-[#1D5BEA] dark:text-[#5f86ee] mb-1.5">
+                  <div className="bg-[#e7f5f0]/95 dark:bg-[#1f2c34]/95 border-b border-[#b8e2d6] dark:border-[#2a3942] p-3 px-4 shadow-xs text-xs backdrop-blur-xs flex-shrink-0 animate-in fade-in slide-in-from-top-2 duration-200">
+                    <div className="flex items-center justify-between text-[10px] font-bold text-[#008069] dark:text-[#00a884] mb-1.5">
                       <div className="flex items-center gap-1.5">
                         <Megaphone size={12} />
                         <span>DISPATCHED CAMPAIGN MESSAGE • {new Date(selectedRecipient.dispatched_at).toLocaleString()}</span>
@@ -1462,7 +1462,7 @@ export default function CampaignFullTabPage() {
                         </button>
                       </div>
                     </div>
-                    <div className="p-2.5 bg-white dark:bg-[#111b21] rounded-lg border border-[#dfe8fd] dark:border-[#0E1B3D]/40 text-[11.5px] leading-relaxed text-[#111b21] dark:text-slate-200 font-sans whitespace-pre-wrap shadow-2xs max-h-24 overflow-y-auto scrollbar-thin">
+                    <div className="p-2.5 bg-white dark:bg-[#111b21] rounded-lg border border-[#d6efe7] dark:border-[#0E1B3D]/40 text-[11.5px] leading-relaxed text-[#111b21] dark:text-slate-200 font-sans whitespace-pre-wrap shadow-2xs max-h-24 overflow-y-auto scrollbar-thin">
                       {recipientDispatchedText}
                     </div>
                   </div>
@@ -1478,13 +1478,13 @@ export default function CampaignFullTabPage() {
                 >
                   {isLoadingMessages ? (
                     <div className="flex flex-col items-center justify-center h-48 text-[#8696a0]">
-                      <Loader2 className="animate-spin text-[#1D5BEA] mb-2" size={24} />
+                      <Loader2 className="animate-spin text-[#008069] mb-2" size={24} />
                       <span className="text-xs">Loading message history...</span>
                     </div>
                   ) : displayedMessages.length === 0 ? (
                     <div className="flex flex-col items-center justify-center h-48 text-center text-[#8696a0]">
                       <div className="bg-white/80 dark:bg-[#1f2c34]/80 p-4 rounded-xl border border-[#e9edef] dark:border-[#2a3942] max-w-sm">
-                        <CheckCircle2 size={24} className="mx-auto text-[#1D5BEA] mb-2" />
+                        <CheckCircle2 size={24} className="mx-auto text-[#008069] mb-2" />
                         <p className="text-xs font-bold text-[#111b21] dark:text-white">
                           Campaign message was dispatched
                         </p>
@@ -1508,7 +1508,7 @@ export default function CampaignFullTabPage() {
                           <div
                             className={`max-w-[85%] md:max-w-[70%] rounded-xl px-3 py-2 text-xs leading-relaxed shadow-xs relative group ${
                               isUser
-                                ? 'bg-[#d9fdd3] dark:bg-[#174bc4] text-[#111b21] dark:text-white rounded-tr-none'
+                                ? 'bg-[#d9fdd3] dark:bg-[#006d5b] text-[#111b21] dark:text-white rounded-tr-none'
                                 : 'bg-white dark:bg-[#202d36] text-[#111b21] dark:text-white rounded-tl-none border border-slate-100 dark:border-transparent'
                             }`}
                           >
@@ -1758,7 +1758,7 @@ export default function CampaignFullTabPage() {
                       fetchTemplates()
                       setShowTemplateModal(true)
                     }}
-                    className="p-2 rounded-xl border border-transparent hover:border-[#c5d5fa] dark:hover:border-[#163d9c] bg-[#f0f2f5] dark:bg-[#2a3942] hover:bg-[#eef3fe] dark:hover:bg-[#0E1B3D]/30 text-[#1D5BEA] dark:text-[#5f86ee] transition-all flex items-center gap-1.5 cursor-pointer shrink-0"
+                    className="p-2 rounded-xl border border-transparent hover:border-[#b8e2d6] dark:hover:border-[#00594a] bg-[#f0f2f5] dark:bg-[#2a3942] hover:bg-[#e7f5f0] dark:hover:bg-[#0E1B3D]/30 text-[#008069] dark:text-[#00a884] transition-all flex items-center gap-1.5 cursor-pointer shrink-0"
                     title="Send Meta-approved WhatsApp Template"
                   >
                     <FileText size={14} />
@@ -1766,7 +1766,7 @@ export default function CampaignFullTabPage() {
                   </button>
 
                   {/* Textarea Input */}
-                  <div className="flex-1 bg-[#f0f2f5] dark:bg-[#2a3942] rounded-2xl border border-transparent focus-within:border-[#1D5BEA] focus-within:bg-white dark:focus-within:bg-[#111b21] transition-all flex items-end px-3 py-1.5">
+                  <div className="flex-1 bg-[#f0f2f5] dark:bg-[#2a3942] rounded-2xl border border-transparent focus-within:border-[#008069] focus-within:bg-white dark:focus-within:bg-[#111b21] transition-all flex items-end px-3 py-1.5">
                     <textarea
                       ref={textareaRef}
                       value={inputMessage}
@@ -1786,7 +1786,7 @@ export default function CampaignFullTabPage() {
                   <button
                     onClick={handleSendMessage}
                     disabled={!inputMessage.trim() || isSending}
-                    className="h-9 w-9 rounded-full bg-[#1D5BEA] hover:bg-[#174bc4] text-white flex items-center justify-center cursor-pointer transition-all shadow-md disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
+                    className="h-9 w-9 rounded-full bg-[#008069] hover:bg-[#006d5b] text-white flex items-center justify-center cursor-pointer transition-all shadow-md disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
                     title="Send WhatsApp Reply (Enter)"
                   >
                     {isSending ? (
@@ -1800,7 +1800,7 @@ export default function CampaignFullTabPage() {
             ) : (
               <div className="flex-1 flex flex-col items-center justify-center p-8 text-center text-[#8696a0]">
                 <div className="p-6 bg-white dark:bg-[#1f2c34] rounded-2xl border border-[#e9edef] dark:border-[#2a3942] shadow-sm max-w-sm">
-                  <MessageSquare size={36} className="mx-auto text-[#1D5BEA] mb-3 opacity-60" />
+                  <MessageSquare size={36} className="mx-auto text-[#008069] mb-3 opacity-60" />
                   <h3 className="text-sm font-bold text-[#111b21] dark:text-white">
                     Select a Campaign Recipient
                   </h3>
@@ -1839,21 +1839,21 @@ export default function CampaignFullTabPage() {
             </div>
 
             {/* Dispatched Sent */}
-            <div className="bg-white dark:bg-[#1f2c34] p-4.5 rounded-2xl border border-[#e9edef] dark:border-[#2a3942] shadow-xs flex flex-col justify-between relative overflow-hidden group hover:border-[#9db5ef] dark:hover:border-[#163d9c] transition-all">
+            <div className="bg-white dark:bg-[#1f2c34] p-4.5 rounded-2xl border border-[#e9edef] dark:border-[#2a3942] shadow-xs flex flex-col justify-between relative overflow-hidden group hover:border-[#8fcfbf] dark:hover:border-[#00594a] transition-all">
               <div className="flex items-center justify-between">
-                <span className="text-[10px] font-black uppercase tracking-wider text-[#174bc4] dark:text-[#5f86ee]">
+                <span className="text-[10px] font-black uppercase tracking-wider text-[#006d5b] dark:text-[#00a884]">
                   Dispatched Sent
                 </span>
-                <div className="p-2 rounded-xl bg-[#eef3fe] dark:bg-[#0E1B3D]/40 text-[#1D5BEA] dark:text-[#5f86ee]">
+                <div className="p-2 rounded-xl bg-[#e7f5f0] dark:bg-[#0E1B3D]/40 text-[#008069] dark:text-[#00a884]">
                   <Send size={15} />
                 </div>
               </div>
               <div className="mt-2">
-                <div className="text-2xl font-black text-[#1D5BEA] dark:text-[#5f86ee] tracking-tight">
+                <div className="text-2xl font-black text-[#008069] dark:text-[#00a884] tracking-tight">
                   {campaign.sent_count}
                 </div>
-                <div className="flex items-center gap-1.5 text-[10px] text-[#174bc4] dark:text-[#5f86ee] font-medium mt-1">
-                  <span className="w-1.5 h-1.5 rounded-full bg-[#1D5BEA]" />
+                <div className="flex items-center gap-1.5 text-[10px] text-[#006d5b] dark:text-[#00a884] font-medium mt-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-[#008069]" />
                   <span>
                     {campaign.total_contacts > 0
                       ? `${Math.round((campaign.sent_count / campaign.total_contacts) * 100)}% successful dispatch`
@@ -1889,24 +1889,24 @@ export default function CampaignFullTabPage() {
             </div>
 
             {/* Active Replies */}
-            <div className="bg-[#eef3fe] dark:bg-[#0E1B3D]/30 p-4.5 rounded-2xl border border-[#c5d5fa] dark:border-[#163d9c]/60 shadow-xs flex flex-col justify-between relative overflow-hidden group">
+            <div className="bg-[#e7f5f0] dark:bg-[#0E1B3D]/30 p-4.5 rounded-2xl border border-[#b8e2d6] dark:border-[#00594a]/60 shadow-xs flex flex-col justify-between relative overflow-hidden group">
               <div className="flex items-center justify-between">
-                <span className="text-[10px] font-black uppercase tracking-wider text-[#163d9c] dark:text-[#9db5ef]">
+                <span className="text-[10px] font-black uppercase tracking-wider text-[#00594a] dark:text-[#8fcfbf]">
                   Active Replies
                 </span>
                 <span className="flex h-2.5 w-2.5 relative">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#5f86ee] opacity-75" />
-                  <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-[#1D5BEA]" />
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#00a884] opacity-75" />
+                  <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-[#008069]" />
                 </span>
               </div>
               <div className="mt-2">
-                <div className="text-2xl font-black text-[#0E1B3D] dark:text-[#c5d5fa] tracking-tight flex items-baseline gap-2">
+                <div className="text-2xl font-black text-[#0E1B3D] dark:text-[#b8e2d6] tracking-tight flex items-baseline gap-2">
                   <span>{activeChatsCount}</span>
-                  <span className="text-xs text-[#174bc4] dark:text-[#5f86ee] font-bold">
+                  <span className="text-xs text-[#006d5b] dark:text-[#00a884] font-bold">
                     ({campaign.reply_rate || 0}% rate)
                   </span>
                 </div>
-                <div className="flex items-center gap-1.5 text-[10px] text-[#174bc4] dark:text-[#9db5ef] font-medium mt-1">
+                <div className="flex items-center gap-1.5 text-[10px] text-[#006d5b] dark:text-[#8fcfbf] font-medium mt-1">
                   <MessageSquare size={11} />
                   <span>Interactive customer chats</span>
                 </div>
@@ -1928,7 +1928,7 @@ export default function CampaignFullTabPage() {
                   {unreadChatsCount}
                 </div>
                 <div className="flex items-center gap-1.5 text-[10px] text-amber-600/90 dark:text-amber-400 font-medium mt-1">
-                  <span className={`w-1.5 h-1.5 rounded-full ${unreadChatsCount > 0 ? 'bg-amber-500 animate-pulse' : 'bg-[#1D5BEA]'}`} />
+                  <span className={`w-1.5 h-1.5 rounded-full ${unreadChatsCount > 0 ? 'bg-amber-500 animate-pulse' : 'bg-[#008069]'}`} />
                   <span>{unreadChatsCount === 0 ? 'All messages answered' : `${unreadChatsCount} awaiting response`}</span>
                 </div>
               </div>
@@ -1942,7 +1942,7 @@ export default function CampaignFullTabPage() {
               <div>
                 <div className="flex items-center justify-between mb-4">
                   <div className="flex items-center gap-2">
-                    <Smartphone size={16} className="text-[#1D5BEA]" />
+                    <Smartphone size={16} className="text-[#008069]" />
                     <span className="text-xs font-bold uppercase tracking-wider text-[#111b21] dark:text-white">
                       WhatsApp Live Simulation
                     </span>
@@ -1954,7 +1954,7 @@ export default function CampaignFullTabPage() {
                       onClick={() => setPreviewWithSampleData(true)}
                       className={`px-2.5 py-1 text-[10px] font-bold rounded-lg transition-all cursor-pointer ${
                         previewWithSampleData
-                          ? 'bg-white dark:bg-[#1f2c34] text-[#1D5BEA] dark:text-[#5f86ee] shadow-2xs'
+                          ? 'bg-white dark:bg-[#1f2c34] text-[#008069] dark:text-[#00a884] shadow-2xs'
                           : 'text-[#54656f] dark:text-[#8696a0]'
                       }`}
                       title="Preview template with real contact values"
@@ -1978,7 +1978,7 @@ export default function CampaignFullTabPage() {
                 {/* Smartphone Shell */}
                 <div className="rounded-2xl border border-slate-200 dark:border-[#2a3942] overflow-hidden shadow-md max-w-md mx-auto">
                   {/* Phone Mockup Status Bar */}
-                  <div className="bg-[#174bc4] text-white/90 text-[10px] px-4 py-1 flex items-center justify-between font-mono select-none">
+                  <div className="bg-[#006d5b] text-white/90 text-[10px] px-4 py-1 flex items-center justify-between font-mono select-none">
                     <span>9:41</span>
                     <div className="flex items-center gap-1.5 text-[10px]">
                       <span>5G</span>
@@ -1987,7 +1987,7 @@ export default function CampaignFullTabPage() {
                   </div>
 
                   {/* WhatsApp Header Simulation */}
-                  <div className="bg-[#1D5BEA] text-white px-3.5 py-2.5 flex items-center justify-between select-none">
+                  <div className="bg-[#008069] text-white px-3.5 py-2.5 flex items-center justify-between select-none">
                     <div className="flex items-center gap-2.5">
                       <div className="h-8 w-8 rounded-full bg-white/20 flex items-center justify-center font-bold text-xs shrink-0 text-white">
                         {campaign.name.charAt(0).toUpperCase()}
@@ -1997,7 +1997,7 @@ export default function CampaignFullTabPage() {
                           <span className="text-xs font-bold truncate max-w-[150px]">
                             {sampleRecipient?.first_name || 'MNR Outreach'}
                           </span>
-                          <CheckCircle2 size={11} className="text-[#9db5ef] shrink-0 fill-[#9db5ef] text-white" />
+                          <CheckCircle2 size={11} className="text-[#8fcfbf] shrink-0 fill-[#8fcfbf] text-white" />
                         </div>
                         <span className="text-[10px] text-white/80 block leading-tight">
                           Official WhatsApp Business Account
@@ -2033,7 +2033,7 @@ export default function CampaignFullTabPage() {
 
                     {/* Outbound Message Bubble */}
                     <div className="flex justify-end">
-                      <div className="bg-[#d9fdd3] dark:bg-[#174bc4] text-[#111b21] dark:text-white rounded-xl rounded-tr-none px-3.5 py-2.5 shadow-xs max-w-[95%] text-xs leading-relaxed relative font-sans">
+                      <div className="bg-[#d9fdd3] dark:bg-[#006d5b] text-[#111b21] dark:text-white rounded-xl rounded-tr-none px-3.5 py-2.5 shadow-xs max-w-[95%] text-xs leading-relaxed relative font-sans">
                         <p className="whitespace-pre-wrap break-words">{simulatedBody}</p>
                         <div className="flex items-center justify-end gap-1 mt-1 text-[10px] text-[#54656f] dark:text-[#8696a0] select-none">
                           <span>11:51 AM</span>
@@ -2045,7 +2045,7 @@ export default function CampaignFullTabPage() {
                     {/* Simulated Quick Action Reply Buttons if mentioned */}
                     {simulatedBody.includes('YES') || simulatedBody.includes('DONE') ? (
                       <div className="space-y-1 pt-1 max-w-[95%] ml-auto">
-                        <div className="bg-white dark:bg-[#1f2c34] text-[#1D5BEA] dark:text-[#5f86ee] font-bold text-[11px] py-2 rounded-xl text-center shadow-xs border border-[#dfe8fd] dark:border-[#0E1B3D]/40 cursor-default">
+                        <div className="bg-white dark:bg-[#1f2c34] text-[#008069] dark:text-[#00a884] font-bold text-[11px] py-2 rounded-xl text-center shadow-xs border border-[#d6efe7] dark:border-[#0E1B3D]/40 cursor-default">
                           YES, CONFIRM
                         </div>
                         <div className="bg-white dark:bg-[#1f2c34] text-slate-600 dark:text-slate-300 font-medium text-[11px] py-1.5 rounded-xl text-center shadow-xs border border-slate-100 dark:border-slate-800 cursor-default">
@@ -2060,14 +2060,14 @@ export default function CampaignFullTabPage() {
               {/* Bottom Simulator Bar */}
               <div className="mt-4 pt-3 border-t border-[#e9edef] dark:border-[#2a3942] flex items-center justify-between text-xs text-[#8696a0]">
                 <div className="flex items-center gap-1.5">
-                  <CheckCircle size={12} className="text-[#1D5BEA]" />
+                  <CheckCircle size={12} className="text-[#008069]" />
                   <span>Meta WhatsApp Cloud Template compliant</span>
                 </div>
                 <button
                   onClick={handleCopyTemplate}
                   className="px-2.5 py-1 hover:bg-[#f0f2f5] dark:hover:bg-[#2a3942] text-[#111b21] dark:text-white rounded-lg font-bold flex items-center gap-1 cursor-pointer transition-colors"
                 >
-                  {copiedTemplateText ? <Check size={12} className="text-[#1D5BEA]" /> : <Copy size={12} />}
+                  {copiedTemplateText ? <Check size={12} className="text-[#008069]" /> : <Copy size={12} />}
                   <span>{copiedTemplateText ? 'Copied' : 'Copy Text'}</span>
                 </button>
               </div>
@@ -2079,12 +2079,12 @@ export default function CampaignFullTabPage() {
               <div className="bg-white dark:bg-[#1f2c34] rounded-2xl border border-[#e9edef] dark:border-[#2a3942] p-5 shadow-xs space-y-4">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <FileText size={16} className="text-[#1D5BEA]" />
+                    <FileText size={16} className="text-[#008069]" />
                     <span className="text-xs font-bold uppercase tracking-wider text-[#111b21] dark:text-white">
                       Template Specification
                     </span>
                   </div>
-                  <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase bg-[#eef3fe] dark:bg-[#0E1B3D]/40 text-[#174bc4] dark:text-[#5f86ee] border border-[#c5d5fa] dark:border-[#163d9c]">
+                  <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase bg-[#e7f5f0] dark:bg-[#0E1B3D]/40 text-[#006d5b] dark:text-[#00a884] border border-[#b8e2d6] dark:border-[#00594a]">
                     APPROVED & ACTIVE
                   </span>
                 </div>
@@ -2137,7 +2137,7 @@ export default function CampaignFullTabPage() {
                             key={v}
                             className="inline-flex items-center gap-1.5 bg-[#f0f2f5] dark:bg-[#202d36] border border-[#e9edef] dark:border-slate-700 px-2.5 py-1 rounded-lg text-xs"
                           >
-                            <span className="font-mono text-[#1D5BEA] dark:text-[#5f86ee] font-bold text-[10px]">
+                            <span className="font-mono text-[#008069] dark:text-[#00a884] font-bold text-[10px]">
                               {`{{${v}}}`}
                             </span>
                             {sampleVal && (
@@ -2162,7 +2162,7 @@ export default function CampaignFullTabPage() {
                   <span className="text-xs font-bold uppercase tracking-wider text-[#111b21] dark:text-white">
                     Delivery & Engagement Funnel
                   </span>
-                  <span className="text-xs font-bold text-[#1D5BEA] dark:text-[#5f86ee]">
+                  <span className="text-xs font-bold text-[#008069] dark:text-[#00a884]">
                     {campaign.total_contacts > 0 ? Math.round((campaign.sent_count / campaign.total_contacts) * 100) : 0}% Complete
                   </span>
                 </div>
@@ -2173,7 +2173,7 @@ export default function CampaignFullTabPage() {
                     style={{
                       width: `${campaign.total_contacts > 0 ? (campaign.sent_count / campaign.total_contacts) * 100 : 0}%`,
                     }}
-                    className="bg-[#1D5BEA] h-full transition-all duration-500"
+                    className="bg-[#008069] h-full transition-all duration-500"
                     title={`Sent: ${campaign.sent_count}`}
                   />
                   <div
@@ -2191,17 +2191,17 @@ export default function CampaignFullTabPage() {
                     <span className="text-[10px] uppercase font-bold text-[#8696a0] block">Targets</span>
                     <span className="text-xs font-extrabold text-[#111b21] dark:text-white">{campaign.total_contacts}</span>
                   </div>
-                  <div className="p-2 rounded-xl bg-[#eef3fe]/70 dark:bg-[#0E1B3D]/20">
-                    <span className="text-[10px] uppercase font-bold text-[#1D5BEA] dark:text-[#5f86ee] block">Sent</span>
-                    <span className="text-xs font-extrabold text-[#1D5BEA] dark:text-[#5f86ee]">{campaign.sent_count}</span>
+                  <div className="p-2 rounded-xl bg-[#e7f5f0]/70 dark:bg-[#0E1B3D]/20">
+                    <span className="text-[10px] uppercase font-bold text-[#008069] dark:text-[#00a884] block">Sent</span>
+                    <span className="text-xs font-extrabold text-[#008069] dark:text-[#00a884]">{campaign.sent_count}</span>
                   </div>
                   <div className="p-2 rounded-xl bg-blue-50/70 dark:bg-blue-950/20">
                     <span className="text-[10px] uppercase font-bold text-blue-600 dark:text-blue-400 block">Read / Deliv</span>
                     <span className="text-xs font-extrabold text-blue-600 dark:text-blue-400">{logDeliveredCount}</span>
                   </div>
-                  <div className="p-2 rounded-xl bg-[#eef3fe]/70 dark:bg-[#0E1B3D]/20">
-                    <span className="text-[10px] uppercase font-bold text-[#174bc4] dark:text-[#9db5ef] block">Replies</span>
-                    <span className="text-xs font-extrabold text-[#174bc4] dark:text-[#9db5ef]">{activeChatsCount}</span>
+                  <div className="p-2 rounded-xl bg-[#e7f5f0]/70 dark:bg-[#0E1B3D]/20">
+                    <span className="text-[10px] uppercase font-bold text-[#006d5b] dark:text-[#8fcfbf] block">Replies</span>
+                    <span className="text-xs font-extrabold text-[#006d5b] dark:text-[#8fcfbf]">{activeChatsCount}</span>
                   </div>
                 </div>
 
@@ -2209,7 +2209,7 @@ export default function CampaignFullTabPage() {
                 <div className="pt-2 flex flex-col sm:flex-row items-center gap-2.5">
                   <button
                     onClick={() => setActiveTab('chats')}
-                    className="w-full sm:flex-1 py-2.5 px-4 bg-[#1D5BEA] hover:bg-[#174bc4] text-white rounded-xl text-xs font-bold transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer"
+                    className="w-full sm:flex-1 py-2.5 px-4 bg-[#008069] hover:bg-[#006d5b] text-white rounded-xl text-xs font-bold transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer"
                   >
                     <MessageSquare size={14} />
                     <span>Open Live Chat Workspace ({activeChatsCount})</span>
@@ -2219,7 +2219,7 @@ export default function CampaignFullTabPage() {
                       onClick={handleExportLogs}
                       className="w-full sm:w-auto py-2.5 px-4 bg-white dark:bg-[#202d36] hover:bg-[#f0f2f5] dark:hover:bg-[#2a3942] border border-[#e9edef] dark:border-[#2a3942] text-[#111b21] dark:text-white rounded-xl text-xs font-bold transition-all shadow-xs flex items-center justify-center gap-2 cursor-pointer"
                     >
-                      <FileSpreadsheet size={14} className="text-[#1D5BEA]" />
+                      <FileSpreadsheet size={14} className="text-[#008069]" />
                       <span>Download Excel Report</span>
                     </button>
                   )}
@@ -2248,7 +2248,7 @@ export default function CampaignFullTabPage() {
                     placeholder="Search name, phone, email..."
                     value={auditSearchQuery}
                     onChange={(e) => setAuditSearchQuery(e.target.value)}
-                    className="pl-8 pr-7 py-1.5 bg-[#f0f2f5] dark:bg-[#202d36] rounded-xl text-xs text-[#111b21] dark:text-white placeholder-[#8696a0] border border-transparent focus:border-[#1D5BEA] focus:outline-hidden transition-all w-48 sm:w-56"
+                    className="pl-8 pr-7 py-1.5 bg-[#f0f2f5] dark:bg-[#202d36] rounded-xl text-xs text-[#111b21] dark:text-white placeholder-[#8696a0] border border-transparent focus:border-[#008069] focus:outline-hidden transition-all w-48 sm:w-56"
                   />
                   {auditSearchQuery && (
                     <button
@@ -2276,7 +2276,7 @@ export default function CampaignFullTabPage() {
                     onClick={() => setAuditStatusFilter('replied')}
                     className={`px-2.5 py-1 text-[10px] font-bold rounded-lg transition-all cursor-pointer shrink-0 ${
                       auditStatusFilter === 'replied'
-                        ? 'bg-[#1D5BEA] text-white shadow-2xs'
+                        ? 'bg-[#008069] text-white shadow-2xs'
                         : 'text-[#8696a0] hover:text-[#111b21] dark:hover:text-white'
                     }`}
                   >
@@ -2352,7 +2352,7 @@ export default function CampaignFullTabPage() {
                           {/* Recipient info with initial avatar */}
                           <td className="p-3.5">
                             <div className="flex items-center gap-2.5">
-                              <div className="h-8 w-8 rounded-full bg-[#1D5BEA] text-white flex items-center justify-center font-bold text-xs shrink-0 shadow-2xs">
+                              <div className="h-8 w-8 rounded-full bg-[#008069] text-white flex items-center justify-center font-bold text-xs shrink-0 shadow-2xs">
                                 {(rec.first_name || rec.phone_number || 'C').charAt(0).toUpperCase()}
                               </div>
                               <div className="min-w-0">
@@ -2382,14 +2382,14 @@ export default function CampaignFullTabPage() {
                                 (rec.dispatch_status || '').toUpperCase() === 'READ'
                                   ? 'bg-blue-50 dark:bg-blue-950/30 text-blue-700 dark:text-blue-400 border-blue-200/60'
                                   : (rec.dispatch_status || '').toUpperCase() === 'DELIVERED'
-                                  ? 'bg-[#eef3fe] dark:bg-[#0E1B3D]/30 text-[#174bc4] dark:text-[#5f86ee] border-[#c5d5fa]/60'
+                                  ? 'bg-[#e7f5f0] dark:bg-[#0E1B3D]/30 text-[#006d5b] dark:text-[#00a884] border-[#b8e2d6]/60'
                                   : (rec.dispatch_status || '').toUpperCase() === 'SENT'
-                                  ? 'bg-[#eef3fe] text-[#1D5BEA] dark:bg-[#0E1B3D]/20 dark:text-[#9db5ef] border-[#1D5BEA]/20'
+                                  ? 'bg-[#e7f5f0] text-[#008069] dark:bg-[#0E1B3D]/20 dark:text-[#8fcfbf] border-[#008069]/20'
                                   : 'bg-rose-50 dark:bg-rose-950/30 text-rose-700 dark:text-rose-400 border-rose-200/60'
                               }`}
                             >
                               {(rec.dispatch_status || '').toUpperCase() === 'READ' || (rec.dispatch_status || '').toUpperCase() === 'DELIVERED' ? (
-                                <CheckCheck size={11} className={(rec.dispatch_status || '').toUpperCase() === 'READ' ? 'text-blue-500' : 'text-[#1D5BEA]'} />
+                                <CheckCheck size={11} className={(rec.dispatch_status || '').toUpperCase() === 'READ' ? 'text-blue-500' : 'text-[#008069]'} />
                               ) : (rec.dispatch_status || '').toUpperCase() === 'SENT' ? (
                                 <Check size={11} />
                               ) : (
@@ -2407,8 +2407,8 @@ export default function CampaignFullTabPage() {
                           {/* Replied Indicator */}
                           <td className="p-3.5">
                             {rec.has_replied ? (
-                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-[#dfe8fd] dark:bg-[#0E1B3D]/50 text-[#163d9c] dark:text-[#9db5ef] border border-[#c5d5fa]/60">
-                                <span className="w-1.5 h-1.5 rounded-full bg-[#1D5BEA] animate-pulse" />
+                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-[#d6efe7] dark:bg-[#0E1B3D]/50 text-[#00594a] dark:text-[#8fcfbf] border border-[#b8e2d6]/60">
+                                <span className="w-1.5 h-1.5 rounded-full bg-[#008069] animate-pulse" />
                                 <span>Replied</span>
                               </span>
                             ) : (
@@ -2447,7 +2447,7 @@ export default function CampaignFullTabPage() {
                                 setActiveTab('chats')
                                 setMobileChatView('chat')
                               }}
-                              className="px-3 py-1.5 bg-[#eef3fe] dark:bg-[#0E1B3D]/40 hover:bg-[#dfe8fd] dark:hover:bg-[#0E1B3D]/60 text-[#1D5BEA] dark:text-[#9db5ef] rounded-xl text-xs font-bold transition-all cursor-pointer inline-flex items-center gap-1.5 border border-[#c5d5fa]/60 dark:border-[#163d9c]/60 shadow-2xs hover:shadow-xs"
+                              className="px-3 py-1.5 bg-[#e7f5f0] dark:bg-[#0E1B3D]/40 hover:bg-[#d6efe7] dark:hover:bg-[#0E1B3D]/60 text-[#008069] dark:text-[#8fcfbf] rounded-xl text-xs font-bold transition-all cursor-pointer inline-flex items-center gap-1.5 border border-[#b8e2d6]/60 dark:border-[#00594a]/60 shadow-2xs hover:shadow-xs"
                             >
                               <MessageSquare size={12} />
                               <span>Chat</span>
@@ -2489,7 +2489,7 @@ export default function CampaignFullTabPage() {
                       setAuditPageSize(Number(e.target.value))
                       setAuditPage(1)
                     }}
-                    className="bg-[#f0f2f5] dark:bg-[#202d36] text-[#111b21] dark:text-white rounded-lg px-2 py-1 text-xs border border-transparent focus:border-[#1D5BEA] focus:outline-hidden font-bold cursor-pointer"
+                    className="bg-[#f0f2f5] dark:bg-[#202d36] text-[#111b21] dark:text-white rounded-lg px-2 py-1 text-xs border border-transparent focus:border-[#008069] focus:outline-hidden font-bold cursor-pointer"
                   >
                     <option value={20}>20</option>
                     <option value={50}>50</option>
@@ -2526,7 +2526,7 @@ export default function CampaignFullTabPage() {
                               onClick={() => setAuditPage(p)}
                               className={`w-7 h-7 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center justify-center ${
                                 auditPage === p
-                                  ? 'bg-[#1D5BEA] text-white shadow-2xs'
+                                  ? 'bg-[#008069] text-white shadow-2xs'
                                   : 'border border-[#e9edef] dark:border-[#2a3942] bg-white dark:bg-[#1f2c34] text-[#111b21] dark:text-white hover:bg-[#f0f2f5] dark:hover:bg-[#2a3942]'
                               }`}
                             >
@@ -2559,7 +2559,7 @@ export default function CampaignFullTabPage() {
             {/* Modal Header */}
             <div className="p-4 px-5 border-b border-slate-100 dark:border-slate-800/80 flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <FileText className="text-[#1D5BEA] dark:text-[#5f86ee]" size={18} />
+                <FileText className="text-[#008069] dark:text-[#00a884]" size={18} />
                 <h3 className="font-bold text-slate-900 dark:text-slate-100 text-sm">
                   Send Meta Approved Template
                 </h3>
@@ -2584,14 +2584,14 @@ export default function CampaignFullTabPage() {
                 </label>
                 {loadingTemplates ? (
                   <div className="flex items-center gap-2 text-xs text-slate-500 py-3">
-                    <Loader2 size={14} className="animate-spin text-[#1D5BEA]" />
+                    <Loader2 size={14} className="animate-spin text-[#008069]" />
                     <span>Loading Meta templates...</span>
                   </div>
                 ) : (
                   <select
                     value={selectedTemplate?.sid || ''}
                     onChange={(e) => handleSelectTemplate(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-50 dark:bg-[#202d36] border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-medium focus:outline-none focus:ring-2 focus:ring-[#1D5BEA] text-[#111b21] dark:text-white cursor-pointer"
+                    className="w-full px-3 py-2 bg-slate-50 dark:bg-[#202d36] border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-medium focus:outline-none focus:ring-2 focus:ring-[#008069] text-[#111b21] dark:text-white cursor-pointer"
                   >
                     <option value="">Choose a WhatsApp Template...</option>
                     {templates.map((t) => (
@@ -2613,7 +2613,7 @@ export default function CampaignFullTabPage() {
                     </p>
                     <a
                       href="/dashboard/settings"
-                      className="text-[10px] font-bold text-[#1D5BEA] hover:underline mt-0.5"
+                      className="text-[10px] font-bold text-[#008069] hover:underline mt-0.5"
                     >
                       Go to Settings → Credentials to verify WhatsApp Cloud API Token
                     </a>
@@ -2640,7 +2640,7 @@ export default function CampaignFullTabPage() {
                       </p>
                       {selectedTemplate.variables.map((vKey: string) => (
                         <div key={vKey} className="flex items-center gap-2">
-                          <span className="text-xs font-mono text-[#1D5BEA] bg-[#eef3fe] dark:bg-[#0E1B3D]/40 px-2 py-1 rounded border border-[#c5d5fa]/50 min-w-[70px] text-center font-bold">
+                          <span className="text-xs font-mono text-[#008069] bg-[#e7f5f0] dark:bg-[#0E1B3D]/40 px-2 py-1 rounded border border-[#b8e2d6]/50 min-w-[70px] text-center font-bold">
                             {`{{${vKey}}}`}
                           </span>
                           <input
@@ -2650,7 +2650,7 @@ export default function CampaignFullTabPage() {
                               setTemplateVarValues((prev) => ({ ...prev, [vKey]: e.target.value }))
                             }
                             placeholder={`Value for {{${vKey}}}`}
-                            className="flex-1 px-3 py-1.5 bg-white dark:bg-[#202d36] border border-slate-200 dark:border-slate-700 rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-[#1D5BEA] text-[#111b21] dark:text-white"
+                            className="flex-1 px-3 py-1.5 bg-white dark:bg-[#202d36] border border-slate-200 dark:border-slate-700 rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-[#008069] text-[#111b21] dark:text-white"
                           />
                         </div>
                       ))}
@@ -2676,7 +2676,7 @@ export default function CampaignFullTabPage() {
                 type="button"
                 onClick={handleSendTemplate}
                 disabled={!selectedTemplate || isSendingTemplate}
-                className="bg-[#1D5BEA] hover:bg-[#174bc4] disabled:opacity-50 text-white px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all shadow-sm cursor-pointer"
+                className="bg-[#008069] hover:bg-[#006d5b] disabled:opacity-50 text-white px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all shadow-sm cursor-pointer"
               >
                 {isSendingTemplate ? (
                   <>

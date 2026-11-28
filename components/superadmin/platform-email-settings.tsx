@@ -33,7 +33,7 @@ interface TestResult {
 }
 
 const inputClass =
-  'w-full px-3.5 py-2.5 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#1D5BEA] rounded-lg focus:outline-none text-xs font-semibold placeholder-[#8696a0] dark:placeholder-[#8696a0] text-neutral-800 dark:text-white'
+  'w-full px-3.5 py-2.5 bg-white dark:bg-[#1f2c34] border border-[#e9edef] dark:border-[#2a3942] focus:border-[#008069] rounded-lg focus:outline-none text-xs font-semibold placeholder-[#8696a0] dark:placeholder-[#8696a0] text-neutral-800 dark:text-white'
 const labelClass = 'block text-[10px] font-bold text-neutral-500 dark:text-[#8696a0] uppercase tracking-wider mb-1'
 
 async function call(path: string, init: RequestInit = {}) {
@@ -184,7 +184,7 @@ export function PlatformEmailSettings() {
   return (
     <div className="space-y-6 bg-white dark:bg-[#111b21] rounded-2xl border border-neutral-200/60 dark:border-neutral-800/80 p-6 shadow-sm max-w-3xl">
       <div className="flex items-center gap-2 pb-3 border-b border-neutral-100 dark:border-neutral-800 select-none">
-        <Mail size={16} className="text-[#1D5BEA]" />
+        <Mail size={16} className="text-[#008069]" />
         <h3 className="text-xs font-black uppercase tracking-wider text-neutral-900 dark:text-white">Platform Email</h3>
       </div>
 
@@ -283,7 +283,7 @@ export function PlatformEmailSettings() {
           role="status"
           className={`rounded-xl border p-4 text-xs font-semibold leading-relaxed ${
             testResult.success
-              ? 'border-[#c5d5fa] dark:border-[#0E1B3D] bg-[#eef3fe] dark:bg-[#0E1B3D]/30 text-[#0E1B3D] dark:text-[#c5d5fa]'
+              ? 'border-[#b8e2d6] dark:border-[#0E1B3D] bg-[#e7f5f0] dark:bg-[#0E1B3D]/30 text-[#0E1B3D] dark:text-[#b8e2d6]'
               : 'border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-950/30 text-red-900 dark:text-red-200'
           }`}
         >
@@ -304,7 +304,7 @@ export function PlatformEmailSettings() {
       )}
 
       {notice && (
-        <p className={`text-xs font-semibold ${notice.ok ? 'text-[#174bc4] dark:text-[#5f86ee]' : 'text-red-600 dark:text-red-400'}`}>{notice.text}</p>
+        <p className={`text-xs font-semibold ${notice.ok ? 'text-[#006d5b] dark:text-[#00a884]' : 'text-red-600 dark:text-red-400'}`}>{notice.text}</p>
       )}
 
       <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-neutral-100 dark:border-neutral-800">
@@ -313,12 +313,12 @@ export function PlatformEmailSettings() {
           value={testTo}
           onChange={(e) => setTestTo(e.target.value)}
           placeholder="Send test to (blank = me)"
-          className="h-9 px-3 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-[#0b141a] text-xs text-neutral-800 dark:text-white placeholder:text-neutral-400 focus:outline-none focus:border-[#1D5BEA] w-[220px] max-w-full"
+          className="h-9 px-3 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-[#0b141a] text-xs text-neutral-800 dark:text-white placeholder:text-neutral-400 focus:outline-none focus:border-[#008069] w-[220px] max-w-full"
         />
         <button
           onClick={sendTest}
           disabled={testing || saving}
-          className="px-4 py-2 rounded-lg border border-[#1D5BEA] text-[#1D5BEA] hover:bg-[#1D5BEA]/10 disabled:opacity-50 text-xs font-bold flex items-center gap-1.5 cursor-pointer"
+          className="px-4 py-2 rounded-lg border border-[#008069] text-[#008069] hover:bg-[#008069]/10 disabled:opacity-50 text-xs font-bold flex items-center gap-1.5 cursor-pointer"
         >
           {testing ? <Loader2 size={13} className="animate-spin" /> : <Send size={13} />}
           <span>{testTo.trim() ? 'Send test email' : 'Send test email to me'}</span>
@@ -327,7 +327,7 @@ export function PlatformEmailSettings() {
           onClick={save}
           disabled={saving || testing || !state?.tableReady}
           title={state?.tableReady ? undefined : 'Run the database migration first'}
-          className="px-4 py-2 bg-[#1D5BEA] hover:bg-[#1D5BEA] disabled:bg-[#c5d5fa] text-white rounded-lg transition-all text-xs font-bold shadow-sm flex items-center gap-1.5 cursor-pointer"
+          className="px-4 py-2 bg-[#008069] hover:bg-[#008069] disabled:bg-[#b8e2d6] text-white rounded-lg transition-all text-xs font-bold shadow-sm flex items-center gap-1.5 cursor-pointer"
         >
           {saving ? <Loader2 size={13} className="animate-spin" /> : null}
           <span>Save</span>

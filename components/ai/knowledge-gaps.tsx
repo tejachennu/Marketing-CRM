@@ -16,8 +16,8 @@ interface Gap {
   last_asked_at: string
 }
 
-const input = 'w-full px-3 py-2 bg-white dark:bg-[#1f2c34] border border-[#d5ddeb] dark:border-[#2a3942] rounded-lg text-[13px] text-[#0E1B3D] dark:text-white placeholder:text-[#8a94a8] focus:outline-none focus:border-[#1D5BEA] focus:ring-2 focus:ring-[#1D5BEA]/20'
-const blue = 'inline-flex items-center justify-center gap-1.5 h-8 px-3 rounded-lg bg-[#1D5BEA] hover:bg-[#174bc4] disabled:opacity-50 text-white text-xs font-bold'
+const input = 'w-full px-3 py-2 bg-white dark:bg-[#1f2c34] border border-[#d5ddeb] dark:border-[#2a3942] rounded-lg text-[13px] text-[#0E1B3D] dark:text-white placeholder:text-[#8a94a8] focus:outline-none focus:border-[#008069] focus:ring-2 focus:ring-[#008069]/20'
+const blue = 'inline-flex items-center justify-center gap-1.5 h-8 px-3 rounded-lg bg-[#008069] hover:bg-[#006d5b] disabled:opacity-50 text-white text-xs font-bold'
 const plain = 'inline-flex items-center justify-center gap-1.5 h-8 px-3 rounded-lg border border-[#d5ddeb] dark:border-[#2a3942] bg-white dark:bg-[#1f2c34] hover:bg-[#f4f6fa] text-[#4a5672] dark:text-white text-xs font-bold disabled:opacity-50'
 
 const ago = (iso: string) => {
@@ -112,7 +112,7 @@ export function KnowledgeGaps({ organizationId, onAdded }: { organizationId: str
   return (
     <section className="bg-white dark:bg-[#111b21] rounded-2xl border border-[#e3e8f2] dark:border-[#202d36] p-5 sm:p-6" aria-labelledby="gaps-title">
       <div className="flex items-start gap-3 mb-3">
-        <span className="h-9 w-9 shrink-0 rounded-xl bg-[#eef1f6] dark:bg-[#1f2c34] text-[#1D5BEA] flex items-center justify-center"><MessageCircleQuestion size={17} /></span>
+        <span className="h-9 w-9 shrink-0 rounded-xl bg-[#eef1f6] dark:bg-[#1f2c34] text-[#008069] flex items-center justify-center"><MessageCircleQuestion size={17} /></span>
         <div className="min-w-0">
           <h3 id="gaps-title" className="text-sm font-bold text-[#0E1B3D] dark:text-white">
             Questions the AI couldn&apos;t answer {gaps.length > 0 && <span className="ml-1 text-[11px] font-bold text-[#b91c1c] bg-[#fdf0f0] px-2 py-0.5 rounded-full">{gaps.length}</span>}

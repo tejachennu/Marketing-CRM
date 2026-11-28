@@ -28,8 +28,8 @@ function LinkRow({ label, hint, link, file, flash }: { label: string; hint?: str
         <p className="text-[12.5px] text-[#4a5672] dark:text-slate-400 truncate">{link.replace(/^https?:\/\//, '')}</p>
       </div>
       <div className="flex shrink-0 gap-1.5">
-        <button type="button" title="Copy link" aria-label={`Copy the link for ${label}`} onClick={() => navigator.clipboard?.writeText(link).then(() => flash('Link copied'))} className="h-9 w-9 rounded-lg border border-[#d5ddeb] dark:border-slate-700 flex items-center justify-center hover:border-[#1D5BEA] hover:text-[#1D5BEA] cursor-pointer"><Copy size={15} /></button>
-        {qr && <a href={qr} download={`${file}.png`} title="Download QR code" aria-label={`Download the QR code for ${label}`} className="h-9 w-9 rounded-lg border border-[#d5ddeb] dark:border-slate-700 flex items-center justify-center hover:border-[#1D5BEA] hover:text-[#1D5BEA]"><Download size={15} /></a>}
+        <button type="button" title="Copy link" aria-label={`Copy the link for ${label}`} onClick={() => navigator.clipboard?.writeText(link).then(() => flash('Link copied'))} className="h-9 w-9 rounded-lg border border-[#d5ddeb] dark:border-slate-700 flex items-center justify-center hover:border-[#008069] hover:text-[#008069] cursor-pointer"><Copy size={15} /></button>
+        {qr && <a href={qr} download={`${file}.png`} title="Download QR code" aria-label={`Download the QR code for ${label}`} className="h-9 w-9 rounded-lg border border-[#d5ddeb] dark:border-slate-700 flex items-center justify-center hover:border-[#008069] hover:text-[#008069]"><Download size={15} /></a>}
       </div>
     </li>
   )
@@ -47,7 +47,7 @@ export function BookingPageLinks({ orgId, setup, flash }: { orgId: string; setup
     api(`/api/organization?organizationId=${orgId}`).then((data) => setSlug(data?.organization?.slug || '')).catch((err) => setError(err.message))
   }, [orgId])
   if (error) return <p className="text-[14px] text-[#b91c1c]">{error}</p>
-  if (slug === null) return <Loader2 className="animate-spin text-[#1D5BEA]" size={22} />
+  if (slug === null) return <Loader2 className="animate-spin text-[#008069]" size={22} />
   const origin = typeof window !== 'undefined' ? window.location.origin : 'https://wamacrm.magnetora.in'
   const base = `${origin}/b/${slug}`
   // The business page: who you are, services and prices, team, memberships, reviews, and Book now

@@ -110,8 +110,8 @@ function withEnv(values, fn) {
 
 // ── The plan and the trial ──────────────────────────────────────────────────
 
-test('Billing: the old single plan now means Growth at ₹2,500 a month', () => {
-  assert.equal(B.PLAN.amountPaise, 250000)
+test('Billing: the old single plan now means Growth at ₹1,499 a month', () => {
+  assert.equal(B.PLAN.amountPaise, 149900)
   assert.equal(B.PLAN.id, 'growth')
   assert.equal(B.PLAN.currency, 'INR')
   assert.equal(B.PLAN.interval, 'monthly')
@@ -267,7 +267,7 @@ test('Razorpay: the plan is found by its notes in a shared account, or created o
   await withEnv(KEYS, async () => {
     const other = { id: 'plan_other', period: 'monthly', item: { amount: 300000 }, notes: { app: 'another-app' } }
     const old = { id: 'plan_old', period: 'monthly', item: { amount: 300000 }, notes: { app: 'wamacrm', plan: 'pro_monthly' } }
-    const ours = { id: 'plan_ours', period: 'monthly', item: { amount: 250000 }, notes: { app: 'wamacrm', plan: 'growth' } }
+    const ours = { id: 'plan_ours', period: 'monthly', item: { amount: 149900 }, notes: { app: 'wamacrm', plan: 'growth' } }
     assert.equal(await R.ensurePlan('growth', fakeFetch({ 'GET /plans?count=100': { items: [other, old, ours] } })), 'plan_ours')
     const created = fakeFetch({ 'GET /plans?count=100': { items: [other, old] }, 'POST /plans': { id: 'plan_new' } })
     assert.equal(await R.ensurePlan('starter', created), 'plan_new')
@@ -445,8 +445,8 @@ test('Console: totals add up each paying workspace\'s plan price', () => {
   assert.equal(list[0].whatsapp, 'meta')
   assert.equal(list[4].whatsapp, 'twilio')
   const totals = W.workspaceTotals(list)
-  assert.deepEqual({ ...totals, byPlan: undefined }, { workspaces: 5, paying: 2, trialing: 1, expired: 1, exempt: 1, pastDue: 1, aiPaused: 1, monthlyRevenue: 8500, people: 12, attention: 3, trialsEndingSoon: 0, byPlan: undefined })
-  assert.deepEqual(totals.byPlan.filter((p) => p.paying || p.trial).map((p) => [p.plan, p.paying, p.trial, p.revenue]), [['growth', 1, 1, 2500], ['pro_1', 1, 0, 6000]])
+  assert.deepEqual({ ...totals, byPlan: undefined }, { workspaces: 5, paying: 2, trialing: 1, expired: 1, exempt: 1, pastDue: 1, aiPaused: 1, monthlyRevenue: 7499, people: 12, attention: 3, trialsEndingSoon: 0, byPlan: undefined })
+  assert.deepEqual(totals.byPlan.filter((p) => p.paying || p.trial).map((p) => [p.plan, p.paying, p.trial, p.revenue]), [['growth', 1, 1, 1499], ['pro_1', 1, 0, 6000]])
 })
 
 // ── When the first charge happens ───────────────────────────────────────────
@@ -642,10 +642,14 @@ test('AI prices: speech-to-text models have their own price (US$ per million tok
 const P = require('../lib/plans.ts')
 const MW = require('../lib/message-wallet.ts')
 
-test('Plans: five plans at the agreed prices; the old ₹3,000 plan reads as Growth', () => {
+test('Plans: seven plans at the agreed prices (28 Nov 2026); the old ₹3,000 plan reads as Growth', () => {
   assert.deepEqual(P.PLANS.map((p) => [p.id, p.amountPaise / 100, p.whatsapp]), [
-    ['starter', 300, 'shared'], ['growth', 2500, 'own'], ['pro_1', 6000, 'own'], ['pro_2', 9000, 'own'], ['pro_3', 12000, 'own'],
+    ['starter', 300, 'shared'], ['business', 999, 'own'], ['growth', 1499, 'own'], ['content', 2499, 'own'],
+    ['pro_1', 6000, 'own'], ['pro_2', 9000, 'own'], ['pro_3', 12000, 'own'],
   ])
+  assert.equal(P.getPlan('content').name, 'Growth + Content')
+  assert.deepEqual([P.getPlan('content').limits.videos, P.getPlan('content').limits.posters], [3, 2])
+  assert.equal(P.POPULAR_PLAN, 'growth')
   assert.equal(P.planIdOf('pro_monthly'), 'growth')
   assert.equal(P.planIdOf(undefined), 'growth')
   assert.equal(P.getPlan('pro_2').limits.videos, 4)
@@ -673,7 +677,10 @@ test('Plans: Starter (₹300, no own WhatsApp) has no inbox or campaigns, Front 
 test('Plans: Super Admin overrides change one workspace\'s limits; bad values are ignored', () => {
   const limits = P.limitsOf('growth', { connectors: 3, team: 50, aiMonthly: 'lots', videos: -1 })
   // More than one connector cannot be given any more (one at a time)
-  assert.deepEqual([limits.connectors, limits.team, limits.aiMonthly, limits.videos], [1, 50, 300, 0])
+  assert.deepEqual([limits.connectors, limits.team, limits.aiMonthly, limits.videos], [1, 50, 0, 0])
+  // Super Admin can give one workspace the website or Instagram
+  assert.equal(P.limitsOf('business', { website: true }).website, true)
+  assert.equal(P.limitsOf('business', { instagram: 'yes' }).instagram, false)
   assert.equal(P.limitsOf('pro_1', { team: null }).team, null)
   // A connector number opens Starter up to every connector
   assert.deepEqual(P.limitsOf('starter', { connectors: 2 }).connectorKeys, [])
@@ -683,8 +690,10 @@ test('Plans: Super Admin overrides change one workspace\'s limits; bad values ar
 })
 
 test('Plans: an upgrade costs the difference for the days left, in whole rupees', () => {
-  // Growth → Pro 1 with 15 of 30 days left: (6,000 − 2,500) × 15/30 = ₹1,750
-  assert.equal(P.upgradeDifferencePaise('growth', 'pro_1', iso(15), NOW), 175000)
+  // Growth → Pro 1 with 15 of 30 days left: (6,000 − 1,499) × 15/30 = ₹2,250.50 → ₹2,251
+  assert.equal(P.upgradeDifferencePaise('growth', 'pro_1', iso(15), NOW), 225100)
+  // Business → Growth: (1,499 − 999) × 15/30 = ₹250
+  assert.equal(P.upgradeDifferencePaise('business', 'growth', iso(15), NOW), 25000)
   assert.equal(P.upgradeDifferencePaise('pro_1', 'growth', iso(15), NOW), 0)
   assert.equal(P.upgradeDifferencePaise('growth', 'pro_1', iso(-1), NOW), 0)
   assert.equal(P.planDirection('starter', 'growth'), 'up')
@@ -704,7 +713,7 @@ test('Billing summary: plan, limits, what is allowed and the message wallet', as
   const summary = await S.billingSummary(db, 'org-1')
   assert.equal(summary.plan.id, 'starter')
   assert.equal(summary.allows.campaigns, false)
-  assert.equal(summary.plans.length, 5)
+  assert.equal(summary.plans.length, 7)
   assert.equal(summary.whatsappMode, 'shared')
   assert.equal(summary.messageBalance, 40)
   assert.equal(summary.messageLow, true)
@@ -774,7 +783,7 @@ test('Change plan: an upgrade while paying asks for the difference first', async
     })
     const result = await S.changePlan(db, 'org-1', 'pro_1', fetcher, NOW)
     assert.equal(result.kind, 'pay_difference')
-    assert.equal(result.amount, 175000)
+    assert.equal(result.amount, 225100)
     const order = JSON.parse(fetcher.calls.find((c) => c.url.endsWith('/orders')).init.body)
     assert.deepEqual([order.notes.purpose, order.notes.plan], ['upgrade', 'pro_1'])
     // Nothing changes until it is paid

@@ -99,7 +99,7 @@ export function CourierPanel({ orgId, orderId, canEdit, onChanged, showToast }: 
         <p className={title}>Courier</p>
         <div className="rounded-xl border border-slate-200 dark:border-slate-700 p-3 space-y-2 text-[13px]">
           <div className="flex flex-wrap items-center gap-2">
-            <Truck size={14} className="text-[#1D5BEA] shrink-0" />
+            <Truck size={14} className="text-[#008069] shrink-0" />
             <b className="text-slate-900 dark:text-white">{active.courier_name || PROVIDER_NAMES[active.provider]}</b>
             <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${attention ? 'bg-[#fdf0f0] text-[#b91c1c]' : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200'}`}>{SHIPMENT_STATUS_LABELS[active.status] || active.status}</span>
             <span className="text-[11px] text-slate-500">via {PROVIDER_NAMES[active.provider]}</span>
@@ -123,7 +123,7 @@ export function CourierPanel({ orgId, orderId, canEdit, onChanged, showToast }: 
           </div>
           {(active.events || []).length > 0 && (
             <div>
-              <button type="button" className="text-xs font-semibold text-[#1D5BEA] hover:text-[#174bc4]" onClick={() => setShowScans(!showScans)}>{showScans ? 'Hide' : 'Show'} the journey ({active.events!.length})</button>
+              <button type="button" className="text-xs font-semibold text-[#008069] hover:text-[#006d5b]" onClick={() => setShowScans(!showScans)}>{showScans ? 'Hide' : 'Show'} the journey ({active.events!.length})</button>
               {showScans && (
                 <ol className="mt-2 space-y-1.5 border-l border-slate-200 dark:border-slate-700 pl-3">
                   {active.events!.map((e, i) => (

@@ -155,7 +155,7 @@ export function PipelineList({ data, onOpen, refreshKey }: { data: PipelineData;
                 {rows.map((deal) => (
                   <tr key={deal.id} onClick={() => onOpen(deal.id)} className="border-b last:border-0 border-[#eef1f6] dark:border-slate-800 hover:bg-[#f8fafd] dark:hover:bg-slate-800/40 cursor-pointer">
                     <td className="px-4 py-3 max-w-[320px]">
-                      <button type="button" onClick={(e) => { e.stopPropagation(); onOpen(deal.id) }} className="block text-left text-[14.5px] font-bold text-[#0E1B3D] dark:text-white truncate max-w-full cursor-pointer hover:text-[#1D5BEA]">{deal.title || 'Untitled deal'}</button>
+                      <button type="button" onClick={(e) => { e.stopPropagation(); onOpen(deal.id) }} className="block text-left text-[14.5px] font-bold text-[#0E1B3D] dark:text-white truncate max-w-full cursor-pointer hover:text-[#008069]">{deal.title || 'Untitled deal'}</button>
                       <span className="block text-[13px] text-[#6B7894] truncate">{[deal.contact?.name, deal.contact?.company].filter(Boolean).join(' · ') || 'No contact'}</span>
                     </td>
                     <td className="px-3 py-3 text-[14px] text-[#0E1B3D] dark:text-slate-200 whitespace-nowrap">{where(deal)}<span className="block"><PriorityTag priority={deal.priority} /></span></td>
@@ -189,7 +189,7 @@ export function PipelineList({ data, onOpen, refreshKey }: { data: PipelineData;
             </ul>
           </>
         )}
-        {loading && <div className="py-8 flex justify-center"><Loader2 className="animate-spin text-[#1D5BEA]" size={24} /></div>}
+        {loading && <div className="py-8 flex justify-center"><Loader2 className="animate-spin text-[#008069]" size={24} /></div>}
       </div>
       {hasMore && !loading && <div className="flex justify-center"><button type="button" onClick={more} className={secondaryButton}>Show more</button></div>}
     </div>

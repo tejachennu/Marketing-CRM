@@ -60,7 +60,7 @@ const TAG_MODES: { id: AudienceFilters['tagMode']; label: string; hint: string }
 const controlClass =
   'h-10 px-3 rounded-xl border text-[13px] font-medium inline-flex items-center justify-between gap-2 transition-colors cursor-pointer bg-white dark:bg-[#1a252c]'
 const idleControl = 'border-slate-200 dark:border-[#2a3942] text-slate-700 dark:text-slate-300 hover:border-slate-300 dark:hover:border-slate-600'
-const activeControl = 'border-[#1D5BEA] text-[#1D5BEA] dark:text-[#9db5ef] bg-[#eef3fe]/60 dark:bg-[#0E1B3D]/30'
+const activeControl = 'border-[#008069] text-[#008069] dark:text-[#8fcfbf] bg-[#e7f5f0]/60 dark:bg-[#0E1B3D]/30'
 const menuClass =
   'absolute top-full mt-1.5 z-40 w-[min(22rem,calc(100vw-2rem))] bg-white dark:bg-[#1c282f] border border-slate-200 dark:border-[#2a3942] rounded-2xl shadow-xl p-3 space-y-2.5'
 const chipClass = 'inline-flex items-center gap-1 h-7 pl-2.5 pr-1.5 rounded-full text-xs font-medium border'
@@ -194,11 +194,11 @@ export function AudiencePicker({
       {/* ── Who will receive the campaign ── */}
       <div className={`rounded-2xl border p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${
         summary.recipients > 0
-          ? 'border-[#1D5BEA]/40 bg-[#eef3fe]/60 dark:bg-[#0E1B3D]/20'
+          ? 'border-[#008069]/40 bg-[#e7f5f0]/60 dark:bg-[#0E1B3D]/20'
           : 'border-slate-200 dark:border-[#2a3942] bg-white dark:bg-[#152026]'
       }`}>
         <div className="flex items-center gap-3 min-w-0">
-          <div className={`h-11 w-11 shrink-0 rounded-xl flex items-center justify-center ${summary.recipients > 0 ? 'bg-[#1D5BEA] text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-500'}`}>
+          <div className={`h-11 w-11 shrink-0 rounded-xl flex items-center justify-center ${summary.recipients > 0 ? 'bg-[#008069] text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-500'}`}>
             <Users size={20} />
           </div>
           <div className="min-w-0" aria-live="polite">
@@ -237,7 +237,7 @@ export function AudiencePicker({
               placeholder="Search name, company, phone or email"
               value={filters.search}
               onChange={(event) => patch({ search: event.target.value })}
-              className="w-full h-10 pl-9 pr-9 bg-white dark:bg-[#1a252c] border border-slate-200 dark:border-[#2a3942] rounded-xl text-[13px] text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:border-[#1D5BEA] focus:ring-2 focus:ring-[#1D5BEA]/20"
+              className="w-full h-10 pl-9 pr-9 bg-white dark:bg-[#1a252c] border border-slate-200 dark:border-[#2a3942] rounded-xl text-[13px] text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:border-[#008069] focus:ring-2 focus:ring-[#008069]/20"
             />
             {filters.search && (
               <button type="button" aria-label="Clear search" onClick={() => patch({ search: '' })} className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded-full text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 cursor-pointer">
@@ -259,7 +259,7 @@ export function AudiencePicker({
                 <span className="inline-flex items-center gap-1.5">
                   <Tag size={14} />
                   Tags
-                  {filters.tags.length > 0 && <span className="h-5 min-w-5 px-1 rounded-full bg-[#1D5BEA] text-white text-[11px] font-bold tabular-nums inline-flex items-center justify-center">{filters.tags.length}</span>}
+                  {filters.tags.length > 0 && <span className="h-5 min-w-5 px-1 rounded-full bg-[#008069] text-white text-[11px] font-bold tabular-nums inline-flex items-center justify-center">{filters.tags.length}</span>}
                 </span>
                 <ChevronDown size={14} className={`transition-transform ${openMenu === 'tags' ? 'rotate-180' : ''}`} />
               </button>
@@ -275,7 +275,7 @@ export function AudiencePicker({
                         aria-pressed={filters.tagMode === mode.id}
                         onClick={() => patch({ tagMode: mode.id })}
                         className={`h-7 rounded-lg text-xs font-semibold cursor-pointer transition-colors ${
-                          filters.tagMode === mode.id ? 'bg-white dark:bg-[#2a3942] text-[#1D5BEA] dark:text-[#9db5ef] shadow-sm' : 'text-slate-600 dark:text-slate-400'
+                          filters.tagMode === mode.id ? 'bg-white dark:bg-[#2a3942] text-[#008069] dark:text-[#8fcfbf] shadow-sm' : 'text-slate-600 dark:text-slate-400'
                         }`}
                       >
                         {mode.label}
@@ -287,7 +287,7 @@ export function AudiencePicker({
                   {tagCounts.length > 8 && (
                     <div className="relative">
                       <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
-                      <input type="text" aria-label="Search tags" placeholder="Search tags" value={tagQuery} onChange={(event) => setTagQuery(event.target.value)} className="w-full h-8 pl-8 pr-3 text-xs bg-slate-50 dark:bg-[#121b22] border border-slate-200 dark:border-slate-700 rounded-lg focus:outline-none focus:border-[#1D5BEA] text-slate-900 dark:text-white" />
+                      <input type="text" aria-label="Search tags" placeholder="Search tags" value={tagQuery} onChange={(event) => setTagQuery(event.target.value)} className="w-full h-8 pl-8 pr-3 text-xs bg-slate-50 dark:bg-[#121b22] border border-slate-200 dark:border-slate-700 rounded-lg focus:outline-none focus:border-[#008069] text-slate-900 dark:text-white" />
                     </div>
                   )}
 
@@ -328,7 +328,7 @@ export function AudiencePicker({
                 <span className="inline-flex items-center gap-1.5">
                   <History size={14} />
                   Past campaigns
-                  {filters.campaigns.length > 0 && <span className="h-5 min-w-5 px-1 rounded-full bg-[#1D5BEA] text-white text-[11px] font-bold tabular-nums inline-flex items-center justify-center">{filters.campaigns.length}</span>}
+                  {filters.campaigns.length > 0 && <span className="h-5 min-w-5 px-1 rounded-full bg-[#008069] text-white text-[11px] font-bold tabular-nums inline-flex items-center justify-center">{filters.campaigns.length}</span>}
                 </span>
                 <ChevronDown size={14} className={`transition-transform ${openMenu === 'campaigns' ? 'rotate-180' : ''}`} />
               </button>
@@ -346,7 +346,7 @@ export function AudiencePicker({
                         aria-pressed={filters.campaignMode === mode.id}
                         onClick={() => patch({ campaignMode: mode.id })}
                         className={`h-7 rounded-lg text-xs font-semibold cursor-pointer transition-colors ${
-                          filters.campaignMode === mode.id ? 'bg-white dark:bg-[#2a3942] text-[#1D5BEA] dark:text-[#9db5ef] shadow-sm' : 'text-slate-600 dark:text-slate-400'
+                          filters.campaignMode === mode.id ? 'bg-white dark:bg-[#2a3942] text-[#008069] dark:text-[#8fcfbf] shadow-sm' : 'text-slate-600 dark:text-slate-400'
                         }`}
                       >
                         {mode.label}
@@ -362,13 +362,13 @@ export function AudiencePicker({
                   {campaigns.length > 8 && (
                     <div className="relative">
                       <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
-                      <input type="text" aria-label="Search campaigns" placeholder="Search campaigns" value={campaignQuery} onChange={(event) => setCampaignQuery(event.target.value)} className="w-full h-8 pl-8 pr-3 text-xs bg-slate-50 dark:bg-[#121b22] border border-slate-200 dark:border-slate-700 rounded-lg focus:outline-none focus:border-[#1D5BEA] text-slate-900 dark:text-white" />
+                      <input type="text" aria-label="Search campaigns" placeholder="Search campaigns" value={campaignQuery} onChange={(event) => setCampaignQuery(event.target.value)} className="w-full h-8 pl-8 pr-3 text-xs bg-slate-50 dark:bg-[#121b22] border border-slate-200 dark:border-slate-700 rounded-lg focus:outline-none focus:border-[#008069] text-slate-900 dark:text-white" />
                     </div>
                   )}
 
                   <div className="max-h-60 overflow-y-auto -mx-1 px-1 space-y-0.5">
                     {loadingCampaigns ? (
-                      <p className="py-5 flex items-center justify-center gap-2 text-xs text-slate-500"><Loader2 size={14} className="animate-spin text-[#1D5BEA]" /> Loading campaigns…</p>
+                      <p className="py-5 flex items-center justify-center gap-2 text-xs text-slate-500"><Loader2 size={14} className="animate-spin text-[#008069]" /> Loading campaigns…</p>
                     ) : campaigns.length === 0 ? (
                       <p className="py-5 text-center text-xs text-slate-500">You have not sent any campaigns yet.</p>
                     ) : visibleCampaigns.length === 0 ? (
@@ -400,7 +400,7 @@ export function AudiencePicker({
             </div>
 
             <label className={`${controlClass} ${filters.reachableOnly ? activeControl : idleControl} select-none`} title={`Hide contacts that have no valid ${addressNoun}`}>
-              <input type="checkbox" checked={filters.reachableOnly} onChange={(event) => patch({ reachableOnly: event.target.checked })} className="h-4 w-4 rounded accent-[#1D5BEA] cursor-pointer" />
+              <input type="checkbox" checked={filters.reachableOnly} onChange={(event) => patch({ reachableOnly: event.target.checked })} className="h-4 w-4 rounded accent-[#008069] cursor-pointer" />
               Reachable only
             </label>
           </div>
@@ -459,12 +459,12 @@ export function AudiencePicker({
               disabled={matching.length === 0 || waitingForLogs}
               checked={allMatchingSelected}
               onChange={() => (allMatchingSelected ? removeMatching() : addMatching())}
-              className="h-4 w-4 rounded accent-[#1D5BEA] cursor-pointer disabled:cursor-not-allowed"
+              className="h-4 w-4 rounded accent-[#008069] cursor-pointer disabled:cursor-not-allowed"
             />
             <span className="tabular-nums">
               <strong className="font-semibold text-slate-900 dark:text-white">{number(matching.length)}</strong> {filtersActive ? 'matching' : matching.length === 1 ? 'contact' : 'contacts'}
               <span className="text-slate-400"> · </span>
-              <strong className="font-semibold text-[#1D5BEA] dark:text-[#5f86ee]">{number(summary.selectedVisible)}</strong> ticked
+              <strong className="font-semibold text-[#008069] dark:text-[#00a884]">{number(summary.selectedVisible)}</strong> ticked
             </span>
           </label>
 
@@ -494,7 +494,7 @@ export function AudiencePicker({
                 Untick {filtersActive ? `these ${number(matching.length)}` : 'all'}
               </button>
             ) : (
-              <button type="button" onClick={addMatching} disabled={matching.length === 0 || waitingForLogs} className="h-8 px-3 rounded-lg bg-[#1D5BEA] hover:bg-[#1D5BEA] text-white text-xs font-semibold inline-flex items-center gap-1.5 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed">
+              <button type="button" onClick={addMatching} disabled={matching.length === 0 || waitingForLogs} className="h-8 px-3 rounded-lg bg-[#008069] hover:bg-[#008069] text-white text-xs font-semibold inline-flex items-center gap-1.5 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed">
                 <Check size={13} />
                 {filtersActive ? `Tick all ${number(matching.length)} matching` : `Tick all ${number(matching.length)}`}
               </button>
@@ -505,7 +505,7 @@ export function AudiencePicker({
         <div className="max-h-[520px] overflow-y-auto divide-y divide-slate-100 dark:divide-slate-800/60">
           {loading ? (
             <div className="flex flex-col items-center justify-center py-16 gap-2 text-slate-500">
-              <Loader2 className="animate-spin text-[#1D5BEA]" size={22} />
+              <Loader2 className="animate-spin text-[#008069]" size={22} />
               <span className="text-[13px]">Loading your contacts…</span>
             </div>
           ) : contacts.length === 0 ? (
@@ -521,7 +521,7 @@ export function AudiencePicker({
                 <button
                   type="button"
                   onClick={() => onNeedParticipants(filters.campaigns.filter((id) => participantsByCampaign[id] === undefined))}
-                  className="h-8 px-3 rounded-lg bg-[#1D5BEA] hover:bg-[#1D5BEA] text-white text-xs font-semibold inline-flex items-center gap-1.5 cursor-pointer"
+                  className="h-8 px-3 rounded-lg bg-[#008069] hover:bg-[#008069] text-white text-xs font-semibold inline-flex items-center gap-1.5 cursor-pointer"
                 >
                   <RefreshCw size={12} /> Try again
                 </button>
@@ -532,7 +532,7 @@ export function AudiencePicker({
             </EmptyRows>
           ) : waitingForLogs ? (
             <div className="flex flex-col items-center justify-center py-16 gap-2 text-slate-500">
-              <Loader2 className="animate-spin text-[#1D5BEA]" size={22} />
+              <Loader2 className="animate-spin text-[#008069]" size={22} />
               <span className="text-[13px]">Checking who received the chosen campaigns…</span>
             </div>
           ) : rows.length === 0 ? (
@@ -540,7 +540,7 @@ export function AudiencePicker({
               title={view === 'selected' ? 'No ticked contacts here' : view === 'unselected' ? 'Everyone listed is ticked' : 'No contacts match these filters'}
               detail={view !== 'all' ? 'Switch the list back to All to see everyone.' : 'Remove a filter or change the search to see more contacts.'}
             >
-              <button type="button" onClick={() => (view !== 'all' ? setView('all') : clearFilters())} className="mt-3 h-8 px-3 rounded-lg bg-[#1D5BEA] hover:bg-[#1D5BEA] text-white text-xs font-semibold cursor-pointer">
+              <button type="button" onClick={() => (view !== 'all' ? setView('all') : clearFilters())} className="mt-3 h-8 px-3 rounded-lg bg-[#008069] hover:bg-[#008069] text-white text-xs font-semibold cursor-pointer">
                 {view !== 'all' ? 'Show all' : 'Clear all filters'}
               </button>
             </EmptyRows>
@@ -556,12 +556,12 @@ export function AudiencePicker({
                 <label
                   key={contact.id}
                   className={`grid grid-cols-12 gap-x-3 gap-y-1 px-3 sm:px-4 py-2.5 items-center cursor-pointer select-none text-[13px] transition-colors ${
-                    checked ? 'bg-[#eef3fe]/70 dark:bg-[#0E1B3D]/20' : 'hover:bg-slate-50 dark:hover:bg-slate-800/40'
+                    checked ? 'bg-[#e7f5f0]/70 dark:bg-[#0E1B3D]/20' : 'hover:bg-slate-50 dark:hover:bg-slate-800/40'
                   }`}
                 >
                   <div className="col-span-12 sm:col-span-5 flex items-center gap-3 min-w-0">
-                    <input type="checkbox" checked={checked} onChange={() => toggle(contact.id)} className="h-4 w-4 shrink-0 rounded accent-[#1D5BEA] cursor-pointer" />
-                    <div className="h-8 w-8 shrink-0 rounded-full bg-[#dfe8fd] dark:bg-[#0E1B3D] text-[#1D5BEA] dark:text-[#9db5ef] flex items-center justify-center font-semibold text-xs">
+                    <input type="checkbox" checked={checked} onChange={() => toggle(contact.id)} className="h-4 w-4 shrink-0 rounded accent-[#008069] cursor-pointer" />
+                    <div className="h-8 w-8 shrink-0 rounded-full bg-[#d6efe7] dark:bg-[#0E1B3D] text-[#008069] dark:text-[#8fcfbf] flex items-center justify-center font-semibold text-xs">
                       {name.charAt(0).toUpperCase()}
                     </div>
                     <div className="min-w-0">
@@ -587,7 +587,7 @@ export function AudiencePicker({
                         key={tag}
                         className={`text-[11px] px-1.5 py-0.5 rounded border max-w-[9rem] truncate ${
                           filters.tags.includes(tag) && filters.tagMode !== 'none'
-                            ? 'bg-[#dfe8fd] dark:bg-[#0E1B3D]/60 text-[#1D5BEA] dark:text-[#9db5ef] border-[#1D5BEA]/30 font-semibold'
+                            ? 'bg-[#d6efe7] dark:bg-[#0E1B3D]/60 text-[#008069] dark:text-[#8fcfbf] border-[#008069]/30 font-semibold'
                             : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700'
                         }`}
                       >
@@ -621,8 +621,8 @@ export function AudiencePicker({
 
 function MenuOption({ checked, onToggle, label, count, detail, muted }: { checked: boolean; onToggle: () => void; label: string; count?: number; detail?: string; muted?: boolean }) {
   return (
-    <label className={`flex items-start gap-2.5 px-2 py-1.5 rounded-lg text-[13px] cursor-pointer select-none transition-colors ${checked ? 'bg-[#eef3fe] dark:bg-[#0E1B3D]/40' : 'hover:bg-slate-50 dark:hover:bg-slate-800'}`}>
-      <input type="checkbox" checked={checked} onChange={onToggle} className="mt-0.5 h-4 w-4 shrink-0 rounded accent-[#1D5BEA] cursor-pointer" />
+    <label className={`flex items-start gap-2.5 px-2 py-1.5 rounded-lg text-[13px] cursor-pointer select-none transition-colors ${checked ? 'bg-[#e7f5f0] dark:bg-[#0E1B3D]/40' : 'hover:bg-slate-50 dark:hover:bg-slate-800'}`}>
+      <input type="checkbox" checked={checked} onChange={onToggle} className="mt-0.5 h-4 w-4 shrink-0 rounded accent-[#008069] cursor-pointer" />
       <span className="flex-1 min-w-0">
         <span className={`block truncate ${muted ? 'italic text-slate-500 dark:text-slate-400' : 'text-slate-900 dark:text-white'} ${checked ? 'font-semibold' : ''}`}>{label}</span>
         {detail && <span className="block truncate text-[11px] text-slate-500 dark:text-slate-400 capitalize">{detail}</span>}
@@ -635,7 +635,7 @@ function MenuOption({ checked, onToggle, label, count, detail, muted }: { checke
 function Chip({ tone, onRemove, children }: { tone: 'slate' | 'emerald' | 'amber'; onRemove: () => void; children: React.ReactNode }) {
   const tones = {
     slate: 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-700',
-    emerald: 'bg-[#eef3fe] dark:bg-[#0E1B3D]/40 text-[#1D5BEA] dark:text-[#9db5ef] border-[#1D5BEA]/30',
+    emerald: 'bg-[#e7f5f0] dark:bg-[#0E1B3D]/40 text-[#008069] dark:text-[#8fcfbf] border-[#008069]/30',
     amber: 'bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 border-amber-300/70 dark:border-amber-800',
   }
   return (
